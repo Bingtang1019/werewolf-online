@@ -48,6 +48,8 @@ function bump(room) { room.version = (room.version || 0) + 1; }
 const PHASE_TIMEOUT = Math.max(2, parseInt(process.env.PHASE_TIMEOUT || '30', 10));
 /* 夜晚每个行动步骤/盗贼选牌的超时（秒），超时未完成视为跳过/随机（房主仍可强制继续） */
 const NIGHT_TIMEOUT = Math.max(2, parseInt(process.env.NIGHT_TIMEOUT || '30', 10));
+/* 表情白名单：唯一来源，经视图下发（view.moods），客户端据此循环展示（N6） */
+const MOODS = ['😀', '😨', '😤', '😭', '😏', '🤔', '😇', '🤡', '😴', '😱', '🥳', '🕶️'];
 
 function clearPhaseTimer(room) {
   if (room._phaseTimer) { clearTimeout(room._phaseTimer); room._phaseTimer = null; }
@@ -190,13 +192,13 @@ function joinRoom(roomId, name) {
 /* ---------------------------- 准备阶段（房主配置） ---------------------------- */
 function lobbyAction(room, p, action, data) {
   const isHost = p.id === room.host;
-  if (action === 'leave') { removePlayer(room, p.id, false); return { ok: true, left: true }; }
+  if (action === 'leave') { removePlayer(room, p.id); return { ok: true, left: true }; }
   if (action === 'kick') {
     if (!isHost) return { error: '只有房主可以踢人' };
     const t = byId(room, data.target);
     if (!t) return { error: '玩家不存在' };
     if (room.players.length <= 1) return { error: '至少需要保留一名玩家' };
-    removePlayer(room, t.id, true);
+    removePlayer(room, t.id);
     return { ok: true };
   }
   if (!isHost) return { error: '只有房主可以修改设置' };
@@ -222,7 +224,7 @@ function lobbyAction(room, p, action, data) {
     if (room.players.length <= 1) return { error: '至少需要保留一名玩家' };
     const t = data.target ? byId(room, data.target) : bots[bots.length - 1];
     if (!t || !t.isBot) return { error: '玩家不存在或不是人机' };
-    removePlayer(room, t.id, false);
+    removePlayer(room, t.id);
     bump(room);
     return { ok: true };
   }
@@ -408,6 +410,7 @@ function beginNight(room) {
   if (room._thiefTimer) { clearTimeout(room._thiefTimer); room._thiefTimer = null; }
   room.revealDeadline = null;
   clearNightTimer(room);
+  clearTimeout(room._hunterTimer); room._hunterTimer = null; room.hunterDeadline = null;
   room.nightNum++;
   room.phase = 'night';
   room.nightStep = null;
@@ -447,7 +450,6 @@ function nightActors(room, step) {
   const alive = p => p.alive;
   const allWithRole = key => room.players.filter(p => alive(p) && p.role === key).map(p => p.id);
   switch (step) {
-    case 'thief': return allWithRole('thief');
     case 'cupid': return allWithRole('cupid');
     case 'lovers': return room.lovers ? room.lovers.filter(id => { const q = byId(room, id); return q && q.alive; }) : [];
     case 'guard': return allWithRole('guard');
@@ -496,10 +498,29 @@ function clearNightTimer(room) {
   if (room._nightStepTimer) { clearTimeout(room._nightStepTimer); room._nightStepTimer = null; }
   room.nightDeadline = null;
 }
+/*猎人开枪 30 秒超时弃枪（夜晚被刀 / 白天被放逐两条路径共用；N1 修复） */
+function scheduleHunterShotTimer(room) {
+  clearTimeout(room._hunterTimer);
+  room.hunterDeadline = null;
+  const active = (room.phase === 'night' && room.nightStep === 'hunter') || room.phase === 'hunter_shot';
+  if (!active || !room.shooter) return;
+  room.hunterDeadline = Date.now() + NIGHT_TIMEOUT * 1000;
+  const shooter = room.shooter;
+  room._hunterTimer = setTimeout(() => {
+    room._hunterTimer = null;
+    room.hunterDeadline = null;
+    if (!rooms.has(room.id)) return;
+    const ok = (room.phase === 'night' && room.nightStep === 'hunter') || room.phase === 'hunter_shot';
+    if (!ok || room.shooter !== shooter) return; // 已开枪/已处理
+    resolveShot(room, null); // 超时弃枪
+    autoAdvance(room);
+  }, NIGHT_TIMEOUT * 1000);
+}
+
 function scheduleNightStepTimer(room) {
   clearNightTimer(room);
   if (room.phase !== 'night' || !room.nightStep) return;
-  const actors = room.nightStep === 'hunter' ? (room.shooter ? [room.shooter] : []) : nightActors(room, room.nightStep);
+  const actors = nightActors(room, room.nightStep);
   if (!actors.length) return;
   room.nightDeadline = Date.now() + NIGHT_TIMEOUT * 1000;
   const step = room.nightStep;
@@ -507,12 +528,9 @@ function scheduleNightStepTimer(room) {
     room._nightStepTimer = null;
     room.nightDeadline = null;
     if (!rooms.has(room.id) || room.phase !== 'night' || room.nightStep !== step) return; // 已推进/已结束
-    if (step === 'hunter') { resolveShot(room, null); } // 猎人 30 秒未开枪 → 弃枪
-    else {
-      const as = nightActors(room, step);
-      as.forEach(id => markActed(room, step, id)); // 未操作者视为弃权
-      setNightStep(room);
-    }
+    const as = nightActors(room, step);
+    as.forEach(id => markActed(room, step, id)); // 未操作者视为弃权
+    setNightStep(room);
     autoAdvance(room);
   }, NIGHT_TIMEOUT * 1000);
 }
@@ -676,7 +694,7 @@ function resolveNight(room) {
     room.nightStep = 'hunter';
     room.shooter = hunter;
     room.shotContext = 'night';
-    scheduleNightStepTimer(room); // 猎人 30 秒未开枪 → 弃枪
+    scheduleHunterShotTimer(room); // 猎人 30 秒未开枪 → 弃枪
     bump(room);
     maybeRunBots(room); // 被刀猎人若是人机 →自动决定是否开枪
     return;
@@ -690,6 +708,7 @@ function finishNight(room) {
   beginMorning(room);
 }
 function resolveShot(room, target) {
+  clearTimeout(room._hunterTimer); room._hunterTimer = null; room.hunterDeadline = null;
   const deaths = [];
   const die = (pid, by) => {
     const q = byId(room, pid);
@@ -718,16 +737,10 @@ function applyLoverChain(room, deaths, die) {
   if (deaths.includes(a)) die(b, 'lover');
   if (deaths.includes(b)) die(a, 'lover');
 }
-function dieAndApplyLoverChain(room, deaths, pid, by) {
-  const q = byId(room, pid);
-  if (!q || !q.alive || deaths.includes(pid)) return;
-  q.alive = false; q.deadBy = by; deaths.push(pid);
-  applyLoverChain(room, deaths, (p2, b2) => { const q2 = byId(room, p2); if (q2 && q2.alive && !deaths.includes(p2)) { q2.alive = false; q2.deadBy = b2; deaths.push(p2); } });
-}
-
 /* ---------------------------- 早晨 / 白天 ---------------------------- */
 function beginMorning(room) {
   room.dayNum++;
+  room.dayDeaths = []; // 前一天的放逐公告在次日天亮时清空（过夜期间保留供回看，N3）
   room.phase = 'morning';
   room.morningDeaths = room.nightDeaths || [];
   room.nightDeaths = null;
@@ -881,6 +894,7 @@ function afterExile(room) {
     room.phase = 'hunter_shot';
     room.shooter = hunter;
     room.shotContext = 'exile';
+    scheduleHunterShotTimer(room); // 被放逐猎人 30 秒未开枪 → 弃枪（N1 修复）
     bump(room);
     maybeRunBots(room); // 被放逐猎人若是人机 →自动决定是否开枪
     return;
@@ -946,7 +960,7 @@ function checkWin(room) {
     const GOD_KEYS = ['seer', 'witch', 'hunter', 'dreamer', 'guard'];
     // 本局是否“配置了”神职/平民：按实际发出去的牌判定（盗贼玩法中可能被作废的身份卡不计入），
     // 否则无神职/无民（或神职卡被作废）的局会因该类别恒为 0 而首刀即误判狼胜。
-    const hasRole = p => !!(p.role && (p.role !== 'thief' || p.pickedRole));
+    const hasRole = p => !!p.role; // 新模型下无人持有“盗贼”牌（盗贼选定后即转换身份），无需特判（死逻辑清理）
     const cfgGods = room.players.some(p => hasRole(p) && GOD_KEYS.includes(effRole(p)));
     const cfgCivs = room.players.some(p => hasRole(p) && effRole(p) === 'villager');
     const gods = goodCamp.filter(p => typeOf(room, p) === 'god');
@@ -1229,7 +1243,7 @@ function advance(room, pid) {
   }
   return { error: '当前阶段无需操作' };
 }
-function removePlayer(room, pid, isKick) {
+function removePlayer(room, pid) {
   const p = byId(room, pid);
   if (!p) return;
   if (room.phase === 'lobby') {
@@ -1279,6 +1293,7 @@ function rematch(room) {
   clearNightTimer(room);
   if (room._thiefTimer) { clearTimeout(room._thiefTimer); room._thiefTimer = null; }
   room.revealDeadline = null;
+  clearTimeout(room._hunterTimer); room._hunterTimer = null; room.hunterDeadline = null;
   room.phase = 'lobby';
   room.dayNum = 0; room.nightNum = 0; room.nightStep = null;
   room.winner = null; room.endInfo = null;
@@ -1365,8 +1380,7 @@ function handleAction(roomId, pid, action, data, chatSince) {
   if (!p) return { error: '玩家不存在' };
   if (p.leftGame) return { error: '你已离开房间' }; // 防已离开玩家刷操作（刷版本号）
   // 心情表情：任意阶段可切换（点击自己的表情按钮循环，null=关闭）
-  if (action === 'mood') {
-    const MOODS = ['😀', '😨', '😤', '😭', '😏', '🤔', '😇', '🤡', '😴', '😱', '🥳', '🕶️'];
+  if (action === 'mood') { // 心情表情（MOODS 在模块级定义，经视图下发保证前后端一致 N6）
     const mood = data.mood == null ? null : String(data.mood).slice(0, 8);
     if (mood && !MOODS.includes(mood)) return { error: '无效的表情' };
     p.mood = mood;
@@ -1400,14 +1414,14 @@ function handleAdvance(roomId, pid, chatSince) {
 function handleLeave(roomId, pid) {
   const room = rooms.get(roomId);
   if (!room) return { ok: true };
-  removePlayer(room, pid, false);
+  removePlayer(room, pid);
   return { ok: true };
 }
 function handleKick(roomId, pid, target, chatSince) {
   const room = rooms.get(roomId);
   if (!room) return { error: '房间不存在或已解散' };
   if (pid !== room.host) return { error: '只有房主可以踢人' };
-  removePlayer(room, target, true);
+  removePlayer(room, target);
   return { ok: true, view: viewFor(room, pid, chatSince || 0) };
 }
 
@@ -1562,18 +1576,25 @@ function botDecision(room, p) {
 
 /* 执行一批待行动的人机（每步都走与真人相同的 action 入口） */
 function runBots(room) {
-  const bots = pendingBotActors(room);
-  for (const b of bots) {
-    const dec = botDecision(room, b);
-    if (!dec) continue;
-    const res = applyAction(room, b, dec.action, dec.data);
-    if (!(res && res.ok)) break; // 动作异常或阶段已变：停止本轮
+  room._botBusy = true;
+  try {
+    const bots = pendingBotActors(room);
+    for (const b of bots) {
+      const dec = botDecision(room, b);
+      if (!dec) continue;
+      const res = applyAction(room, b, dec.action, dec.data);
+      if (!(res && res.ok)) break; // 动作异常或阶段已变：停止本轮
+    }
+  } finally {
+    room._botBusy = false;
   }
+  maybeRunBots(room); // 收尾统一调度下一波（执行期间不重复调度，避免空跑定时器）
 }
 
 /* 检查当前是否需要人机行动；需要则安排一次延迟执行（单定时器，防重入） */
 function maybeRunBots(room) {
   if (room.phase === 'lobby' || room.phase === 'ended') return;
+  if (room._botBusy) return; // runBots 执行期间不重复调度（N4）
   if (!room.players.some(p => p.isBot)) return;
   if (room._botTimer) return;
   if (!pendingBotActors(room).length) return;
@@ -1617,6 +1638,8 @@ function viewFor(room, pid, chatSince) {
     myChannels: me ? (['all'].filter(() => room.phase !== 'night').concat(isWolfRole(me) && room.phase === 'night' ? ['wolf'] : []).concat(room.lovers && room.lovers.includes(me.id) ? ['lover'] : [])) : ['all'],
     phaseTimed: !!room.phaseDeadline,
     phaseDeadline: room.phaseDeadline,
+    hunterDeadline: room.hunterDeadline || null, // 猎人开枪 30 秒超时（夜晚/白天共用）
+    moods: MOODS, // 表情白名单（服务端唯一来源，客户端据此循环展示 N6）
     // 情侣成员：被指认的瞬间醒来彼此确认身份，之后随时可见对方身份与丘比特
     myLover: (me && room.lovers && room.lovers.includes(me.id)) ? (() => {
       const partnerId = room.lovers.find(id => id !== me.id);

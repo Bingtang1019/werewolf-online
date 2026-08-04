@@ -833,6 +833,7 @@ async function scenario6() {
   v = await state(room, A.playerId);
   if (v.phase === 'lastword') { await act(room, w1, 'post', { text: '遗言' }); v = await state(room, A.playerId); }
   eq(v.phase, 'night', '进入第二晚');
+  // 放逐+殉情公告保留过夜（次日天亮才清空，N3）
   eq(v.dayDeaths.some(d => d.id === v1 && d.deadBy === 'lover'), true, 'v1 殉情');
 
   // 夜2：情侣全灭 → 丘比特重新指定 [w2, v2]

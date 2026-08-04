@@ -11,7 +11,6 @@ let me = null;
 let pollTimer = null;
 let pollMs = 0;
 let pollBusy = false; // 轮询在途标记：慢网络下跳过重叠轮询，防止增量叠加
-let lastVersion = -1;
 let draft = {};       // 当前面板的草稿选择 { target, target2, kill, charm }
 let lastPhaseKey = null; // 上次渲染的阶段标识（变化时清空草稿）
 let chatTab = 'all';
@@ -66,16 +65,16 @@ const avatarOf = p => {
 // 心情表情（点击自己的表情按钮循环切换，再点到底即关闭）
 const MOODS = ['😀', '😨', '😤', '😭', '😏', '🤔', '😇', '🤡', '😴', '😱', '🥳', '🕶️'];
 function cycleMood() {
+  const moods = (view && view.moods) || MOODS; // 表情白名单以服务端下发为准（前后端一致 N6）
   const cur = view.my.mood;
-  if (!cur) return act('mood', { mood: MOODS[0] });
-  const i = MOODS.indexOf(cur);
-  if (i < 0 || i === MOODS.length - 1) return act('mood', { mood: null });
-  return act('mood', { mood: MOODS[i + 1] });
+  if (!cur) return act('mood', { mood: moods[0] });
+  const i = moods.indexOf(cur);
+  if (i < 0 || i === moods.length - 1) return act('mood', { mood: null });
+  return act('mood', { mood: moods[i + 1] });
 }
 // 玩家死亡红闪：首次发现死亡时记录结束时间，1.5s 内保留动画类
 const prevAlive = {};
 const deadFlash = {};
-const WOLF_KEYS = ['wolf', 'wolfBeauty'];
 
 /* ---------------------------- API ---------------------------- */
 async function api(path, body) {
@@ -130,7 +129,6 @@ function applyView(v) {
     }
   }
   view = v;
-  lastVersion = v.v;
 }
 /* 重置轮询计时器（API 提交成功后调用，避免紧邻的旧请求干扰） */
 function resetPollTimer() {
@@ -362,7 +360,7 @@ function deathListHtml(list, title) {
     `<div class="death-item"><div class="di-emoji">${ROLE_EMOJI_TEXT[d.role] || '💀'}</div><div class="di-name">${escapeHtml(d.name)}</div><div class="di-role">${ROLE_EMOJI_TEXT[d.role] || ''} ${escapeHtml(d.role || '?')}</div><div class="di-cause">${DEATH_TEXT[d.deadBy] || d.deadBy}${d.deadNote ? '（' + escapeHtml(d.deadNote) + '）' : ''}</div></div>`
   ).join('') + `</div>`;
 }
-function fmtVote(n) { return Number.isInteger(n) ? n + ' 票' : n + ' 票'; }
+function fmtVote(n) { return n + ' 票'; }
 function nameOf(id) { const p = view.players.find(x => x.id === id); return p ? p.name : '?'; }
 
 /* ---------------------------- 主面板 ---------------------------- */
@@ -908,7 +906,7 @@ function init() {
     const el = document.getElementById('phase-countdown');
     if (!el) return;
     // 优先级：白天阶段 > 夜晚步骤 > 盗贼选牌
-    const dl = view && (view.phaseDeadline || view.nightDeadline || view.revealDeadline);
+    const dl = view && (view.phaseDeadline || view.nightDeadline || view.hunterDeadline || view.revealDeadline);
     if (view && dl) {
       const left = Math.ceil((dl - Date.now()) / 1000);
       if (left > 0) { el.textContent = '⏱ ' + left + 's'; el.classList.toggle('urgent', left <= 10); }
@@ -917,7 +915,7 @@ function init() {
     // 顶栏底部倒计时进度条（白天用 PHASE_TIMEOUT，夜晚/盗贼用 NIGHT_TIMEOUT 比例收缩）
     const bar = document.getElementById('phase-bar-fill');
     if (bar) {
-      const dl2 = view && (view.phaseDeadline || view.nightDeadline || view.revealDeadline);
+      const dl2 = view && (view.phaseDeadline || view.nightDeadline || view.hunterDeadline || view.revealDeadline);
       const totalSec = view && view.phaseDeadline ? (view.phaseTimeout || 30) : (view.nightTimeout || 30);
       if (view && dl2 && totalSec) {
         const leftMs = dl2 - Date.now();
@@ -976,7 +974,8 @@ function init() {
   $('btn-force').addEventListener('click', () => { if (view && view.my && view.my.isHost) doAdvance(); });
   $('btn-chat').addEventListener('click', sendChat);
   $('chat-text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) sendChat(); });
-  $('on-close').addEventListener('click', hideOverlay);
+  const oc = $('on-close');
+  if (oc) oc.addEventListener('click', hideOverlay); // 空值守卫：缺元素不导致 init 崩溃（C1）
   $('in-code').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-join-go').click(); });
   $('in-name').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-create').click(); });
 
@@ -1003,7 +1002,6 @@ function enterRoom(room, playerId, v) {
   roomId = room;
   me = playerId;
   view = v;
-  lastVersion = v ? v.v : -1;
   lastPhaseKey = null;
   saveSession();
   $('home').classList.add('hidden');

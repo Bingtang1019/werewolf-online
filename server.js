@@ -230,6 +230,7 @@ setInterval(() => {
       if (r._nightTimer) clearTimeout(r._nightTimer);
       if (r._nightStepTimer) clearTimeout(r._nightStepTimer);
       if (r._thiefTimer) clearTimeout(r._thiefTimer);
+      if (r._hunterTimer) clearTimeout(r._hunterTimer);
       Game.rooms.delete(id);
       removed++;
     }
