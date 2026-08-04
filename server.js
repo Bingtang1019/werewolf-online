@@ -133,6 +133,19 @@ const server = http.createServer((req, res) => {
     return sendJSON(res, { ok: true, uptime: process.uptime() });
   }
   if (pathname.startsWith('/api/')) {
+    /* 在线统计：当前“活跃”房间数/玩家数（首页“🔥 正在开黑”）。
+     * 活跃判定与 TTL 共用 lastActive：超过 STATS_ACTIVE_MS 无轮询/SSE/操作视为非活动房间，不计入。
+     * 阈值可用 STATS_ACTIVE_SEC 环境变量调整（默认 30 秒，测试可调小）。 */
+    if (pathname === '/api/stats' && req.method === 'GET') {
+      const now = Date.now();
+      let rooms = 0, players = 0;
+      for (const r of Game.rooms.values()) {
+        if (now - (r.lastActive || 0) > STATS_ACTIVE_MS) continue;
+        rooms++;
+        players += r.players.length;
+      }
+      return sendJSON(res, { rooms, players });
+    }
     if (pathname === '/api/create' && req.method === 'POST') {
       return readBody(req, res, body => {
         const r = Game.createRoom(String(body.name || '').slice(0, 12) || '玩家');
@@ -267,6 +280,9 @@ server.on('error', err => {
   logError('server-error', err);
   process.exit(1);
 });
+
+/* /api/stats 的“活跃”判定窗口：超过该时长无轮询/SSE/操作视为非活动房间，不计入在线统计（默认 30 秒） */
+const STATS_ACTIVE_MS = Math.max(1, parseInt(process.env.STATS_ACTIVE_SEC || '30', 10)) * 1000;
 
 // 房间 TTL：轮询架构没有断线事件，超过 ROOM_TTL_MIN 分钟无任何轮询（lastActive 在 /api/state 中刷新）的房间直接回收
 // 可用环境变量调整：ROOM_TTL_MIN（默认 120 分钟）、ROOM_SWEEP_SEC（默认 300 秒扫一次）

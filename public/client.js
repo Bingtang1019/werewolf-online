@@ -51,6 +51,20 @@ function saveSession() { try { localStorage.setItem('ww_session', JSON.stringify
 function loadSession() { try { return JSON.parse(localStorage.getItem('ww_session')); } catch (e) { return null; } }
 function clearSession() { try { localStorage.removeItem('ww_session'); } catch (e) {} }
 
+/* 趣味昵称生成器（v1.2.0）：与座位动物头像风格统一，告别“玩家123” */
+const NICK_A = ['神秘', '熬夜', '迷糊', '暴躁', '温柔', '社恐', '早起', '咸鱼', '佛系', '炫酷'];
+const NICK_B = ['小狐狸', '猫头鹰', '北极熊', '刺猬', '柴犬', '水獭', '企鹅', '花栗鼠', '树懒', '小狼'];
+let genNick = '';
+function randNick() { return NICK_A[Math.floor(Math.random() * NICK_A.length)] + NICK_B[Math.floor(Math.random() * NICK_B.length)]; }
+/* 填入随机昵称并记住（首访自动生成 / 🎲 换一个）；昵称输入框为空时用它兜底 */
+function fillNick() {
+  genNick = randNick();
+  const el = $('in-name');
+  if (el) el.value = genNick;
+  try { localStorage.lwName = genNick; } catch (e) {}
+}
+function nickValue() { return ($('in-name') && $('in-name').value.trim()) || genNick || randNick(); }
+
 const PHASE_TEXT = {
   lobby: '🏠 房间准备中', reveal: '🃏 身份展示', night: '🌙 夜晚',
   morning: '🌅 天亮公告', lastword: '💬 遗言', handover: '👮 警徽移交',
@@ -1142,6 +1156,78 @@ function onTieRule(v) { act('settings', { tieRule: v }); }
 function onThief(v) { act('settings', { thief: v }); }
 function kick(id) { api('api/kick', { room: roomId, me, target: id }).then(r => { if (r.error) toast(r.error); else { applyView(r.view); resetPollTimer(); render(); } }); }
 
+/* ---------------------------- 首页（v1.2.0） ---------------------------- */
+/* 创建房间：成功后先展示“房间号大卡”庆祝 1.5s，再自动进入 */
+async function createRoom() {
+  if (!$('home') || $('home').classList.contains('hidden')) return; // 已进入房间，忽略重复触发
+  const name = nickValue();
+  $('home-err').textContent = '';
+  const card = $('card-create');
+  card.classList.add('busy'); // 忙碌态防连点（16）
+  const r = await api('api/create', { name });
+  card.classList.remove('busy');
+  if (r.error || !r.roomId || !r.playerId) { $('home-err').textContent = r.error || '创建失败，请重试'; return; }
+  localStorage.lwName = name;
+  localStorage.lwRoom = r.roomId;
+  try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(r.roomId); } catch (e) {}
+  showCreatedOverlay(r.roomId, () => enterRoom(r.roomId, r.playerId, r.view));
+}
+/* 加入房间：房间号非法/不存在 → 输入框红框抖动 + 提示；joinBusy 防“满 6 位自动进入 + 回车”双触发 */
+let joinBusy = false;
+async function joinRoom() {
+  if (joinBusy) return;
+  if (!$('home') || $('home').classList.contains('hidden')) return; // 已进入房间，忽略重复触发
+  joinBusy = true;
+  const code = $('in-code').value.trim().toUpperCase();
+  const name = nickValue();
+  if (!/^[0-9A-Z]{6}$/.test(code)) { joinBusy = false; markCodeInvalid('房间号格式错误（6 位数字或字母）'); return; }
+  $('home-err').textContent = '';
+  const r = await api('api/join', { roomId: code, name });
+  joinBusy = false;
+  if (r.error || !r.playerId) { markCodeInvalid(r.error || '加入失败，请检查房间号'); $('home-err').textContent = r.error || '加入失败，请检查房间号'; return; }
+  localStorage.lwName = name;
+  localStorage.lwRoom = code;
+  enterRoom(code, r.playerId, r.view);
+  toast('🎉 已进入房间 ' + code);
+}
+/* 房号非法/房间不存在：红框 + 抖动（0.5s 后自动恢复，等待重新输入） */
+function markCodeInvalid(msg) {
+  const el = $('in-code');
+  if (el) {
+    el.classList.remove('valid');
+    el.classList.add('invalid');
+    setTimeout(() => el.classList.remove('invalid'), 500);
+  }
+  if (msg) toast(msg, 'err');
+}
+/* 创建成功“房间号大卡”（v1.2.0）：房号逐字弹出 + 复制按钮 + 进度条，1.5s 后自动入场 */
+let createdTimer = null;
+function showCreatedOverlay(code, then) {
+  const ov = $('overlay-created');
+  if (!ov) { then(); return; }
+  $('cr-code').innerHTML = code.split('').map((c, i) => `<span class="cr-ch" style="animation-delay:${i * 80}ms">${c}</span>`).join('');
+  const bar = $('cr-bar');
+  if (bar) { bar.classList.remove('run'); void bar.offsetWidth; bar.classList.add('run'); } // 重启动画
+  ov.classList.remove('hidden');
+  clearTimeout(createdTimer);
+  createdTimer = setTimeout(() => { ov.classList.add('hidden'); then(); }, 1500);
+}
+/* 在线统计（v1.2.0）：首页“🔥 当前 X 个房间正在开黑”；离开首页后不再请求 */
+async function refreshStats() {
+  if (!$('home') || $('home').classList.contains('hidden')) return;
+  try {
+    const res = await fetch('api/stats');
+    const j = await res.json();
+    if (!j || typeof j.rooms !== 'number') return;
+    const el = $('stats-line');
+    if (!el) return;
+    const n = $('stats-rooms');
+    if (n) n.textContent = j.rooms;
+    el.classList.toggle('hidden', j.rooms <= 0);
+    el.classList.toggle('hot', j.rooms > 0);
+  } catch (e) { /* 统计失败静默，不影响主流程 */ }
+}
+
 /* ---------------------------- 初始化 ---------------------------- */
 /* ============ UI/UX v3 辅助 ============ */
 /* 阶段面包屑（5）：显示当前阶段到投票的步骤链 */
@@ -1372,10 +1458,12 @@ function sfxMorning() { ensureAudio(); [523.25, 659.25, 783.99, 1046.5].forEach(
 function sfxTick() { ensureAudio(); tone(1250, 0.06, 'square', 0.06, 0, 700); } // 投票确认：滴答
 function sfxHeavy() { ensureAudio(); tone(130, 0.5, 'sine', 0.28, 0, 55); noiseBurst(0.24, 0.15, 520, 0); } // 放逐/死亡：重击
 function sfxFlip() { ensureAudio(); noiseBurst(0.14, 0.12, 2400, 0); } // 翻牌：纸张沙沙
+function sfxEnter() { tone(660, .12, 'sine', .05, 0); tone(990, .16, 'sine', .05, .09); } // 入场：两声轻铃（v1.2.0）
 function init() {
-  // 记住昵称 + 上次房间（12/13）
+  // 记住昵称 + 上次房间（12/13）；无昵称首访自动生成趣味昵称（v1.2.0）
   const savedName = localStorage.lwName;
   if (savedName) $('in-name').value = savedName;
+  else fillNick();
   buildRulesList();
   const lastRoom = localStorage.lwRoom;
   if (lastRoom) {
@@ -1384,7 +1472,7 @@ function init() {
   }
   const elLR = $('btn-last-room'); if (elLR) elLR.addEventListener('click', async () => {
     const code = localStorage.lwRoom; if (!code) return;
-    const name = $('in-name').value.trim() || '玩家' + Math.floor(Math.random() * 900 + 100);
+    const name = nickValue();
     $('home-err').textContent = '';
     const r = await api('api/join', { roomId: code, name });
     if (r.error || !r.playerId) { toast('无法进入上次房间：' + (r.error || '房间可能已解散'), 'err'); return; }
@@ -1430,34 +1518,26 @@ function init() {
       $('home-err').textContent = '⚠️ 无法连接服务器：请确认已运行 node server.js，然后访问 http://localhost:3000';
     });
   }
-  // 首页
-  $('btn-create').addEventListener('click', async () => {
-    const name = $('in-name').value.trim() || '玩家' + Math.floor(Math.random() * 900 + 100);
-    $('home-err').textContent = '';
-    const btn = $('btn-create');
-    btn.disabled = true; btn.textContent = '创建中…'; // 忙碌态防连点（16）
-    const r = await api('api/create', { name });
-    btn.disabled = false; btn.textContent = '创建房间';
-    if (r.error || !r.roomId || !r.playerId) { $('home-err').textContent = r.error || '创建失败，请重试'; return; }
-    localStorage.lwName = name;
-    localStorage.lwRoom = r.roomId;
-    enterRoom(r.roomId, r.playerId, r.view);
-    toast('🎉 房间创建成功：' + r.roomId);
-    try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(r.roomId); } catch (e) {}
+  // 首页（v1.2.0 双卡入口：整卡可点，加入卡输入框常显）
+  $('card-create').addEventListener('click', createRoom);
+  $('card-create').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); createRoom(); } }); // 键盘可达性
+  $('btn-nick-shuffle').addEventListener('click', e => {
+    e.stopPropagation();
+    fillNick();
+    $('in-name').focus();
+    $('in-name').select();
   });
-  $('btn-join').addEventListener('click', () => {
-    $('join-line').classList.toggle('hidden');
-    if (!$('join-line').classList.contains('hidden')) $('in-code').focus();
+  $('card-join').addEventListener('click', e => {
+    // 点卡片空白处聚焦输入框；输入框/按钮自身点击不拦截
+    if (e.target.closest('input') || e.target.closest('button')) return;
+    $('in-code').focus();
   });
-  $('btn-join-go').addEventListener('click', async () => {
-    const code = $('in-code').value.trim().toUpperCase();
-    const name = $('in-name').value.trim() || '玩家' + Math.floor(Math.random() * 900 + 100);
-    if (!/^[0-9A-Z]{6}$/.test(code)) return toast('房间号格式错误（6 位数字或字母）');
-    $('home-err').textContent = '';
-    const r = await api('api/join', { roomId: code, name });
-    if (r.error || !r.playerId) { $('home-err').textContent = r.error || '加入失败，请检查房间号'; return; }
-    enterRoom(code, r.playerId, r.view);
-    toast('🎉 已进入房间 ' + code);
+  $('btn-join-go').addEventListener('click', joinRoom);
+  const ccp = $('btn-copy-code');
+  if (ccp) ccp.addEventListener('click', () => {
+    const code = localStorage.lwRoom || (view && view.roomId) || '';
+    if (navigator.clipboard) navigator.clipboard.writeText(code).then(() => toast('房间号已复制'));
+    else toast('房间号：' + code);
   });
   $('btn-copy').addEventListener('click', () => {
   if (navigator.clipboard) navigator.clipboard.writeText(view.roomId).then(() => toast('房间号已复制'));
@@ -1500,9 +1580,18 @@ $('btn-leave').addEventListener('click', async () => {
   $('chat-text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) sendChat(); });
   const oc = $('on-close');
   if (oc) oc.addEventListener('click', hideOverlay); // 空值守卫：缺元素不导致 init 崩溃（C1）
-  $('in-code').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-join-go').click(); });
-  $('in-code').addEventListener('input', () => { const v = $('in-code').value.trim().toUpperCase(); if (v.length === 6 && /^[0-9A-Z]{6}$/.test(v)) $('btn-join-go').click(); }); // 6 位自动进入（15）
-  $('in-name').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-create').click(); });
+  // 房间号实时校验（v1.2.0）：输入即转大写；6 位合法金色高亮并自动进入；含非法字符红框反馈
+  $('in-code').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(); });
+  $('in-code').addEventListener('input', () => {
+    const el = $('in-code');
+    const v = el.value.trim().toUpperCase();
+    el.value = v;
+    el.classList.remove('valid');
+    if (v.length === 6 && /^[0-9A-Z]{6}$/.test(v)) { el.classList.add('valid'); $('btn-join-go').click(); } // 6 位自动进入（15）
+    else if (v && !/^[0-9A-Z]*$/.test(v)) el.classList.add('invalid');
+    else el.classList.remove('invalid');
+  });
+  $('in-name').addEventListener('keydown', e => { if (e.key === 'Enter') createRoom(); });
 
   // 音效开关（33）：顶栏 🔊/🔇；首次交互后创建 AudioContext（浏览器自动播放策略）
   const sb = $('btn-sound');
@@ -1516,7 +1605,12 @@ $('btn-leave').addEventListener('click', async () => {
       if (sfxOn) { ensureAudio(); sfxTick(); }
     });
   }
-  document.addEventListener('pointerdown', () => ensureAudio(), { once: true, capture: true });
+  document.addEventListener('pointerdown', () => {
+    ensureAudio();
+    // 入场音效（v1.2.0）：首次交互轻铃；AudioContext 首次 resume 是异步的，等它就绪再播
+    if (AC && AC.state !== 'running') AC.resume().then(() => sfxEnter()).catch(() => {});
+    else sfxEnter();
+  }, { once: true, capture: true });
   // 减少动效开关（31）
   const lm = $('in-less-motion');
   if (lm) {
@@ -1524,6 +1618,10 @@ $('btn-leave').addEventListener('click', async () => {
     document.body.classList.toggle('less-motion', lm.checked);
     lm.addEventListener('change', () => toggleLessMotion(lm.checked));
   }
+
+  // 在线统计（v1.2.0）：首页“🔥 正在开黑”，30 秒刷新，失败静默
+  refreshStats();
+  setInterval(refreshStats, 30000);
 
   // 重连
   const s = loadSession();

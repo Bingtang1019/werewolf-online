@@ -12,23 +12,47 @@
 
 <!-- 首页：创建 / 进入房间 -->
 <div id="home">
+  <div class="moon" aria-hidden="true"></div>
+  <div class="cloud c1" aria-hidden="true"></div>
+  <div class="cloud c2" aria-hidden="true"></div>
+  <div class="cloud c3" aria-hidden="true"></div>
   <div class="home-box">
     <h1>🐺 狼人杀</h1>
-    <p class="sub">和朋友们一起玩（4~18 人，纯网页，无需安装）</p>
-    <input id="in-name" placeholder="输入你的昵称" maxlength="12" autocomplete="off">
-    <div id="last-room" class="hidden"><button id="btn-last-room"></button></div>
-    <details id="rules-view" class="hidden"><summary>📖 规则速览</summary><div id="rules-list"></div></details>
-    <div class="row">
-      <button id="btn-create" class="primary">创建房间</button>
-      <button id="btn-join">进入房间</button>
+    <p class="sub">和朋友们一起玩（4~18 人 · 纯网页 · 零安装）</p>
+    <div class="nick-line">
+      <input id="in-name" placeholder="输入你的昵称" maxlength="12" autocomplete="off">
+      <button id="btn-nick-shuffle" class="mini" title="换个昵称" aria-label="换个昵称">🎲</button>
     </div>
-    <label class="lm-toggle"><input type="checkbox" id="in-less-motion"> ✨ 减少动效（低性能设备）</label>
-    <div id="join-line" class="hidden">
-      <input id="in-code" placeholder="输入 6 位房间号" maxlength="6" autocomplete="off">
-      <button id="btn-join-go">进入</button>
+    <div id="last-room" class="hidden"><button id="btn-last-room"></button></div>
+    <div class="feature-chips" aria-hidden="true">
+      <span class="chip">👮 警长选举</span>
+      <span class="chip">💬 私聊频道</span>
+      <span class="chip">🤖 人机陪练</span>
+      <span class="chip">🃏 盗贼玩法</span>
+    </div>
+    <div class="action-grid">
+      <div class="action-card" id="card-create" role="button" tabindex="0" aria-label="创建房间">
+        <div class="ac-icon">🚪</div>
+        <div class="ac-title">创建房间</div>
+        <div class="ac-desc">生成房号，发给朋友</div>
+      </div>
+      <div class="action-card" id="card-join">
+        <div class="ac-icon">🎯</div>
+        <div class="ac-title">加入房间</div>
+        <div class="ac-desc">输入 6 位房间号</div>
+        <div class="join-line">
+          <input id="in-code" placeholder="如 3F7KQZ" maxlength="6" autocomplete="off">
+          <button id="btn-join-go" class="primary mini">进入</button>
+        </div>
+      </div>
     </div>
     <div id="home-err" class="err"></div>
-    <p class="tip">房间号由 0-9 与 A-Z 组成，创建后发给朋友即可</p>
+    <div id="stats-line" class="stats-line hidden" role="status">🔥 当前 <b id="stats-rooms">0</b> 个房间正在开黑</div>
+    <label class="lm-toggle"><input type="checkbox" id="in-less-motion"> ✨ 减少动效（低性能设备）</label>
+    <details id="rules-view" class="hidden"><summary>📖 规则速览</summary><div id="rules-list"></div></details>
+    <div class="home-foot">
+      <span>🐺 狼人杀在线版</span><span class="dot">·</span><span>v1.2.0</span><span class="dot">·</span><span>零依赖 · 公网可玩</span>
+    </div>
   </div>
 </div>
 
@@ -86,6 +110,16 @@
 </div>
 
 <div id="net-banner" class="hidden" role="status">⚠️ 连接中断，正在重试…</div>
+<!-- 创建成功：房间号大卡过渡（1.5s 自动进入房间） -->
+<div id="overlay-created" class="hidden">
+  <div class="cr-card">
+    <div class="cr-title">🎉 房间已创建</div>
+    <div class="cr-code" id="cr-code"></div>
+    <button id="btn-copy-code" class="primary">📋 复制房间号</button>
+    <div class="cr-progress"><div class="cr-bar" id="cr-bar"></div></div>
+    <div class="cr-hint" id="cr-hint">1.5 秒后自动进入房间…</div>
+  </div>
+</div>
 <div id="toast" class="hidden" role="status" aria-live="polite"></div>
 <!-- 身份大卡弹窗（点顶栏身份芯片展开） -->
 <div id="role-pop" class="hidden">

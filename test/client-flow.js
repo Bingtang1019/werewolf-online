@@ -48,7 +48,7 @@ async function testServerUp() {
   check(!!bad2.error, `格式错误房间号返回提示：${bad2.error}`);
   // 静态页面与健康检查
   const html = await (await fetch(BASE + '/')).text();
-  check(html.includes('狼人杀') && html.includes('btn-create'), '首页正常加载');
+  check(html.includes('狼人杀') && html.includes('card-create') && html.includes('in-code') && html.includes('in-name'), '首页正常加载（双卡入口 + 昵称/房号输入框）');
   const hz = await (await fetch(BASE + '/healthz')).json();
   check(hz.ok === true, '/healthz 健康检查正常');
   // 重连：旧 session 恢复
