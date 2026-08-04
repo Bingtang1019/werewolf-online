@@ -1200,6 +1200,24 @@ function onThief(v) { act('settings', { thief: v }); }
 function kick(id) { api('api/kick', { room: roomId, me, target: id }).then(r => { if (r.error) toast(r.error); else { applyView(r.view); resetPollTimer(); render(); } }); }
 
 /* ---------------------------- 首页（v1.2.0） ---------------------------- */
+/* 离线模式（v1.4.1）：一键建房 + 自动加满智能人机（默认 6 人局），单机陪练 */
+async function startOffline() {
+  if (!$('home') || $('home').classList.contains('hidden')) return;
+  const name = nickValue();
+  const r = await api('api/create', { name });
+  if (r.error || !r.roomId || !r.playerId) { $('home-err').textContent = r.error || '创建失败，请重试'; return; }
+  const room = r.roomId, me = r.playerId;
+  const cap = 6; // 1 真人 + 5 智能人机
+  for (let i = 0; i < cap - 1; i++) {
+    const br = await api('api/action', { room, me, action: 'add_bot', data: { level: 'smart' } });
+    if (br.error) break;
+  }
+  await api('api/action', { room, me, action: 'setCap', data: { cap } });
+  localStorage.lwName = name;
+  localStorage.lwRoom = room;
+  enterRoom(room, me, r.view);
+  toast('🎮 离线模式已启动：1 名真人 + 5 名智能人机，点「开始游戏」即可');
+}
 /* 创建房间：成功后先展示“房间号大卡”庆祝 1.5s，再自动进入 */
 async function createRoom() {
   if (!$('home') || $('home').classList.contains('hidden')) return; // 已进入房间，忽略重复触发
@@ -1699,6 +1717,8 @@ function init() {
     if (e.target.closest('input') || e.target.closest('button')) return;
     $('in-code').focus();
   });
+  const bOff = $('btn-offline');
+  if (bOff) bOff.addEventListener('click', startOffline);
   $('btn-join-go').addEventListener('click', joinRoom);
   const ccp = $('btn-copy-code');
   if (ccp) ccp.addEventListener('click', copyInvite); // v1.3.0：创建大卡复制邀请链接（原复制房号）

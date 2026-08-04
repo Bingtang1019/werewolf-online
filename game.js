@@ -45,10 +45,10 @@ function randInt(n) { return Math.floor(Math.random() * n); }
 function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = randInt(i + 1); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
 function bump(room) { room.version = (room.version || 0) + 1; }
 
-/* 白天发言/投票阶段超时（秒），可用环境变量 PHASE_TIMEOUT 覆盖（便于测试） */
-const PHASE_TIMEOUT = Math.max(2, parseInt(process.env.PHASE_TIMEOUT || '30', 10));
-/* 夜晚每个行动步骤/盗贼选牌的超时（秒），超时未完成视为跳过/随机（房主仍可强制继续） */
-const NIGHT_TIMEOUT = Math.max(2, parseInt(process.env.NIGHT_TIMEOUT || '30', 10));
+/* 白天发言/投票阶段超时（秒），可用环境变量 PHASE_TIMEOUT 覆盖（便于测试）；默认 60s */
+const PHASE_TIMEOUT = Math.max(2, parseInt(process.env.PHASE_TIMEOUT || '60', 10));
+/* 夜晚每个行动步骤/盗贼选牌的超时（秒），超时未完成视为跳过/随机（房主仍可强制继续）；默认 45s */
+const NIGHT_TIMEOUT = Math.max(2, parseInt(process.env.NIGHT_TIMEOUT || '45', 10));
 /* 表情白名单：唯一来源，经视图下发（view.moods），客户端据此循环展示（N6） */
 const MOODS = ['😀', '😨', '😤', '😭', '😏', '🤔', '😇', '🤡', '😴', '😱', '🥳', '🕶️'];
 
@@ -1446,7 +1446,9 @@ function autoBotName(room) {
   do { name = '人机·' + BOT_NAMES[(room.players.length + i++) % BOT_NAMES.length]; } while (used.has(name));
   return name;
 }
-function botDelay() { return 400 + Math.floor(Math.random() * 300); } // 400~700ms，模拟真人节奏
+/* 人机行动前等待：默认 10s±2.5s 模拟真人思考节奏（可 BOT_DELAY_MS 覆盖，测试用） */
+const BOT_DELAY_BASE = Math.max(100, parseInt(process.env.BOT_DELAY_MS || '10000', 10));
+function botDelay() { return Math.round(BOT_DELAY_BASE + (Math.random() * 2 - 1) * 2500); } // 10s±2.5s
 
 /* 当前阶段需要人机行动的玩家列表 */
 function pendingBotActors(room) {

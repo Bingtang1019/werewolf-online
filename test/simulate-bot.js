@@ -213,7 +213,7 @@ async function waitNotNightDrive(room, me, timeoutMs) {
 
 async function main() {
   const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, PORT: String(PORT), PHASE_TIMEOUT: '1' },
+    env: { ...process.env, PORT: String(PORT), PHASE_TIMEOUT: '1', BOT_DELAY_MS: '400' },
   });
   let ready = false;
   for (let i = 0; i < 50; i++) {

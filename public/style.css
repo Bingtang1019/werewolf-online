@@ -881,6 +881,10 @@ body.less-motion *, body.less-motion *::before, body.less-motion *::after {
 }
 .lm-toggle { display: block; margin-top: 12px; color: var(--muted); font-size: 13px; cursor: pointer; user-select: none; }
 .lm-toggle input { vertical-align: -2px; }
+/* 离线模式入口（v1.4.1） */
+.offline-line { margin-top: 14px; }
+.offline-line button { width: 100%; padding: 10px 12px; border-style: dashed; }
+
 /* 人机级别选择（v1.4.0） */
 button.mini.bot-level.active { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 1px rgba(232, 182, 76, .4); }
 

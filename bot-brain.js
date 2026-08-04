@@ -153,6 +153,7 @@ function decisionEasy(room, bot) {
         const t = pick(pool) || pick(aliveOthers(room, bot));
         return t ? { action: 'seer_pick', data: { target: t.id } } : null;
       }
+      case 'dreamer': { const t = pickId(aliveOthers(room, bot)); return t ? { action: 'dreamer_pick', data: { target: t } } : null; } // 简单：随机梦人
       case 'witch': {
         const attacked = room.night.wolf.kill;
         const save = !room.witchPots.saveUsed && !!attacked; // 简单：无脑救被刀者
@@ -396,6 +397,17 @@ function decisionSmart(room, bot) {
         }
         return target ? { action: 'seer_pick', data: { target: target.id } } : null;
       }
+      case 'dreamer': {
+        // 智能：梦“狼概率最低”的非狼玩家（保护最可信的好人）；摄梦人自己不能梦自己
+        const pool = shuffle(alivePlayers(room).filter(q => q.id !== bot.id && campOf(q) !== 'wolf'));
+        if (!pool.length) return { action: 'dreamer_pick', data: { target: bot.id } }; // 服务端会拒绝，等待超时跳过
+        let target = null, lowest = Infinity;
+        for (const p of pool) {
+          const prob = wolfProb(room, bot, p.id);
+          if (prob < lowest) { lowest = prob; target = p; }
+        }
+        return { action: 'dreamer_pick', data: { target: target.id } };
+      }
       case 'witch': {
         const attacked = room.night.wolf.kill;
         const save = !room.witchPots.saveUsed && !!attacked && wolfProb(room, bot, attacked) < 0.4; // 狼概率高不救
@@ -459,7 +471,6 @@ function createBotDecision(room, bot) {
         return { action: 'cupid_pick', data: { ids: null } }; // 挂机：放弃重选
       }
       case 'lovers': return { action: 'lovers_ok', data: {} };
-      case 'dreamer': { const t = pickId(aliveOthers(room, bot)); return t ? { action: 'dreamer_pick', data: { target: t } } : null; }
       default: break;
     }
   }
