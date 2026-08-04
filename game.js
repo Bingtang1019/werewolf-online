@@ -1446,9 +1446,10 @@ function autoBotName(room) {
   do { name = '人机·' + BOT_NAMES[(room.players.length + i++) % BOT_NAMES.length]; } while (used.has(name));
   return name;
 }
-/* 人机行动前等待：默认 10s±2.5s 模拟真人思考节奏（可 BOT_DELAY_MS 覆盖，测试用） */
+/* 人机行动前等待：默认 10s±25%（7500~12500ms）模拟真人思考节奏（可 BOT_DELAY_MS 覆盖，测试用）
+ * 注意：抖动必须是相对值——绝对 ±2500 在 BOT_DELAY_MS 调小时会出现负延时（setTimeout 立即执行 → bot 行动风暴/竞态） */
 const BOT_DELAY_BASE = Math.max(100, parseInt(process.env.BOT_DELAY_MS || '10000', 10));
-function botDelay() { return Math.round(BOT_DELAY_BASE + (Math.random() * 2 - 1) * 2500); } // 10s±2.5s
+function botDelay() { return Math.max(100, Math.round(BOT_DELAY_BASE * (0.75 + Math.random() * 0.5))); } // ±25%
 
 /* 当前阶段需要人机行动的玩家列表 */
 function pendingBotActors(room) {
@@ -1486,6 +1487,10 @@ function pendingBotActors(room) {
     case 'vote':
     case 'pk_vote':
       return room.players.filter(p => p.isBot && p.alive && !room.votes.hasOwnProperty(p.id));
+    case 'discuss': { // v1.5.0：发言模拟——每人每天至多被调度一次（发不发由决策层决定，null 也会被标记）
+      const talked = room.botTalked && room.botTalked.day === room.dayNum ? room.botTalked.ids : null;
+      return room.players.filter(p => p.isBot && p.alive && (!talked || !talked[p.id]));
+    }
     case 'hunter_shot': {
       const sh = room.shooter ? byId(room, room.shooter) : null;
       return sh && sh.isBot ? [sh] : [];
@@ -1499,6 +1504,12 @@ function botDecision(room, p) {
   return createBotDecision(room, p);
 }
 
+/* 标记 bot 已在本白天被调度过发言（v1.5.0：无论发不发，只调度一次） */
+function markBotTalked(room, p) {
+  if (!room.botTalked || room.botTalked.day !== room.dayNum) room.botTalked = { day: room.dayNum, ids: {} };
+  room.botTalked.ids[p.id] = true;
+}
+
 /* 执行一批待行动的人机（每步都走与真人相同的 action 入口） */
 function runBots(room) {
   room._botBusy = true;
@@ -1506,7 +1517,13 @@ function runBots(room) {
     const bots = pendingBotActors(room);
     for (const b of bots) {
       const dec = botDecision(room, b);
-      if (!dec) continue;
+      if (process.env.BOT_DEBUG) console.log('[runBots]', b.name, room.phase + '/' + room.nightStep, '→', JSON.stringify(dec));
+      if (!dec) { markBotTalked(room, b); continue; }
+      if (dec.action === 'chat') { // v1.5.0：发言走 chat 通道（真人同款限流），失败不中断
+        chatAction(room, b, dec.data);
+        markBotTalked(room, b);
+        continue;
+      }
       const res = applyAction(room, b, dec.action, dec.data);
       if (!(res && res.ok)) break; // 动作异常或阶段已变：停止本轮
     }
@@ -1523,6 +1540,7 @@ function maybeRunBots(room) {
   if (!room.players.some(p => p.isBot)) return;
   if (room._botTimer) return;
   if (!pendingBotActors(room).length) return;
+  if (process.env.BOT_DEBUG) console.log('[sched]', room.phase + '/' + room.nightStep, '→', pendingBotActors(room).map(p => p.name).join(','));
   room._botTimer = setTimeout(() => {
     room._botTimer = null;
     if (!rooms.has(room.id)) return;

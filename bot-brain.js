@@ -27,6 +27,7 @@ function campOf(p) { return isWolfRole(p) ? 'wolf' : 'good'; }
 function randInt(n) { return Math.floor(Math.random() * n); }
 function pick(arr) { return arr && arr.length ? arr[randInt(arr.length)] : null; }
 function pickId(arr) { const q = pick(arr); return q ? q.id : null; }
+function nameById(room, id) { const p = byId(room, id); return p ? p.name : '未知'; }
 function shuffle(arr) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = randInt(i + 1); const t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
 function alivePlayers(room) { return room.players.filter(p => p.alive); }
 function aliveOthers(room, bot) { return alivePlayers(room).filter(p => p.id !== bot.id); }
@@ -126,8 +127,10 @@ function decisionEasy(room, bot) {
       case 'guard': {
         const valid = alivePlayers(room).filter(q => q.id !== room.guardLast);
         const seer = alivePlayers(room).find(q => effRole(q) === 'seer' && q.id !== bot.id);
-        const target = (seer && seer.id !== room.guardLast) ? seer : bot;
-        if (target.id === room.guardLast) return { action: 'guard_pick', data: { target: pickId(valid) } };
+        let target = (seer && seer.id !== room.guardLast) ? seer : bot;
+        if (target.id === room.guardLast) { const t2 = byId(room, pickId(valid)); if (t2) target = t2; }
+        if (!bot.botMemory.guarded) bot.botMemory.guarded = {};
+        bot.botMemory.guarded[target.id] = true; // v1.5.0：记住守人
         return { action: 'guard_pick', data: { target: target.id } };
       }
       case 'wolf': {
@@ -157,6 +160,7 @@ function decisionEasy(room, bot) {
       case 'witch': {
         const attacked = room.night.wolf.kill;
         const save = !room.witchPots.saveUsed && !!attacked; // 简单：无脑救被刀者
+        if (save && attacked && !bot.botMemory.silverWater) bot.botMemory.silverWater = attacked; // v1.5.0：记住银水
         let poison = null;
         if (!save && !room.witchPots.poisonUsed && room.nightNum >= 2) {
           const t = pick(aliveOthers(room, bot));
@@ -204,7 +208,7 @@ function updateBelief(room, bot, targetId, evidence) {
   if (!bot.botMemory.beliefs) initBeliefs(room, bot);
   const b = bot.botMemory.beliefs[targetId];
   if (!b) return;
-  const LR = { check_wolf: 19, check_good: 0.05, killed_by_wolf: 0.1, voted_out_wolf: 1.2, voted_out_good: 0.8 }[evidence] || 1;
+  const LR = { check_wolf: 19, check_good: 0.05, killed_by_wolf: 0.1, voted_out_wolf: 1.2, voted_out_good: 0.8, silver_water: 0.05, guard_protected: 0.7 }[evidence] || 1;
   const odds = (b.wolf / Math.max(b.good, 0.01)) * LR;
   b.wolf = odds / (1 + odds);
   b.good = 1 - b.wolf;
@@ -272,13 +276,15 @@ function updateSmartMemory(room, bot) {
     if (knowTruth) {
       if (!claim.credibility || claim.credibility <= 0.6) continue;
     } else {
-      let cred = 0.5;
-      if (myClaim && myClaim.claims.length) {
+      // 好人视角：单声称者默认 0.5；出现对跳（多个声称者）时全存疑 0.35，避免被悍跳误导（v1.5.0）
+      const claimerCount = Object.keys(claims).filter(pid => pid !== bot.id && claims[pid].claims.length).length;
+      let cred = claimerCount > 1 ? 0.35 : 0.5;
+      if (myClaim && myClaim.claims.length && claim.claims.length) {
         const mine = myClaim.claims[0], theirs = claim.claims[0];
         if (mine.target === theirs.target && mine.result !== theirs.result) cred = 0.2; // 对跳同一目标且结论相反
         else if (mine.target === theirs.target) cred = 0.7;
       }
-      if (cred <= 0.3) continue;
+      if (cred <= 0.4) continue;
     }
     for (const c of claim.claims) updateBelief(room, bot, c.target, c.result === 'wolf' ? 'check_wolf' : 'check_good');
   }
@@ -298,6 +304,11 @@ function updateSmartMemory(room, bot) {
       const wasWolf = isWolfRole(executed);
       for (const v of voters) updateBelief(room, bot, v, wasWolf ? 'voted_out_wolf' : 'voted_out_good');
     }
+  }
+  // 4.5 女巫银水（v1.5.0）：救过的人持续视为好人证据（LR 0.05，强于他人查杀）；守卫守人同理弱证据
+  if (myRole === 'witch' && bot.botMemory.silverWater) updateBelief(room, bot, bot.botMemory.silverWater, 'silver_water');
+  if (myRole === 'guard' && bot.botMemory.guarded) {
+    for (const pid of Object.keys(bot.botMemory.guarded)) updateBelief(room, bot, pid, 'guard_protected');
   }
   // 5. 狼队共享（多狼 bot 信念取平均，写回每个狼 bot）
   if (knowTruth) {
@@ -356,6 +367,7 @@ function decisionSmart(room, bot) {
           const prob = wolfProb(room, bot, p.id);
           if (prob < lowest) { lowest = prob; target = p; }
         }
+        if (target) { if (!bot.botMemory.guarded) bot.botMemory.guarded = {}; bot.botMemory.guarded[target.id] = true; } // v1.5.0：记住守人
         return { action: 'guard_pick', data: { target: target.id } };
       }
       case 'wolf': {
@@ -380,22 +392,32 @@ function decisionSmart(room, bot) {
           data.kill = target ? target.id : null;
           const beauty = alivePlayers(room).find(q => effRole(q) === 'wolfBeauty');
           if (beauty && !room.night.wolf.charm) {
-            const charmPool = aliveOthers(room, bot).filter(q => campOf(q) !== 'wolf' && q.id !== data.kill);
-            const charm = pick(charmPool);
-            if (charm) data.charm = charm.id;
+            // v1.5.0 魅惑策略：优先魅惑高可信预言家（放逐可带走神职），其次最可信好人
+            let charmTarget = null, bestCred = -Infinity;
+            for (const pid of Object.keys(claims)) {
+              const cp = byId(room, pid);
+              if (!cp || !cp.alive || campOf(cp) === 'wolf' || cp.id === (target && target.id)) continue;
+              const cred = claims[pid].credibility || 0;
+              if (cred > bestCred) { bestCred = cred; charmTarget = cp; }
+            }
+            if (!charmTarget) {
+              const charmPool = shuffle(aliveOthers(room, bot).filter(q => campOf(q) !== 'wolf' && q.id !== (target && target.id)));
+              if (charmPool.length) charmTarget = charmPool.sort((a, b) => wolfProb(room, bot, a.id) - wolfProb(room, bot, b.id))[0];
+            }
+            if (charmTarget) data.charm = charmTarget.id;
           }
         }
         return { action: 'wolf_set', data };
       }
       case 'seer': {
+        // v1.5.0：优先查验对跳者（声称过预言家且未查过），其次查狼概率最高
         const pool = shuffle(aliveOthers(room, bot).filter(q => !(room.seerHistory || []).some(h => h.target === q.id)));
         if (!pool.length) return null;
-        let target = null, best = -Infinity;
-        for (const p of pool) {
-          const prob = wolfProb(room, bot, p.id);
-          if (prob > best) { best = prob; target = p; }
-        }
-        return target ? { action: 'seer_pick', data: { target: target.id } } : null;
+        const claimers = pool.filter(q => (mem.seerClaims || {})[q.id] && (mem.seerClaims[q.id].claims || []).length);
+        const target = claimers.length
+          ? pick(claimers)
+          : pool.reduce((a, p) => (wolfProb(room, bot, p.id) > wolfProb(room, bot, a.id) ? p : a), pool[0]);
+        return { action: 'seer_pick', data: { target: target.id } };
       }
       case 'dreamer': {
         // 智能：梦“狼概率最低”的非狼玩家（保护最可信的好人）；摄梦人自己不能梦自己
@@ -411,6 +433,7 @@ function decisionSmart(room, bot) {
       case 'witch': {
         const attacked = room.night.wolf.kill;
         const save = !room.witchPots.saveUsed && !!attacked && wolfProb(room, bot, attacked) < 0.4; // 狼概率高不救
+        if (save) bot.botMemory.silverWater = attacked; // v1.5.0：记住银水（后续作为好人证据）
         let poison = null;
         if (!save && !room.witchPots.poisonUsed && room.nightNum >= 2) {
           let best = null, bestProb = -Infinity;
@@ -447,6 +470,59 @@ function decisionSmart(room, bot) {
 /* ================= 统一入口 =================
  * 公共层：信息量恒定的决策（盗贼选牌/遗言/警徽/竞选/丘比特/情侣/摄梦），三档一致；
  * 智力决策点（狼刀/查验/守卫/女巫/投票）按级别分发。 */
+
+/* ---------- 发言模拟（v1.5.0）：白天每人最多一条，走 chat 通道；null=不发言（仍会被标记已调度） ---------- */
+function botTalk(room, bot, level) {
+  if (level === 'idle') return null;
+  const mem = ensureMemory(bot);
+  if (level === 'smart') updateSmartMemory(room, bot); // 发言前先刷新推理（含狼队共享/对跳存疑）
+  else updateEasyMemory(room, bot);
+  const myRole = effRole(bot);
+  // smart 预言家：报真实查验
+  if (level === 'smart' && myRole === 'seer') {
+    const h = (room.seerHistory || []).filter(x => x.night >= 1);
+    if (h.length) {
+      const last = h[h.length - 1];
+      const nm = nameById(room, last.target);
+      if (nm !== '未知') return { action: 'chat', data: { ch: 'all', text: `我是预言家，昨晚查验了${nm}：${last.result === 'wolf' ? '查杀' : '金水'}` } };
+    }
+    return null;
+  }
+  // smart 狼：悍跳预言家（每队只跳一次），查杀最可信好人施压
+  if (level === 'smart' && campOf(bot) === 'wolf') {
+    if (!room.wolfPackMemory) room.wolfPackMemory = {};
+    if (!room.wolfPackMemory.talkedClaim) {
+      const pool = shuffle(aliveOthers(room, bot).filter(q => campOf(q) !== 'wolf'));
+      if (pool.length) {
+        const t = pool.sort((a, b) => wolfProb(room, bot, a.id) - wolfProb(room, bot, b.id))[0];
+        room.wolfPackMemory.talkedClaim = true;
+        return { action: 'chat', data: { ch: 'all', text: `我是预言家，昨晚查验了${t.name}：查杀` } };
+      }
+    }
+    return null;
+  }
+  // smart 女巫：报银水（只报一次）
+  if (level === 'smart' && myRole === 'witch' && mem.silverWater && !mem.silverReported) {
+    mem.silverReported = true;
+    const nm = nameById(room, mem.silverWater);
+    return nm === '未知' ? null : { action: 'chat', data: { ch: 'all', text: `我是女巫，昨晚用解药救下${nm}，他是我银水` } };
+  }
+  // 施压型：smart 好人怀疑最高狼概率者；easy 怀疑关键词嫌疑最高者
+  let target = null;
+  if (level === 'smart') {
+    const t = smartVoteTarget(room, bot);
+    if (t && wolfProb(room, bot, t) > 0.5) target = t;
+  } else {
+    const top = Object.keys(mem.suspicion || {}).map(id => ({ id, s: mem.suspicion[id] })).filter(x => x.s > 30).sort((a, b) => b.s - a.s)[0];
+    if (top) target = top.id;
+  }
+  if (target) {
+    const p = byId(room, target);
+    if (p) return { action: 'chat', data: { ch: 'all', text: `我怀疑${p.name}有问题，大家留意一下` } };
+  }
+  return null;
+}
+
 function createBotDecision(room, bot) {
   const level = bot.botLevel || (room.settings.botMode === 'passive' ? 'idle' : 'easy');
   if (room.phase === 'reveal') {
@@ -460,6 +536,7 @@ function createBotDecision(room, bot) {
   if (room.phase === 'lastword') return { action: 'skip', data: {} };
   if (room.phase === 'handover') return { action: 'handover', data: { target: null } }; // 人机警长默认撕毁警徽
   if (room.phase === 'sheriff_campaign') return { action: 'campaign', data: { run: level === 'idle' ? false : Math.random() < 0.5 } };
+  if (room.phase === 'discuss') return botTalk(room, bot, level); // v1.5.0：白天发言模拟
   if (room.phase === 'night') {
     switch (room.nightStep) {
       case 'cupid': {
