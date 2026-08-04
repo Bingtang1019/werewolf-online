@@ -48,6 +48,9 @@ const ROLE_NAMES = {
   villager: '平民', seer: '预言家', witch: '女巫', hunter: '猎人', dreamer: '摄梦人',
   guard: '守卫', wolf: '狼人', wolfBeauty: '狼美人', thief: '盗贼', cupid: '丘比特',
 };
+// 职业→阵营配色（good/wolf/third），用于职业配置列表/身份展示卡/玩家角色标签
+const ROLE_CAMP = { villager: 'good', seer: 'good', witch: 'good', hunter: 'good', dreamer: 'good', guard: 'good', wolf: 'wolf', wolfBeauty: 'wolf', cupid: 'third' };
+const ROLE_CAMP_TEXT = { '平民': 'good', '预言家': 'good', '女巫': 'good', '猎人': 'good', '摄梦人': 'good', '守卫': 'good', '狼人': 'wolf', '狼美人': 'wolf', '丘比特': 'third' };
 const WOLF_KEYS = ['wolf', 'wolfBeauty'];
 
 /* ---------------------------- API ---------------------------- */
@@ -243,7 +246,7 @@ function renderPlayers() {
   const dead = view.players.filter(p => !p.alive);
   const cards = [...alive, ...dead].map(p => {
     const name = escapeHtml(p.name) + (p.isBot ? ' <span class="badge bot-badge" title="人机">🤖</span>' : '') + (p.isMe ? ' <span class="badge">我</span>' : '') + (p.sheriff ? ' <span class="sheriff-mark" title="警长">👮</span>' : '');
-    const role = p.role ? `<div class="prole">${escapeHtml(p.role)}</div>` : '';
+    const role = p.role ? `<div class="prole ${ROLE_CAMP_TEXT[p.role] || ''}">${escapeHtml(p.role)}</div>` : '';
     const deadTxt = p.alive ? '' : `<div class="pdead">💀 ${DEATH_TEXT[p.deadBy] || p.deadBy}${p.deadNote ? '（' + escapeHtml(p.deadNote) + '）' : ''}</div>`;
     return `<div class="player ${p.isMe ? 'me' : ''} ${p.alive ? '' : 'dead'} ${draft.target === p.id || draft.target2 === p.id ? 'selected' : ''}" data-id="${p.id}">
       <div class="pname">${name}</div>${role}${deadTxt}
@@ -376,10 +379,10 @@ function roleCountsHtml() {
   return order.map(k => {
     const n = c[k] || 0;
     if (k === 'wolf' || k === 'villager') {
-      return `<div class="count-row"><div class="cr-name">${ROLE_NAMES[k]}</div>
+      return `<div class="count-row"><div class="cr-name ${ROLE_CAMP[k] || ''}">${ROLE_NAMES[k]}</div>
         <div class="cr-ctrl"><button onclick="countChange('${k}',-1)">−</button><span id="c-${k}">${n}</span><button onclick="countChange('${k}',1)">+</button></div></div>`;
     }
-    return `<div class="count-row"><div class="cr-name">${ROLE_NAMES[k]}</div>
+    return `<div class="count-row"><div class="cr-name ${ROLE_CAMP[k] || ''}">${ROLE_NAMES[k]}</div>
       <div class="cr-ctrl"><button onclick="countChange('${k}',${n === 1 ? -1 : 1})">${n === 1 ? '移除' : '添加'}</button></div></div>`;
   }).join('');
 }
@@ -392,14 +395,14 @@ function renderReveal() {
   if (rv.canPick) {
     html += `<div class="panel-desc">由你决定本局职业（可选一种身份牌，或随机分配；之后随机指定盗贼——若开启）。</div>`;
     html += `<div class="role-cards">` + (rv.available || []).map(r =>
-      `<div class="role-card" onclick="hostPick('${r.key}')"><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
+      `<div class="role-card ${ROLE_CAMP[r.key] || ''}" onclick="hostPick('${r.key}')"><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
     ).join('') + `</div>`;
     html += `<div class="btn-row"><button onclick="hostPick('random')">🎲 随机分配</button></div>`;
   } else if (rv.stage === 'thiefPick' && rv.isThief) {
     // 盗贼选牌
     html += `<div class="panel-desc">🃏 你是<b>盗贼</b>！从以下两张身份牌中选择一张作为你的身份（若有狼人牌则必须选狼人），另一张作废：</div>`;
     html += `<div class="role-cards">` + (rv.thiefCards || []).map((r, i) =>
-      `<div class="role-card ${draft.thiefIdx === i ? 'chosen' : ''}" onclick="draft.thiefIdx = ${i}; render()"><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
+      `<div class="role-card ${ROLE_CAMP[r.key] || ''} ${draft.thiefIdx === i ? 'chosen' : ''}" onclick="draft.thiefIdx = ${i}; render()"><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
     ).join('') + `</div>`;
     html += `<div class="btn-row"><button class="primary" onclick="doThiefPick()" ${draft.thiefIdx === undefined ? 'disabled' : ''}>确认选择</button></div>`;
   } else if (!rv.dealt && rv.stage === 'thiefPick') {
