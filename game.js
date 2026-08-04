@@ -1569,6 +1569,9 @@ function viewFor(room, pid, chatSince) {
       stage: (room.host === pid || rv.dealt) ? rv.stage : null,
       hostPicked: room.host === pid ? rv.hostPicked : null,
       thiefPicked: (rv.stage === 'thiefPick' && rv.thiefId === pid) ? rv.thiefPicked : null,
+      // 盗贼窃取：选牌阶段对所有人可见（不泄漏房主选择）；发牌后公开盗贼所得角色
+      thiefPicking: room.settings.thief && rv.stage === 'thiefPick' && !rv.dealt,
+      thiefTook: (room.settings.thief && rv.dealt && rv.thiefId && byId(room, rv.thiefId)) ? effRole(byId(room, rv.thiefId)) : null,
       available: (room.host === pid && !rv.hostPicked && !rv.dealt) ? Array.from(new Set(rv.deck)).map(k => ({ key: k, name: ROLE_INFO[k].name, desc: ROLE_INFO[k].desc })) : [],
       isThief: rv.stage === 'thiefPick' && rv.thiefId === pid,
       thiefCards: (rv.stage === 'thiefPick' && rv.thiefId === pid && room.center) ? room.center.map(k => ({ key: k, name: ROLE_INFO[k].name, desc: ROLE_INFO[k].desc })) : null,

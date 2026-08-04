@@ -54,6 +54,8 @@ const ROLE_CAMP_TEXT = { '平民': 'good', '预言家': 'good', '女巫': 'good'
 // 职业图标（key→emoji / 中文名→emoji）
 const ROLE_EMOJI = { villager: '🏡', seer: '🔮', witch: '🧪', hunter: '🔫', dreamer: '😴', guard: '🛡️', wolf: '🐺', wolfBeauty: '🌹', cupid: '💘', thief: '🃏' };
 const ROLE_EMOJI_TEXT = { '平民': '🏡', '预言家': '🔮', '女巫': '🧪', '猎人': '🔫', '摄梦人': '😴', '守卫': '🛡️', '狼人': '🐺', '狼美人': '🌹', '丘比特': '💘', '盗贼': '🃏' };
+// 盗贼“窃走”文案：各职业的被窃之物
+const THIEF_ITEM = { villager: '身份', seer: '水晶球', witch: '魔药', hunter: '猎枪', dreamer: '梦境', guard: '护盾', wolf: '爪牙', wolfBeauty: '玫瑰', cupid: '弓箭' };
 // 按座位号固定的动物头像
 const SEAT_AVATARS = ['🦉', '🐱', '🐶', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐰', '🦄', '🐙', '🐳', '🦋'];
 const avatarOf = p => {
@@ -454,11 +456,15 @@ function renderReveal() {
       `<div class="role-card ${ROLE_CAMP[r.key] || ''} ${draft.thiefIdx === i ? 'chosen' : ''}" style="animation-delay:${i * 80}ms" onclick="draft.thiefIdx = ${i}; render()"><div class="rc-emoji">${ROLE_EMOJI[r.key] || ''}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
     ).join('') + `</div>`;
     html += `<div class="btn-row"><button class="primary" onclick="doThiefPick()" ${draft.thiefIdx === undefined ? 'disabled' : ''}>确认选择</button></div>`;
-  } else if (!rv.dealt && rv.stage === 'thiefPick') {
-    html += `<div class="waiting">正在分配身份牌，请稍候…</div>`;
+  } else if (rv.thiefPicking) {
+    html += `<div class="waiting">🃏 盗贼正在窃走......</div>`;
   } else if (!rv.dealt) {
     html += `<div class="waiting">正在准备身份牌，请稍候…</div>`;
   } else if (rv.myRole) {
+    if (rv.thiefTook) {
+      const item = THIEF_ITEM[rv.thiefTook] || '身份';
+      html += `<div class="tip-text" style="margin-bottom:8px">🃏 盗贼窃走了「${ROLE_NAMES[rv.thiefTook] || '神秘身份'}的${item}」</div>`;
+    }
     html += `<div class="panel-title" style="color:var(--accent)">你的身份：${ROLE_EMOJI_TEXT[rv.myRole] || ''} ${rv.myRole}</div>`;
     html += `<div class="panel-desc">${escapeHtml(rv.myDesc || '')}</div>`;
     const meP = view.players.find(p => p.isMe);
