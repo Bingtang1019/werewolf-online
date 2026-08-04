@@ -463,8 +463,8 @@ function renderReveal() {
       `<div class="role-card ${ROLE_CAMP[r.key] || ''}" style="animation-delay:${i * 60}ms" onclick="hostPick('${r.key}')"><div class="rc-emoji">${ROLE_EMOJI[r.key] || ''}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
     ).join('') + `</div>`;
     html += `<div class="btn-row"><button onclick="hostPick('random')">🎲 随机分配</button></div>`;
-  } else if (rv.stage === 'thiefPick' && rv.isThief) {
-    // 盗贼选牌
+  } else if (rv.isThief && rv.thiefCards) {
+    // 盗贼选牌（注意：非房主拿到的 stage 为 null，不能作为判断依据；isThief/thiefCards 已由服务端判定）
     html += `<div class="panel-desc">🃏 你是<b>盗贼</b>！从以下两张身份牌中选择一张作为你的身份（若有狼人牌则必须选狼人），另一张作废：</div>`;
     html += `<div class="role-cards">` + (rv.thiefCards || []).map((r, i) =>
       `<div class="role-card ${ROLE_CAMP[r.key] || ''} ${draft.thiefIdx === i ? 'chosen' : ''}" style="animation-delay:${i * 80}ms" onclick="draft.thiefIdx = ${i}; render()"><div class="rc-emoji">${ROLE_EMOJI[r.key] || ''}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
