@@ -234,6 +234,9 @@ async function scenario1() {
 
   // 放逐最后一只狼 → 好人获胜
   await act(room, a, 'startVote');
+  // 引擎规则（rules.md 三.10）：已出局玩家不得投票——在活跃投票阶段验证（旧断言在 ended 阶段是假通过）
+  const deadVote = await api('/api/action', { room, me: a, action: 'vote', data: { target: w2 } });
+  eq(deadVote.error, '你已出局，无法投票', '已出局玩家在投票阶段投票被拒绝');
   const aliveVoters = ids.filter(id => id !== w1 && id !== a);
   const voteMap2 = {};
   aliveVoters.forEach(id => { voteMap2[id] = id === w2 ? aliveVoters.find(x => x !== w2) : w2; });
@@ -243,9 +246,7 @@ async function scenario1() {
   eq(v.phase, 'ended', '游戏结束');
   eq(v.winner, 'good', '好人阵营获胜');
   eq(v.endInfo.text, '好人阵营获胜', '胜利信息正确');
-  // 死亡玩家不可投票但可发言
-  const r = await api('/api/action', { room, me: a, action: 'vote', data: { target: w2 } });
-  assert(r.error, '已死玩家投票被拒绝');
+  // 死亡玩家不可投票但可发言（投票拒绝已在上述活跃投票阶段验证）
   await chat(room, a, 'all', '我死了但我还能说话');
   const vAfter = await state(room, a);
   assert(vAfter.chat.some(m => m.from === a && m.text === '我死了但我还能说话'), '死亡玩家可以发言');
@@ -374,8 +375,9 @@ async function scenario2() {
   (v.morningDeaths || []).forEach(x => allDeaths[x.id] = x);
   (v.dayDeaths || []).forEach(x => allDeaths[x.id] = x);
   eq(dMap[exileTarget] && dMap[exileTarget].deadBy, 'exile', '放逐目标出局');
-  // v1 可能已在夜晚殉情死亡（单狼局时 w1 被猎人射杀），此时不再触发白天的魅惑
-  if (beauty && !allDeaths[v1]) eq(dMap[v1] && dMap[v1].deadBy, 'charm', 'v1 被魅惑带走');
+  // 狼美人被放逐触发魅惑（rules.md 三.6）：v1 若死于白天必为魅惑带走——直接查 dayDeaths。
+  // 修复前守卫写成 !allDeaths[v1]，但 allDeaths 已并入 dayDeaths（魅惑正是白天死因）→ 守卫恒假、断言从未执行（死代码）
+  if (beauty && dMap[v1]) eq(dMap[v1] && dMap[v1].deadBy, 'charm', 'v1 被魅惑带走');
   // 仅当丘比特在场（存在情侣）且场上还有第二只狼（w2≠w1，猎人未直接带走情侣）时才存在殉情
   if (cupid && w2 !== w1) eq((allDeaths[w1] && allDeaths[w1].deadBy === 'lover') || (allDeaths[v1] && allDeaths[v1].deadBy === 'lover'), true, '情侣殉情');
   if (allDeaths[v1]) eq(allDeaths[v1].role, '平民', 'v1 翻牌为平民');

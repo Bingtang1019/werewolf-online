@@ -54,8 +54,8 @@ async function main() {
       if (v.phase === 'night') { await api('/api/advance', { room, me }); } // 跳过夜1剩余步骤（预言家等）
       else if (v.phase === 'lastword') { await api('/api/advance', { room, me }); } // 房主跳过遗言
       else if (v.phase === 'sheriff_campaign') { for (const id of ids) { const sv = await st(room, id); if (sv.campaign && !sv.campaign.myDecided) await act(room, id, 'campaign', { run: id === me }); } }
-      else if (v.phase === 'sheriff_vote') { for (const id of ids) { const sv = await st(room, id); if (!(sv.sheriffVote && sv.sheriffVote.myVoted)) await act(room, id, 'vote', { target: id === me ? null : me }); } }
-      else if (v.phase === 'vote') { for (const id of ids) { const sv = await st(room, id); if (sv.vote && !sv.vote.myVoted) await act(room, id, 'vote', { target: hunter }); } }
+      else if (v.phase === 'sheriff_vote') { for (const id of ids) { const sv = await st(room, id); if (!sv.my.alive) continue; if (!(sv.sheriffVote && sv.sheriffVote.myVoted)) await act(room, id, 'vote', { target: id === me ? null : me }); } }
+      else if (v.phase === 'vote') { for (const id of ids) { const sv = await st(room, id); if (!sv.my.alive) continue; if (sv.vote && !sv.vote.myVoted) await act(room, id, 'vote', { target: hunter }); } }
       else if (v.phase === 'morning' || v.phase === 'discuss') { await api('/api/advance', { room, me }); }
       else if (v.phase === 'hunter_shot') break;
       await sleep(250);

@@ -1033,6 +1033,7 @@ function dayAction(room, p, action, data) {
     }
     case 'sheriff_vote': {
       if (action !== 'vote') return { error: '未知操作' };
+      if (!p.alive) return { error: '你已出局，无法投票' }; // 规则（rules.md 三.10）：已出局玩家不得投票
       if (room.votes.hasOwnProperty(p.id)) return { error: '你已投票' };
       const target = data.target || null;
       if (target && !room.candidates.includes(target)) return { error: '只能投给竞选者' };
@@ -1049,6 +1050,7 @@ function dayAction(room, p, action, data) {
     }
     case 'vote': {
       if (action !== 'vote') return { error: '未知操作' };
+      if (!p.alive) return { error: '你已出局，无法投票' }; // 规则（rules.md 三.10）：已出局玩家不得投票
       if (room.votes.hasOwnProperty(p.id)) return { error: '你已投票（平票前不能改票）' };
       const target = data.target || null;
       if (target) { const t = byId(room, target); if (!t || !t.alive) return { error: '玩家不存在或已出局' }; }
@@ -1065,6 +1067,7 @@ function dayAction(room, p, action, data) {
     }
     case 'pk_vote': {
       if (action !== 'vote') return { error: '未知操作' };
+      if (!p.alive) return { error: '你已出局，无法投票' }; // 规则（rules.md 三.10）：已出局玩家不得投票
       if (room.votes.hasOwnProperty(p.id)) return { error: '你已投票' };
       const target = data.target || null;
       if (target && !room.pkTied.includes(target)) return { error: '只能投给 PK 玩家' };

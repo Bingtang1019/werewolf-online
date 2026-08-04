@@ -94,8 +94,8 @@ async function main() {
       if (ph === 'morning' || ph === 'discuss' || ph === 'pk_speech') { await api('/api/advance', { room: room2, me: host2 }); await sleep(60); continue; }
       if (ph === 'lastword') { for (const id of ids2) { const sv = await st(room2, id); if (((sv.lastword || {}).entitled || []).some(e => e.id === id && !e.posted)) await act(room2, id, 'skip', {}); } await sleep(60); continue; }
       if (ph === 'sheriff_campaign') { for (const id of ids2) { const sv = await st(room2, id); if (sv.campaign && !sv.campaign.myDecided) await act(room2, id, 'campaign', { run: id === host2 }); } await sleep(60); continue; }
-      if (ph === 'sheriff_vote') { for (const id of ids2) { const sv = await st(room2, id); if (sv.sheriffVote && !sv.sheriffVote.myVoted) await act(room2, id, 'vote', { target: host2 }); } await sleep(60); continue; }
-      if (ph === 'vote' || ph === 'pk_vote') { for (const id of ids2) { const sv = await st(room2, id); if (sv.vote && !sv.vote.myVoted) await act(room2, id, 'vote', { target: host2 }); } await sleep(60); continue; }
+      if (ph === 'sheriff_vote') { for (const id of ids2) { const sv = await st(room2, id); if (!sv.my.alive) continue; if (sv.sheriffVote && !sv.sheriffVote.myVoted) await act(room2, id, 'vote', { target: host2 }); } await sleep(60); continue; }
+      if (ph === 'vote' || ph === 'pk_vote') { for (const id of ids2) { const sv = await st(room2, id); if (!sv.my.alive) continue; if (sv.vote && !sv.vote.myVoted) await act(room2, id, 'vote', { target: host2 }); } await sleep(60); continue; }
       await sleep(100);
     }
     assert(d2.phase === 'hunter_shot' && d2.hunterShot && d2.hunterShot.shooter === host2, '被放逐的猎人进入开枪阶段（实际 phase=' + d2.phase + '）');

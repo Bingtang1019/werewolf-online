@@ -1,12 +1,13 @@
 'use strict';
-/* 警徽移交规则专项验证（新规则）：
+/* 警徽移交规则专项验证（正式规则，见 rules.md 关键规则裁定 #2）：
  * 警长出局，除 被魅惑带走 / 被摄梦人带走 / 被毒杀 外（狼刀/枪杀/放逐/殉情等），均可移交警徽。
+ * 本测试即该规则的锁定件：若日后规则改回「仅狼刀可移交」，需同步修改本文件。
  * 1. 警长被放逐 → 次日早晨进入 handover 阶段，可移交给存活玩家
  * 2. 警长被毒杀 → 次日早晨不进入 handover
  */
 const { spawn } = require('child_process');
 const path = require('path');
-const PORT = 8367;
+const PORT = 8363;
 const BASE = `http://127.0.0.1:${PORT}`;
 let failures = 0;
 const assert = (c, m) => { if (c) console.log(' ✓ ' + m); else { failures++; console.error(' ✗ FAIL: ' + m); } };
@@ -72,6 +73,7 @@ async function driveDay(room, host, ids, voteFor) {
     if (ph === 'sheriff_vote' || ph === 'vote' || ph === 'pk_vote') {
       for (const id of ids) {
         const sv = await st(room, id);
+        if (!sv.my.alive) continue; // 引擎规则：已出局玩家不得投票（驱动只代存活玩家操作）
         const myVoted = (sv.vote && sv.vote.myVoted) || (sv.sheriffVote && sv.sheriffVote.myVoted);
         if (!myVoted) {
           if (ph === 'sheriff_vote') await act(room, id, 'vote', { target: host }); // 全员投房主 → 房主当选警长
