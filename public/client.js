@@ -15,19 +15,34 @@ let draft = {};       // 当前面板的草稿选择 { target, target2, kill, ch
 let lastPhaseKey = null; // 上次渲染的阶段标识（变化时清空草稿）
 let chatTab = 'all';
 let lastChatCount = -1;
-let lastChatTab = null; // 上次渲染的频道，防止两频道消息数恰好相同时切 tab 不重绘
+let lastChatTab = null; // 上次渲染的频道，防
+const lastTabTs = {}; // 各频道最后已读消息时间戳（红点）止两频道消息数恰好相同时切 tab 不重绘
 let toastTimer = null;
 
 /* ---------------------------- 工具 ---------------------------- */
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
-function toast(msg) {
+/* 类型化 toast：info/success/error/系统四色；多条排队依次显示（33/34/35） */
+const toastQueue = [];
+function toast(msg, type) {
   const t = $('toast');
-  t.textContent = msg;
-  t.classList.remove('hidden');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.add('hidden'), 2600);
+  if (!t) return;
+  toastQueue.push({ msg: String(msg), type: type || 'info' });
+  if (!toastTimer) nextToast();
+}
+function nextToast() {
+  const t = $('toast');
+  if (!t || !toastQueue.length) { toastTimer = null; return; }
+  const item = toastQueue.shift();
+  t.textContent = item.msg;
+  t.className = 'toast-' + (item.type || 'info');
+  t.classList.remove('hidden', 'leaving');
+  const dur = item.type === 'error' ? 4000 : 2600;
+  toastTimer = setTimeout(() => {
+    t.classList.add('leaving');
+    setTimeout(() => { t.classList.add('hidden'); nextToast(); }, 260);
+  }, dur);
 }
 function saveSession() { try { localStorage.setItem('ww_session', JSON.stringify({ room: roomId, me })); } catch (e) {} }
 function loadSession() { try { return JSON.parse(localStorage.getItem('ww_session')); } catch (e) { return null; } }
@@ -200,12 +215,16 @@ async function poll() {
 /* ---------------------------- 状态变化提示 ---------------------------- */
 /* 夜晚/天亮过渡遮罩（#overlay-night） */
 let overlayTimer = null;
-function showOverlay(title, sub, card) {
+function showOverlay(title, sub, card, deaths, emoji) {
   const ov = $('overlay-night');
   if (!ov) return;
   ov.querySelector('.on-title').innerHTML = title;
   ov.querySelector('.on-sub').textContent = sub;
   const cardEl = ov.querySelector('.on-card');
+  const dd = $('on-deaths');
+  if (dd) dd.innerHTML = deaths ? `<div class="od-item">${deaths}</div>` : '';
+  const oe = $('on-card-emoji');
+  if (oe) oe.textContent = emoji || '';
   if (card) { cardEl.classList.remove('hidden'); $('on-card-title').textContent = card; }
   else cardEl.classList.add('hidden');
   ov.classList.remove('hidden');
@@ -223,12 +242,14 @@ function onStateChange(prev, next) {
     toast('🌙 天黑请闭眼');
     // 仅存活玩家展示“第 N 夜”遮罩（已出局玩家不阻塞观战）；6 秒防呆自动关闭，也可点“开始行动”提前关闭
     if (view && view.my.alive) {
-      showOverlay(`🌙 第 ${view.nightNum || 1} 夜`, '天黑请闭眼，请等待各位行动…', `你是：${view.my.role || '？'}`);
+      showOverlay(`🌙 第 ${view.nightNum || 1} 夜`, '天黑请闭眼，请等待各位行动…', `你是：${view.my.role || '？'}`, null, ROLE_EMOJI_TEXT[view.my.role] || '🎭');
       overlayTimer = setTimeout(hideOverlay, 6000);
     }
   } else if (next === 'morning') {
     toast('🌅 天亮了');
-    showOverlay('☀️ 天亮了', '请查看昨晚结果，进入白天流程…', null);
+    // 天亮遮罩带死亡摘要（31）
+    const deathsHtml = (view.morningDeaths || []).map(d => `${ROLE_EMOJI_TEXT[d.role] || ''} ${escapeHtml(d.name)}：${DEATH_TEXT[d.deadBy] || d.deadBy}`).join('<br>');
+    showOverlay('☀️ 天亮了', deathsHtml ? '请查看昨晚结果' : '昨夜平安无事', null, deathsHtml || '🌙 昨夜平安无事', '☀️');
     overlayTimer = setTimeout(hideOverlay, 2500);
   } else if (next === 'ended') toast('🏁 游戏结束');
   else toast(n);
@@ -261,6 +282,16 @@ function render() {
   // 顶栏【强制继续】仅房主在非大厅/非结束阶段可见
   const forceBtn = $('btn-force');
   if (forceBtn) forceBtn.classList.toggle('hidden', !(view.my && view.my.isHost && view.phase !== 'lobby' && view.phase !== 'ended'));
+  // 顶栏【强制继续】智能点亮：存在未操作者才脉冲（7）
+  if (forceBtn && !forceBtn.classList.contains('hidden')) {
+    const act = shouldForceContinue();
+    forceBtn.classList.toggle('force-ready', act);
+    forceBtn.classList.toggle('force-idle', !act);
+  }
+  // 阶段面包屑（5）
+  renderBreadcrumb();
+  // 玩家进出提示（45）
+  diffPlayers();
   // 阶段或夜晚子步骤变化时，清空上次面板的草稿选择（防止残留目标误填充下一步骤）
   const phaseKey = view.phase + (view.nightStep ? ':' + view.nightStep : '') + (view.reveal ? ':' + view.reveal.stage : '');
   if (phaseKey !== lastPhaseKey) {
@@ -276,6 +307,8 @@ function render() {
   if (view.my.role) {
     chip.textContent = `${ROLE_EMOJI_TEXT[view.my.role] || ''} ${view.my.role}${view.my.camp ? ' · ' + view.my.camp : ''}${view.my.alive ? '' : '（已出局）'}`;
     chip.style.display = '';
+    chip.style.cursor = 'pointer';
+    chip.title = '点击查看技能详情';
   } else chip.style.display = 'none';
   renderPlayers();
   renderInfo();
@@ -296,13 +329,20 @@ function applyTheme() {
 
 /* ---------------------------- 玩家列表 ---------------------------- */
 function renderPlayers() {
-  const alive = view.players.filter(p => p.alive);
-  const dead = view.players.filter(p => !p.alive);
-  const cards = [...alive, ...dead].map(p => {
-    if (!p.alive && prevAlive[p.id] === true && !deadFlash[p.id]) deadFlash[p.id] = Date.now() + 1500; // 新死亡 → 红闪 1.5s
-    prevAlive[p.id] = p.alive;
+  const alive = view.players.filter(p => p.alive).sort((a, b) => a.seat - b.seat);
+  const dead = view.players.filter(p => !p.alive).sort((a, b) => a.seat - b.seat);
+  // 新死亡 → 红闪 + 播报（46）
+  for (const p of dead) {
+    if (prevAlive[p.id] === true && !deadFlash[p.id]) {
+      deadFlash[p.id] = Date.now() + 1500;
+      toast(`💀 ${p.name}：${DEATH_TEXT[p.deadBy] || p.deadBy}`, 'err');
+    }
+    prevAlive[p.id] = false;
+  }
+  for (const p of alive) prevAlive[p.id] = true;
+  const card = p => {
     const flashCls = !p.alive && deadFlash[p.id] > Date.now() ? ' death-flash' : '';
-    const name = escapeHtml(p.name) + (p.isBot ? ' <span class="badge bot-badge" title="人机">🤖</span>' : '') + (p.isMe ? ' <span class="badge">我</span>' : '') + (p.sheriff ? ' <span class="sheriff-mark" title="警长">👮</span>' : '');
+    const name = escapeHtml(p.name) + (p.isBot ? ' <span class="badge bot-badge" title="人机">🤖</span>' : '') + (p.isMe ? ' <span class="badge">我</span>' : '') + (p.sheriff ? ' <span class="sheriff-mark" title="警长">👮</span>' : '') + (p.isMe && view.myLover ? ' <span class="p-badge" title="情侣">💞</span>' : '');
     const moodHtml = p.isMe
       ? `<button class="mood-btn ${p.mood ? 'has' : ''}" onclick="cycleMood()" title="心情表情，点击切换">${p.mood || '🎭'}</button>`
       : (p.mood ? `<span class="mood-tag">${escapeHtml(p.mood)}</span>` : '');
@@ -312,8 +352,10 @@ function renderPlayers() {
       <div class="phead"><div class="avatar ${p.alive ? '' : 'dead'}">${avatarOf(p)}</div>
       <div class="pmeta"><div class="pname">${name}${moodHtml}<span class="pseat">#${p.seat}</span></div>${role}${deadTxt}</div></div>
     </div>`;
-  }).join('');
-  $('players').innerHTML = cards;
+  };
+  // 座位排序 + 墓地分区（3 轻量版）
+  $('players').innerHTML = alive.map(card).join('') +
+    (dead.length ? `<div class="dead-title">☠️ 已出局（${dead.length}）</div>` + dead.map(card).join('') : '');
 }
 
 /* ---------------------------- 信息区（公告/计票） ---------------------------- */
@@ -758,36 +800,67 @@ function campClass(c) {
 
 /* ---------------------------- 聊天 ---------------------------- */
 function renderChat() {
+  // 夜晚自动切私聊频道（48）：全体频道夜晚关闭时，直接切到狼/情侣
+  if (view.phase === 'night' && chatTab === 'all') {
+    const priv = (view.myChannels || []).find(ch => ch !== 'all');
+    if (priv) chatTab = priv;
+  }
   // 频道标签
   const tabs = [['all', '全体']];
   if (view.myChannels && view.myChannels.includes('wolf')) tabs.push(['wolf', '🐺 狼人(仅夜晚)']);
   if (view.myChannels && view.myChannels.includes('lover')) tabs.push(['lover', '💞 情侣']);
   if (!tabs.some(t => t[0] === chatTab)) chatTab = 'all';
+  // 私聊红点（25）：非当前 tab 有新消息
+  const dots = {};
+  for (const t of tabs) {
+    const key = t[0];
+    if (key !== chatTab) {
+      const last = lastTabTs[key] || 0;
+      if (view.chat.some(m => m.ch === key && m.ts > last)) dots[key] = true;
+    }
+  }
   $('chat-tabs').innerHTML = tabs.map(t =>
-    `<div class="chat-tab ${chatTab === t[0] ? 'active' : ''}" onclick="chatTab='${t[0]}'; renderChat()">${t[1]}</div>`).join('');
+    `<div class="chat-tab ${chatTab === t[0] ? 'active' : ''}${dots[t[0]] ? ' dot' : ''}" onclick="chatTab='${t[0]}'; renderChat()">${t[1]}</div>`).join('');
   // 消息
   const msgs = view.chat.filter(m => m.ch === chatTab);
   // 消息数变化或频道切换时才重绘（两个频道消息数恰好相同时，仅靠数量无法区分）
   if (msgs.length !== lastChatCount || lastChatTab !== chatTab) {
     $('chat-msgs').innerHTML = msgs.map(m => {
       if (m.marker === '系统') return `<div class="chat-sys">🛎️ ${escapeHtml(m.text)}</div>`;
+      const mine = !!(m.from && m.from === me);
       const chCls = m.ch === 'wolf' ? 'ch-wolf' : m.ch === 'lover' ? 'ch-lover' : '';
-      const deadCls = m.name === view.my.name && !view.my.alive ? 'dead' : '';
-      return `<div class="chat-msg ${chCls} ${deadCls}">
-        ${m.marker ? `<span class="cm-marker">${escapeHtml(m.marker)}</span>` : ''}
+      const lwCls = m.marker === '遗言' ? 'marker-lastword' : '';
+      const sender = view.players.find(p => p.id === m.from);
+      const av = sender ? avatarOf(sender) : '👤';
+      return `<div class="chat-msg ${chCls} ${mine ? 'mine' : ''} ${lwCls}">
+        ${mine ? '' : `<span class="cm-avatar">${av}</span>`}
+        ${m.marker && m.marker !== '遗言' ? `<span class="cm-marker">${escapeHtml(m.marker)}</span>` : ''}
         <span class="cm-name">${escapeHtml(m.name)}</span><span class="cm-text">${escapeHtml(m.text)}</span></div>`;
     }).join('');
     lastChatCount = msgs.length;
     lastChatTab = chatTab;
+    // 智能滚动（24）：距底部 <40px 才自动滚到底，用户上翻历史不被打断
     const box = $('chat-msgs');
-    box.scrollTop = box.scrollHeight;
+    const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    if (nearBottom) box.scrollTop = box.scrollHeight;
   }
+  if (msgs.length) lastTabTs[chatTab] = msgs[msgs.length - 1].ts;
   // 发送权限：与服务端 chatAccess 一致（全体频道夜晚关闭；私密频道仅成员可发）
   const canSend = chatTab === 'all' ? view.phase !== 'night' : !!(view.myChannels && view.myChannels.includes(chatTab));
   const ci = $('chat-text'), cb = $('btn-chat');
   ci.disabled = !canSend;
   cb.disabled = !canSend;
-  ci.placeholder = canSend ? '说点什么…' : (chatTab === 'all' && view.phase === 'night' ? '🌙 夜晚不能发言（狼人/情侣频道除外）' : '该频道当前不可发言');
+  ci.placeholder = canSend ? '说点什么…' : (chatTab === 'all' && view.phase === 'night' ? '🌙 夜晚不能发言' : '该频道当前不可发言');
+  // 快捷短语条（26）
+  const qp = $('quick-phrases');
+  if (qp) {
+    if (canSend) {
+      qp.classList.remove('hidden');
+      const tgt = draft.target ? nameOf(draft.target) : '';
+      const phrases = ['我跳预言家', '过', tgt ? '踩 ' + tgt : '踩', tgt ? '保 ' + tgt : '保', '哈哈哈', '晚上见'];
+      qp.innerHTML = phrases.map(p => `<button onclick="quickPhrase('${p.replace(/'/g, '\\\'')}')">${escapeHtml(p)}</button>`).join('');
+    } else qp.classList.add('hidden');
+  }
 }
 
 /* ---------------------------- 交互辅助 ---------------------------- */
@@ -807,10 +880,11 @@ document.addEventListener('click', e => {
     // PK 投票只能投给平票玩家（与服务端校验一致）
     if (view.phase === 'pk_vote' && view.vote && view.vote.pkTied && !view.vote.pkTied.some(t => t.id === id)) return;
     draft.target = id; renderPanel(); renderPlayers();
+    card.scrollIntoView({ block: 'nearest' }); // 选中卡片滚入视口（39）
   } else if (view.phase === 'night') {
-    if (step === 'guard' && view.my.roleKey === 'guard') { draft.target = id; renderPanel(); renderPlayers(); }
-    else if (step === 'dreamer' && view.my.roleKey === 'dreamer') { draft.target = id; renderPanel(); renderPlayers(); }
-    else if (step === 'seer' && view.my.roleKey === 'seer') { draft.target = id; renderPanel(); renderPlayers(); }
+    if (step === 'guard' && view.my.roleKey === 'guard') { draft.target = id; renderPanel(); renderPlayers(); card.scrollIntoView({ block: 'nearest' }); }
+    else if (step === 'dreamer' && view.my.roleKey === 'dreamer') { draft.target = id; renderPanel(); renderPlayers(); card.scrollIntoView({ block: 'nearest' }); }
+    else if (step === 'seer' && view.my.roleKey === 'seer') { draft.target = id; renderPanel(); renderPlayers(); card.scrollIntoView({ block: 'nearest' }); }
     else if (step === 'cupid' && view.my.roleKey === 'cupid') {
       // 点已选者取消；两人已满时点第三人替换 target2
       if (draft.target === id) draft.target = null;
@@ -900,7 +974,97 @@ function onThief(v) { act('settings', { thief: v }); }
 function kick(id) { api('api/kick', { room: roomId, me, target: id }).then(r => { if (r.error) toast(r.error); else { applyView(r.view); resetPollTimer(); render(); } }); }
 
 /* ---------------------------- 初始化 ---------------------------- */
+/* ============ UI/UX v3 辅助 ============ */
+/* 阶段面包屑（5）：显示当前阶段到投票的步骤链 */
+function renderBreadcrumb() {
+  const el = $('breadcrumb');
+  if (!el) return;
+  const chain = [
+    ['morning', '🌅 公告'], ['lastword', '💬 遗言'], ['handover', '👮 警徽'], ['sheriff_campaign', '🗳️ 竞选'],
+    ['sheriff_vote', '🗳️ 警长投票'], ['discuss', '☀️ 发言'], ['vote', '🗳️ 投票'],
+    ['pk_speech', '⚔️ PK 发言'], ['pk_vote', '🗳️ PK 投票'], ['hunter_shot', '🔫 开枪'],
+  ];
+  const idx = chain.findIndex(s => s[0] === view.phase);
+  el.innerHTML = idx >= 0
+    ? chain.slice(idx).map((s, i) => `<span class="bc-step ${i === 0 ? 'bc-now' : ''}">${s[1]}</span>`).join('<span class="bc-arrow">→</span>')
+    : '';
+}
+/* 强制继续智能判定（7）：存在未操作者才点亮 */
+function shouldForceContinue() {
+  const v = view; if (!v) return false;
+  if (v.phase === 'morning' || v.phase === 'discuss' || v.phase === 'handover' || v.phase === 'hunter_shot') return true;
+  if (v.phase === 'night') return (v.night && v.night.actors || []).some(a => !a.acted);
+  if (v.phase === 'vote' || v.phase === 'pk_vote') return !!(v.vote && v.vote.need > 0 && v.vote.voted < v.vote.need);
+  if (v.phase === 'sheriff_vote') return !!(v.sheriffVote && v.sheriffVote.need > 0 && v.sheriffVote.voted < v.sheriffVote.need);
+  if (v.phase === 'sheriff_campaign') return true;
+  if (v.phase === 'lastword') return (v.lastword && v.lastword.entitled || []).some(e => !e.posted);
+  return false;
+}
+/* 玩家进出提示（45） */
+let leaveArmed = false; // 离开二次确认（10）
+let prevPlayerIds = null, prevPlayerNames = {};
+function diffPlayers() {
+  const ids = new Set(view.players.map(p => p.id));
+  if (prevPlayerIds) {
+    for (const pid of prevPlayerIds) if (!ids.has(pid)) { const n = prevPlayerNames[pid]; if (n) toast(`🚪 ${n} 离开了房间`, 'sys'); }
+    for (const p of view.players) if (!prevPlayerIds.has(p.id)) toast(`🟢 ${p.name} 加入了房间`, 'sys');
+  }
+  prevPlayerIds = ids;
+  view.players.forEach(p => { prevPlayerNames[p.id] = p.name; });
+}
+/* 快捷短语（26） */
+function quickPhrase(txt) {
+  const ci = $('chat-text');
+  if (!ci || ci.disabled) return;
+  ci.value = (ci.value ? ci.value + ' ' : '') + txt;
+  ci.focus();
+}
+/* 身份大卡弹窗（8） */
+function openRolePop() {
+  const pop = $('role-pop');
+  if (!pop || !view.my.role) return;
+  $('rp-emoji').textContent = ROLE_EMOJI_TEXT[view.my.role] || '🎭';
+  $('rp-name').textContent = view.my.role;
+  $('rp-desc').textContent = view.my.desc || '';
+  const card = pop.querySelector('.rp-card');
+  card.className = 'rp-card ' + (ROLE_CAMP_TEXT[view.my.role] || '');
+  pop.classList.remove('hidden');
+}
+function closeRolePop() { const pop = $('role-pop'); if (pop) pop.classList.add('hidden'); }
+/* 规则速览（14） */
+function buildRulesList() {
+  const el = $('rules-list'); if (!el) return;
+  const skills = {
+    villager: '无技能，靠发言找狼', seer: '每晚查验一人', witch: '一解药一毒药，可自救', hunter: '出局可开枪带人',
+    dreamer: '每晚梦游一人', guard: '每晚守护一人，不能连守', wolf: '夜晚刀人', wolfBeauty: '被放逐带走魅惑者',
+    cupid: '指定情侣', thief: '开局窃取一张身份牌',
+  };
+  el.innerHTML = Object.keys(ROLE_NAMES).map(k =>
+    `<div class="rules-item ${ROLE_CAMP[k] || ''}"><span class="ri-camp"></span><span>${ROLE_EMOJI[k] || ''} ${ROLE_NAMES[k]}：${skills[k] || ''}</span></div>`
+  ).join('');
+  const rv = $('rules-view'); if (rv) rv.classList.remove('hidden');
+}
 function init() {
+  // 记住昵称 + 上次房间（12/13）
+  const savedName = localStorage.lwName;
+  if (savedName) $('in-name').value = savedName;
+  buildRulesList();
+  const lastRoom = localStorage.lwRoom;
+  if (lastRoom) {
+    const lr = $('last-room'); if (lr) lr.classList.remove('hidden');
+    const b = $('btn-last-room'); if (b) b.textContent = '🚪 上次房间 ' + lastRoom + ' · 重新进入';
+  }
+  $('btn-last-room').addEventListener('click', async () => {
+    const code = localStorage.lwRoom; if (!code) return;
+    const name = $('in-name').value.trim() || '玩家' + Math.floor(Math.random() * 900 + 100);
+    $('home-err').textContent = '';
+    const r = await api('api/join', { roomId: code, name });
+    if (r.error || !r.playerId) { toast('无法进入上次房间：' + (r.error || '房间可能已解散'), 'err'); return; }
+    localStorage.lwName = name;
+    localStorage.lwRoom = code;
+    enterRoom(code, r.playerId, r.view);
+    toast('🎉 已进入房间 ' + code);
+  });
   // 白天阶段/夜晚步骤/盗贼选牌倒计时：每秒更新顶栏剩余秒数（数据来自服务端 deadline）
   setInterval(() => {
     const el = document.getElementById('phase-countdown');
@@ -942,8 +1106,13 @@ function init() {
   $('btn-create').addEventListener('click', async () => {
     const name = $('in-name').value.trim() || '玩家' + Math.floor(Math.random() * 900 + 100);
     $('home-err').textContent = '';
+    const btn = $('btn-create');
+    btn.disabled = true; btn.textContent = '创建中…'; // 忙碌态防连点（16）
     const r = await api('api/create', { name });
+    btn.disabled = false; btn.textContent = '创建房间';
     if (r.error || !r.roomId || !r.playerId) { $('home-err').textContent = r.error || '创建失败，请重试'; return; }
+    localStorage.lwName = name;
+    localStorage.lwRoom = r.roomId;
     enterRoom(r.roomId, r.playerId, r.view);
     toast('🎉 房间创建成功：' + r.roomId);
     try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(r.roomId); } catch (e) {}
@@ -963,13 +1132,40 @@ function init() {
     toast('🎉 已进入房间 ' + code);
   });
   $('btn-copy').addEventListener('click', () => {
-    if (navigator.clipboard) navigator.clipboard.writeText(view.roomId).then(() => toast('房间号已复制'));
-    else toast('房间号：' + view.roomId);
-  });
-  $('btn-leave').addEventListener('click', async () => {
+  if (navigator.clipboard) navigator.clipboard.writeText(view.roomId).then(() => toast('房间号已复制'));
+  else toast('房间号：' + view.roomId);
+});
+$('btn-leave').addEventListener('click', async () => {
+    // 离开二次确认（10）：第一次变红色确认态，3 秒内再点才生效
+    if (!leaveArmed) {
+      leaveArmed = true;
+      const b = $('btn-leave');
+      b.textContent = '确认离开？';
+      b.classList.add('confirming');
+      setTimeout(() => { if (leaveArmed) { leaveArmed = false; b.textContent = '离开'; b.classList.remove('confirming'); } }, 3000);
+      return;
+    }
+    leaveArmed = false;
     await api('api/leave', { room: roomId, me });
     clearSession();
     location.reload();
+  });
+  // 房号点击即复制（9）
+  $('room-code').addEventListener('click', () => {
+    if (navigator.clipboard) navigator.clipboard.writeText(view.roomId).then(() => toast('房间号已复制'));
+    else toast('房间号：' + view.roomId);
+  });
+  // 身份芯片点击 → 大卡弹窗（8）
+  $('my-role-chip').addEventListener('click', openRolePop);
+  $('role-pop').addEventListener('click', closeRolePop);
+  // 移动端聊天抽屉（2）
+  const bco = $('btn-chat-open');
+  if (bco) bco.classList.remove('hidden');
+  $('btn-chat-open').addEventListener('click', e => { e.stopPropagation(); document.body.classList.toggle('chat-open'); });
+  document.addEventListener('click', e => {
+    if (document.body.classList.contains('chat-open') && !e.target.closest('#right') && !e.target.closest('#btn-chat-open')) {
+      document.body.classList.remove('chat-open');
+    }
   });
   $('btn-force').addEventListener('click', () => { if (view && view.my && view.my.isHost) doAdvance(); });
   $('btn-chat').addEventListener('click', sendChat);
@@ -977,6 +1173,7 @@ function init() {
   const oc = $('on-close');
   if (oc) oc.addEventListener('click', hideOverlay); // 空值守卫：缺元素不导致 init 崩溃（C1）
   $('in-code').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-join-go').click(); });
+  $('in-code').addEventListener('input', () => { const v = $('in-code').value.trim().toUpperCase(); if (v.length === 6 && /^[0-9A-Z]{6}$/.test(v)) $('btn-join-go').click(); }); // 6 位自动进入（15）
   $('in-name').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-create').click(); });
 
   // 重连
@@ -1003,7 +1200,11 @@ function enterRoom(room, playerId, v) {
   me = playerId;
   view = v;
   lastPhaseKey = null;
+  prevPlayerIds = null; // 进出提示基准重置（45）
   saveSession();
+  // 重名提示（47）
+  const dup = v.players && v.players.find(p => p.id !== playerId && p.name === (v.my && v.my.name));
+  if (dup) toast(`⚠️ 与「${dup.name}」重名，注意区分`, 'err');
   $('home').classList.add('hidden');
   $('room').classList.remove('hidden');
   render();

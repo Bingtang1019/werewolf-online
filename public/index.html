@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#10131a">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐺</text></svg>">
 <title>狼人杀 · 在线版</title>
@@ -16,6 +16,8 @@
     <h1>🐺 狼人杀</h1>
     <p class="sub">和朋友们一起玩（4~18 人，纯网页，无需安装）</p>
     <input id="in-name" placeholder="输入你的昵称" maxlength="12" autocomplete="off">
+    <div id="last-room" class="hidden"><button id="btn-last-room"></button></div>
+    <details id="rules-view" class="hidden"><summary>📖 规则速览</summary><div id="rules-list"></div></details>
     <div class="row">
       <button id="btn-create" class="primary">创建房间</button>
       <button id="btn-join">进入房间</button>
@@ -43,9 +45,11 @@
     </div>
     <div class="tb-right">
       <span id="my-role-chip"></span>
+      <button id="btn-chat-open" class="mini hidden" title="打开聊天">💬 聊天</button>
       <button id="btn-force" class="mini hidden" title="房主强制继续：未操作者视为弃权/跳过">强制继续</button>
       <button id="btn-leave" class="mini">离开</button>
     </div>
+    <div id="breadcrumb"></div>
     <div id="phase-bar"><div id="phase-bar-fill"></div></div>
   </div>
 
@@ -58,6 +62,7 @@
     <div id="right">
       <div id="chat-tabs"></div>
       <div id="chat-msgs"></div>
+      <div id="quick-phrases" class="hidden"></div>
       <div id="chat-input-row">
         <input id="chat-text" maxlength="200" placeholder="说点什么…" autocomplete="off">
         <button id="btn-chat">发送</button>
@@ -71,12 +76,18 @@
   <div class="on-title">🌙 第 <span id="on-night-num">1</span> 夜</div>
   <div class="on-sub">天黑请闭眼，请等待各位行动…</div>
   <div class="on-card">
+    <div class="oc-role" id="on-card-emoji"></div>
     <div class="oc-title" id="on-card-title">你是：？</div>
+    <div class="on-deaths" id="on-deaths"></div>
     <div class="btn-row"><button id="on-close" class="primary">开始行动</button></div>
   </div>
 </div>
 
-<div id="toast" class="hidden"></div>
+<div id="toast" class="hidden" role="status" aria-live="polite"></div>
+<!-- 身份大卡弹窗（点顶栏身份芯片展开） -->
+<div id="role-pop" class="hidden">
+  <div class="rp-card"><div class="rp-emoji" id="rp-emoji"></div><div class="rp-name" id="rp-name"></div><div class="rp-desc" id="rp-desc"></div></div>
+</div>
 <script src="client.js"></script>
 </body>
 </html>
