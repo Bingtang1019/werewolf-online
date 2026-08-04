@@ -1,0 +1,15 @@
+# Render Blueprint：一键部署狼人杀
+# 用法：推送到 GitHub 后，在 render.com 用 "Blueprint" 方式导入本仓库，
+# 或手动新建 Web Service 并参考本文件配置。
+services:
+  - type: web
+    name: werewolf-online
+    runtime: node
+    plan: free            # 免费版；升级可避免闲置休眠
+    buildCommand: ""      # 零依赖，无需构建
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production

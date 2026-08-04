@@ -1,0 +1,225 @@
+/* ===== 狼人杀 网页样式（暗夜风） ===== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #10131a;
+  --bg2: #181d27;
+  --bg3: #202734;
+  --line: #2c3547;
+  --txt: #e8ecf4;
+  --muted: #8b96a8;
+  --accent: #e8b64c;
+  --good: #4cc38a;
+  --wolf: #e06060;
+  --third: #b07ce8;
+  --dead: #555e6e;
+}
+html, body { height: 100%; }
+body {
+  background: radial-gradient(1200px 800px at 50% -10%, #1c2436 0%, var(--bg) 55%);
+  color: var(--txt);
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.hidden { display: none !important; }
+button {
+  background: var(--bg3); color: var(--txt);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 16px; cursor: pointer; font-size: 14px;
+  white-space: nowrap;
+  transition: background .15s, transform .05s;
+}
+button:hover { background: #2a3444; }
+button:active { transform: scale(.97); }
+button.primary { background: var(--accent); color: #1a1408; border-color: var(--accent); font-weight: 600; }
+button.primary:hover { background: #f2c35c; }
+button.danger { background: #5b2c2c; border-color: #7a3a3a; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+input, select, textarea {
+  background: var(--bg2); color: var(--txt);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 9px 12px; font-size: 14px; outline: none; width: 100%;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+input::placeholder { color: var(--muted); }
+/* 复选框/单选钮/滑块：去掉输入框的尺寸/边框/背景，避免显示成大号方块 */
+input[type="checkbox"], input[type="radio"] {
+  width: auto; height: auto; padding: 0; margin: 0;
+  border: none; background: none; accent-color: var(--accent); cursor: pointer;
+}
+input[type="range"] { padding: 0; border: none; background: none; }
+label { line-height: 1.5; cursor: pointer; }
+
+/* ---------- 首页 ---------- */
+#home { height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.home-box {
+  background: var(--bg2); border: 1px solid var(--line); border-radius: 16px;
+  padding: 40px 36px; width: 380px; max-width: 100%; text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+.home-box h1 { font-size: 34px; margin-bottom: 6px; color: var(--accent); }
+.home-box .sub { color: var(--muted); margin-bottom: 26px; }
+.home-box .row { display: flex; gap: 10px; margin-top: 14px; }
+.home-box .row button { flex: 1; }
+#join-line { display: flex; gap: 8px; margin-top: 12px; }
+#home-err { color: var(--wolf); margin-top: 12px; min-height: 18px; }
+.home-box .tip { color: var(--muted); font-size: 12px; margin-top: 18px; }
+
+/* ---------- 顶栏 ---------- */
+#topbar {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 6px 10px; padding: 10px 16px; border-bottom: 1px solid var(--line);
+  background: rgba(16,19,26,.85); position: sticky; top: 0; z-index: 10;
+}
+.tb-left, .tb-mid, .tb-right { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tb-mid { flex-wrap: wrap; justify-content: center; }
+#my-role-chip { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-code { font-size: 18px; font-weight: 700; letter-spacing: 3px; color: var(--accent); font-family: Consolas, monospace; }
+.phase-text { font-weight: 600; }
+#day-text { color: var(--muted); }
+.countdown { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; margin-left: 8px; }
+.countdown.urgent { color: #ff6b6b; animation: pulse 0.6s infinite alternate; }
+@keyframes pulse { from { opacity: 1; } to { opacity: 0.45; } }
+#my-role-chip { padding: 3px 12px; border-radius: 20px; background: var(--bg3); border: 1px solid var(--line); font-weight: 600; }
+button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
+
+/* ---------- 主布局 ---------- */
+#main { display: flex; gap: 14px; padding: 14px; max-width: 1200px; margin: 0 auto; align-items: flex-start; }
+#left { flex: 1; min-width: 0; }
+#right { width: 330px; display: flex; flex-direction: column; height: calc(100vh - 90px); position: sticky; top: 60px; }
+
+/* ---------- 玩家区 ---------- */
+#players { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.player {
+  background: var(--bg2); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px 12px; cursor: default; position: relative; transition: border-color .15s;
+}
+.player.me { border-color: var(--accent); }
+.player.dead { opacity: .55; background: var(--bg); }
+.player.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(232,182,76,.25); }
+.player .pname { font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.player .prole { margin-top: 4px; color: var(--accent); font-size: 12px; }
+.player .pdead { margin-top: 4px; color: var(--muted); font-size: 12px; }
+.player .camp-tag { font-size: 11px; padding: 1px 7px; border-radius: 10px; }
+.camp-tag.good { background: rgba(76,195,138,.15); color: var(--good); }
+.camp-tag.wolf { background: rgba(224,96,96,.15); color: var(--wolf); }
+.camp-tag.third { background: rgba(176,124,232,.15); color: var(--third); }
+.badge { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--bg3); color: var(--muted); }
+.badge.sheriff { background: rgba(232,182,76,.18); color: var(--accent); }
+.sheriff-mark { color: var(--accent); }
+
+/* ---------- 面板 ---------- */
+#panel, #info {
+  background: var(--bg2); border: 1px solid var(--line); border-radius: 14px;
+  padding: 16px; margin-bottom: 14px;
+}
+#info { display: none; }
+#info.show { display: block; }
+.panel-title { font-weight: 700; font-size: 16px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.panel-desc { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.tip-text { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.6; }
+
+/* 夜晚 */
+#panel.night-panel { background: linear-gradient(180deg, #121a2e 0%, #0c101c 100%); border-color: #253052; }
+.night-title { color: #8fa8e8; }
+.role-cards { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
+.role-card {
+  flex: 1 1 150px; min-width: 130px; padding: 16px; border-radius: 12px; border: 2px solid var(--line);
+  background: var(--bg3); text-align: center; cursor: pointer; transition: all .15s;
+}
+.role-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.role-card.chosen { border-color: var(--accent); background: rgba(232,182,76,.12); }
+.role-card .rc-name { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+.role-card .rc-desc { font-size: 12px; color: var(--muted); }
+
+.waiting { color: var(--muted); font-style: italic; padding: 6px 0; }
+.wolf-team { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.wolf-team .member { background: rgba(224,96,96,.12); border: 1px solid rgba(224,96,96,.35); color: var(--wolf); padding: 3px 10px; border-radius: 20px; font-size: 12px; }
+
+/* 死亡公告 */
+.death-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.death-item {
+  background: var(--bg3); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px; display: flex; align-items: center; gap: 10px;
+}
+.death-item .di-name { font-weight: 700; }
+.death-item .di-role { color: var(--accent); }
+.death-item .di-cause { color: var(--muted); font-size: 12px; margin-left: auto; text-align: right; }
+.safe-night { color: var(--good); font-weight: 600; }
+
+.info-box { border: 1px solid var(--accent); border-radius: 10px; padding: 8px 12px; margin-bottom: 8px; font-size: 13px; background: rgba(255,255,255,0.04); }
+
+/* 计票 */
+.vote-total { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
+.vote-total .vt-line { display: flex; justify-content: space-between; background: var(--bg3); padding: 6px 12px; border-radius: 8px; }
+.vote-total .vt-line.win { border: 1px solid var(--accent); }
+
+/* 设置面板（大厅） */
+.set-group { margin: 12px 0; }
+.set-group .sg-title { color: var(--muted); font-size: 12px; margin-bottom: 8px; letter-spacing: .5px; }
+.count-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.count-row .cr-name { font-weight: 600; }
+.count-row .cr-ctrl { display: flex; align-items: center; gap: 8px; }
+.count-row .cr-ctrl button { padding: 2px 10px; }
+.radio-row { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+.radio-row label { display: flex; align-items: center; gap: 6px; }
+.total-hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+.total-hint.ok { color: var(--good); }
+.total-hint.bad { color: var(--wolf); }
+#cap-slider { width: 100%; accent-color: var(--accent); }
+
+/* ---------- 聊天 ---------- */
+#chat-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.chat-tab { padding: 5px 14px; border-radius: 20px; background: var(--bg3); border: 1px solid var(--line); cursor: pointer; font-size: 13px; }
+.chat-tab.active { background: var(--accent); color: #1a1408; border-color: var(--accent); font-weight: 600; }
+#chat-msgs {
+  flex: 1; overflow-y: auto; background: var(--bg2); border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px;
+}
+.chat-msg { line-height: 1.5; padding: 2px 0; }
+.chat-msg .cm-name { font-weight: 700; margin-right: 6px; }
+.chat-msg .cm-text { word-break: break-all; }
+.chat-msg.ch-wolf .cm-name { color: var(--wolf); }
+.chat-msg.ch-lover .cm-name { color: var(--third); }
+.chat-msg .cm-marker { font-size: 11px; background: rgba(232,182,76,.15); color: var(--accent); padding: 1px 7px; border-radius: 10px; margin-right: 6px; }
+.chat-msg.dead .cm-name { color: var(--muted); text-decoration: line-through; }
+.chat-sys { color: var(--muted); font-size: 12px; }
+#chat-input-row { display: flex; gap: 8px; margin-top: 10px; }
+#chat-text { flex: 1; }
+
+/* ---------- 弹窗 ---------- */
+#toast {
+  position: fixed; left: 50%; top: 70px; transform: translateX(-50%);
+  background: #2a2414; color: var(--accent); border: 1px solid var(--accent);
+  padding: 10px 22px; border-radius: 10px; z-index: 100; box-shadow: 0 8px 30px rgba(0,0,0,.5);
+  font-weight: 600;
+}
+#overlay-night {
+  position: fixed; inset: 0; background: rgba(5,8,16,.96); z-index: 50;
+  display: flex; align-items: center; justify-content: center; flex-direction: column;
+  animation: ovFade .35s ease;
+}
+@keyframes ovFade { from { opacity: 0; } to { opacity: 1; } }
+#overlay-night .on-title { font-size: 42px; letter-spacing: 12px; color: #93a7e0; text-shadow: 0 0 30px rgba(120,150,255,.5); }
+#overlay-night .on-sub { color: var(--muted); margin-top: 16px; font-size: 14px; }
+#overlay-night .on-card { margin-top: 24px; background: var(--bg3); border: 1px solid var(--line); border-radius: 14px; padding: 18px 26px; min-width: 280px; max-width: 560px; }
+#overlay-night .on-card .oc-title { font-weight: 700; margin-bottom: 10px; color: var(--accent); }
+#overlay-night .on-card .btn-row { justify-content: center; }
+
+/* 结束界面 */
+.winner-banner { text-align: center; padding: 18px; border-radius: 14px; margin-bottom: 14px; font-size: 22px; font-weight: 800; }
+.winner-banner.good { background: rgba(76,195,138,.15); color: var(--good); border: 1px solid rgba(76,195,138,.4); }
+.winner-banner.wolf { background: rgba(224,96,96,.15); color: var(--wolf); border: 1px solid rgba(224,96,96,.4); }
+.winner-banner.third { background: rgba(176,124,232,.15); color: var(--third); border: 1px solid rgba(176,124,232,.4); }
+.end-roles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px,1fr)); gap: 8px; }
+
+/* 移动端 */
+@media (max-width: 820px) {
+  #main { flex-direction: column; gap: 10px; padding: 10px; }
+  #right { width: 100%; height: 320px; position: static; }
+  #topbar { padding: 8px 10px; }
+  #panel, #info { padding: 12px; }
+  .role-card { flex: 1 1 120px; }
+  #players { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+}

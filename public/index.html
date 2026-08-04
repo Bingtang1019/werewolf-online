@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>狼人杀 · 在线版</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- 首页：创建 / 进入房间 -->
+<div id="home">
+  <div class="home-box">
+    <h1>🐺 狼人杀</h1>
+    <p class="sub">和朋友们一起玩（4~18 人，纯网页，无需安装）</p>
+    <input id="in-name" placeholder="输入你的昵称" maxlength="12" autocomplete="off">
+    <div class="row">
+      <button id="btn-create" class="primary">创建房间</button>
+      <button id="btn-join">进入房间</button>
+    </div>
+    <div id="join-line" class="hidden">
+      <input id="in-code" placeholder="输入 6 位房间号" maxlength="6" autocomplete="off">
+      <button id="btn-join-go">进入</button>
+    </div>
+    <div id="home-err" class="err"></div>
+    <p class="tip">房间号由 0-9 与 A-Z 组成，创建后发给朋友即可</p>
+  </div>
+</div>
+
+<!-- 游戏界面 -->
+<div id="room" class="hidden">
+  <div id="topbar">
+    <div class="tb-left">
+      <span class="room-code" id="room-code"></span>
+      <button id="btn-copy" class="mini" title="复制房间号">复制</button>
+    </div>
+    <div class="tb-mid">
+      <span id="phase-text" class="phase-text"></span>
+      <span id="day-text"></span>
+      <span id="phase-countdown" class="countdown"></span>
+    </div>
+    <div class="tb-right">
+      <span id="my-role-chip"></span>
+      <button id="btn-leave" class="mini">离开</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="left">
+      <div id="players"></div>
+      <div id="info"></div>
+      <div id="panel"></div>
+    </div>
+    <div id="right">
+      <div id="chat-tabs"></div>
+      <div id="chat-msgs"></div>
+      <div id="chat-input-row">
+        <input id="chat-text" maxlength="200" placeholder="说点什么…" autocomplete="off">
+        <button id="btn-chat">发送</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 夜晚/天亮过渡遮罩 -->
+<div id="overlay-night" class="hidden">
+  <div class="on-title">🌙 第 <span id="on-night-num">1</span> 夜</div>
+  <div class="on-sub">天黑请闭眼，请等待各位行动…</div>
+  <div class="on-card">
+    <div class="oc-title" id="on-card-title">你是：？</div>
+    <div class="btn-row"><button id="on-close" class="primary">开始行动</button></div>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+<script src="client.js"></script>
+</body>
+</html>
