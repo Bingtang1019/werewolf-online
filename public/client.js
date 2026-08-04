@@ -10,6 +10,7 @@ let roomId = null;
 let me = null;
 let pollTimer = null;
 let pollMs = 0;
+let pollBusy = false; // 轮询在途标记：慢网络下跳过重叠轮询，防止增量叠加
 let lastVersion = -1;
 let draft = {};       // 当前面板的草稿选择 { target, target2, kill, charm }
 let lastPhaseKey = null; // 上次渲染的阶段标识（变化时清空草稿）
@@ -117,9 +118,16 @@ function applyView(v) {
   if (!v || v.error) return;
   if (view && v.v < view.v) return;
   // 聊天增量合并：服务端只发 since 之后的新消息，本地拼接；全量（首载/重连）时直接替换
+  // 防重：在途轮询/发送可能携带重叠增量（同一 since），按消息 id 去重，避免同一条消息被拼接多次
   if (v.chatFull !== true && view && Array.isArray(v.chat) && view.chat && view.chat.length) {
-    v.chat = view.chat.concat(v.chat);
-    if (v.chat.length > 500) v.chat.splice(0, v.chat.length - 500);
+    const have = new Set(view.chat.map(m => m.id));
+    const fresh = v.chat.filter(m => !have.has(m.id));
+    if (fresh.length) {
+      v.chat = view.chat.concat(fresh);
+      if (v.chat.length > 500) v.chat.splice(0, v.chat.length - 500);
+    } else {
+      v.chat = view.chat;
+    }
   }
   view = v;
   lastVersion = v.v;
@@ -166,6 +174,8 @@ function needsFastPoll() {
 }
 async function poll() {
   if (!roomId || !me) return;
+  if (pollBusy) return; // 上一轮轮询尚未返回：跳过本次（避免慢网络下请求堆积、增量重叠）
+  pollBusy = true;
   try {
     const ver = view ? view.v : -1;
     const res = await fetch(`api/state?room=${encodeURIComponent(roomId)}&me=${encodeURIComponent(me)}&v=${ver}&since=${lastChatTs()}`);
@@ -186,6 +196,7 @@ async function poll() {
     render();
     ensurePollTimer();
   } catch (e) { ensurePollTimer(); /* 网络抖动忽略 */ }
+  finally { pollBusy = false; }
 }
 
 /* ---------------------------- 状态变化提示 ---------------------------- */
@@ -949,7 +960,7 @@ function init() {
     location.reload();
   });
   $('btn-chat').addEventListener('click', sendChat);
-  $('chat-text').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+  $('chat-text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) sendChat(); });
   $('on-close').addEventListener('click', hideOverlay);
   $('in-code').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-join-go').click(); });
   $('in-name').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-create').click(); });
