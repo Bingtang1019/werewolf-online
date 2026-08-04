@@ -2,7 +2,7 @@
 
 和朋友一起玩的 Web 在线狼人杀。**零依赖**：只使用 Node.js 内置模块，无需 `npm install`。
 
-> 当前版本：**1.0.0-rc.6**（更新公告见 `更新公告.md`）
+> 当前版本：**1.0.0**（正式发布；更新公告见 `更新公告.md`）
 
 ## 快速开始
 
@@ -85,7 +85,7 @@ werewolf/
 ├── 启动游戏.bat       # 局域网联机启动
 ├── server-loop.bat    # 服务器崩溃自动重启（供公网联机脚本调用）
 ├── public/            # 网页客户端（index.html / style.css / client.js）
-└── test/              # 自动化测试（8 个脚本）
+└── test/              # 自动化测试（16 个脚本）
 ```
 
 ## 技术说明
@@ -107,6 +107,13 @@ node test/client-flow.js              # 浏览器流程：创建/加入/轮询/�
 node test/check-s1.js                 # 狼频道可见性专项
 node test/check-security.js           # 安全加固专项（路径穿越/参数校验/413/TTL）
 node test/simulate-bot.js             # 人机测试：add_bot 权限校验 + T1挂机/T2简单AI 完整对局
+node test/check-opt.js               # 优化专项（轮询版本化/自适应频率/gzip/静态缓存）
+node test/check-handover.js          # 警徽移交规则专项
+node test/check-night-timeout.js     # 夜晚/盗贼选牌超时自动跳过
+node test/check-thief-view.js        # 盗贼视野信息隐藏回归
+node test/check-chat-limit.js        # 聊天限流专项
+node test/check-hunter-shot.js       # 猎人开枪/弃枪场景
+node test/check-hunter-timeout.js    # 猎人 30 秒超时弃枪
 ```
 
 - `simulate.js`：模拟 6 个完整对局场景（基础局、全职业+盗贼玩法局、守卫/摄梦人局、盗贼局、平票 PK 局、丘比特重选/频道规则局），验证夜晚结算、猎人开枪、殉情、魅惑、同守同救、警徽移交、1.5 票、胜负判定、频道权限等；盗贼可能抽到与配置重复的职业牌（两个守卫/女巫等）或作废任意职业，测试覆盖了这些随机组合。
