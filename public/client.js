@@ -328,9 +328,9 @@ function renderLobby() {
   let html = `<div class="panel-title">🏠 房间 ${view.roomId} <span class="badge">${view.players.length}/${view.playerCap} 人</span></div>`;
   html += `<div class="panel-desc">把房间号发给朋友，人满后由房主开局。</div>`;
   if (isHost) {
-    html += `<div class="set-group"><div class="sg-title">人数（${view.playerCap} 人，4~18）</div>
-      <input id="cap-slider" type="range" min="4" max="18" value="${view.playerCap}" oninput="onCapChange(this.value)">
-      <div class="tip-text">当前 ${view.playerCap} 人</div></div>`;
+    html += `<div class="set-group"><div class="sg-title">人数（<span id="cap-title-num">${view.playerCap}</span> 人，4~18）</div>
+      <input id="cap-slider" type="range" min="${Math.max(4, view.players.length)}" max="18" value="${view.playerCap}" oninput="onCapInput(this.value)" onchange="onCapChange(this.value)">
+      <div class="tip-text" id="cap-tip">当前 ${view.playerCap} 人</div></div>`;
     html += `<div class="set-group"><div class="sg-title">职业配置（总数须等于人数）</div>` + roleCountsHtml() + `<div class="total-hint" id="count-hint"></div></div>`;
     html += `<div class="set-group"><div class="sg-title">规则</div>
       <div class="radio-row">
@@ -791,7 +791,22 @@ function castVote(abstain) {
 }
 
 /* ---------------------------- 大厅操作 ---------------------------- */
-function onCapChange(v) { act('setCap', { cap: Number(v) }); }
+/* 人数滑条：拖动时仅本地更新显示（不发请求），松手才一次性提交 → 拖动顺滑不卡顿 */
+function onCapInput(v) {
+  const n = Math.min(18, Math.max(4, parseInt(v, 10) || 4));
+  const tip = $('cap-tip');
+  if (tip) tip.textContent = '当前 ' + n + ' 人（拖动中…）';
+  const tt = $('cap-title-num');
+  if (tt) tt.textContent = n;
+}
+function onCapChange(v) {
+  const n = Math.min(18, Math.max(4, parseInt(v, 10) || 4));
+  const tip = $('cap-tip');
+  if (tip) tip.textContent = '当前 ' + n + ' 人';
+  const tt = $('cap-title-num');
+  if (tt) tt.textContent = n;
+  act('setCap', { cap: n });
+}
 function countChange(key, delta) {
   const c = Object.assign({}, view.roleCounts);
   c[key] = Math.max(0, (c[key] || 0) + delta);

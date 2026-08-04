@@ -168,7 +168,9 @@ button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 .total-hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
 .total-hint.ok { color: var(--good); }
 .total-hint.bad { color: var(--wolf); }
-#cap-slider { width: 100%; accent-color: var(--accent); }
+#cap-slider { width: 100%; accent-color: var(--accent); cursor: pointer; height: 22px; }
+#cap-slider::-webkit-slider-thumb { transition: transform .1s ease, box-shadow .1s ease; }
+#cap-slider:active::-webkit-slider-thumb { transform: scale(1.25); box-shadow: 0 0 10px rgba(232, 182, 76, .5); }
 
 /* ---------- 聊天 ---------- */
 #chat-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
