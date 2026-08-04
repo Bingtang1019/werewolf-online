@@ -665,6 +665,10 @@ function renderHandover() {
   if (h.from === view.my.id) {
     html += `<div class="panel-desc">你已出局，可以选择将警徽移交给一名存活玩家，或撕毁警徽。</div>`;
     html += `<div class="tip-text">已选：${draft.target ? escapeHtml(nameOf(draft.target)) : '—'}</div>`;
+    // 目标选择按钮（与点玩家卡双保险：任一方式均可选定移交对象）
+    html += `<div class="btn-row">` + alivePlayers().filter(p => p.id !== view.my.id).map(p =>
+      `<button class="mini ${draft.target === p.id ? 'chosen' : ''}" onclick="draft.target='${p.id}'; renderPanel()">${escapeHtml(p.name)}</button>`
+    ).join('') + `</div>`;
     html += `<div class="btn-row"><button class="primary" onclick="handoverPick()" ${draft.target ? '' : 'disabled'}>移交警徽</button><button onclick="act('handover',{target:null})">撕毁警徽</button></div>`;
   } else {
     html += `<div class="waiting">${escapeHtml(h.fromName || '')} 正在处理警徽…</div>`;

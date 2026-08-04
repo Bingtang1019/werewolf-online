@@ -409,3 +409,6 @@ body.theme-day {
 .mood-btn:hover { transform: scale(1.3); opacity: 1; }
 .mood-btn.has { opacity: 1; }
 .mood-tag { font-size: 14px; margin-left: 4px; line-height: 1; }
+
+/* 选中态按钮（警徽移交目标等） */
+.btn-row button.chosen { border-color: var(--accent); background: rgba(232,182,76,.14); color: var(--accent); font-weight: 600; }
