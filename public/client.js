@@ -63,7 +63,7 @@ async function api(path, body) {
   }
 }
 async function act(action, data) {
-  const r = await api('api/action', { room: roomId, me, action, data: data || {} });
+  const r = await api('api/action', { room: roomId, me, action, data: data || {}, chatSince: lastChatTs() });
   if (r.error) { toast(r.error); return null; }
   if (r.left) { clearSession(); location.reload(); return null; }
   applyView(r.view);
@@ -72,23 +72,32 @@ async function act(action, data) {
   return view;
 }
 async function chatSend(ch, text) {
-  const r = await api('api/chat', { room: roomId, me, data: { ch, text } });
+  const r = await api('api/chat', { room: roomId, me, data: { ch, text }, chatSince: lastChatTs() });
   if (r.error) { toast(r.error); return; }
   applyView(r.view);
   resetPollTimer();
   render();
 }
 async function doAdvance() {
-  const r = await api('api/advance', { room: roomId, me });
+  const r = await api('api/advance', { room: roomId, me, chatSince: lastChatTs() });
   if (r.error) { toast(r.error); return; }
   applyView(r.view);
   resetPollTimer();
   render();
 }
+/* 客户端最后一条消息的 ts：作为聊天增量传输的锚点（0=需要全量） */
+function lastChatTs() {
+  return view && view.chat && view.chat.length ? view.chat[view.chat.length - 1].ts : 0;
+}
 /* 应用服务器视图：忽略慢轮询返回的旧版本，防止覆盖刚提交的新状态 */
 function applyView(v) {
   if (!v || v.error) return;
   if (view && v.v < view.v) return;
+  // 聊天增量合并：服务端只发 since 之后的新消息，本地拼接；全量（首载/重连）时直接替换
+  if (v.chatFull !== true && view && Array.isArray(v.chat) && view.chat && view.chat.length) {
+    v.chat = view.chat.concat(v.chat);
+    if (v.chat.length > 500) v.chat.splice(0, v.chat.length - 500);
+  }
   view = v;
   lastVersion = v.v;
 }
@@ -122,11 +131,11 @@ function needsFastPoll() {
       return (v.night.actors || []).some(a => a.id === v.my.id);
     }
     case 'sheriff_campaign': return !(v.campaign && v.campaign.myDecided);
-    case 'sheriff_vote': return !(v.sheriffVote && v.sheriffVote.myVote);
+    case 'sheriff_vote': return !(v.sheriffVote && v.sheriffVote.myVoted);
     case 'morning': case 'discuss': case 'pk_speech': return v.my.isHost;
     case 'lastword': return !!((v.lastword && v.lastword.entitled || []).some(e => e.id === v.my.id && !e.posted));
     case 'handover': return !!(v.handover && v.handover.from === v.my.id);
-    case 'vote': case 'pk_vote': return !(v.vote && v.vote.myVote);
+    case 'vote': case 'pk_vote': return !(v.vote && v.vote.myVoted);
     case 'hunter_shot': return !!(v.hunterShot && v.hunterShot.shooter === v.my.id);
     case 'ended': return !!v.canRematch;
     default: return true;
@@ -136,7 +145,7 @@ async function poll() {
   if (!roomId || !me) return;
   try {
     const ver = view ? view.v : -1;
-    const res = await fetch(`api/state?room=${encodeURIComponent(roomId)}&me=${encodeURIComponent(me)}&v=${ver}`);
+    const res = await fetch(`api/state?room=${encodeURIComponent(roomId)}&me=${encodeURIComponent(me)}&v=${ver}&since=${lastChatTs()}`);
     const j = await res.json();
     if (j.error) {
       if (j.error === 'room-not-found') { toast('房间已解散'); clearSession(); setTimeout(() => location.reload(), 1200); return; }

@@ -49,6 +49,29 @@ function sendJSON(res, obj) {
   }
 }
 const MAX_BODY = 1 * 1024 * 1024; // POST body 上限 1MB，超限直接 413（防恶意大请求占内存）
+/* 静态文件缓存：按 mtime 缓存原始内容与 gzip 结果，避免每个请求重复读盘+压缩 */
+const staticCache = new Map();
+function serveStatic(req, res, file) {
+  fs.stat(file, (err, st) => {
+    if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('404 Not Found'); return; }
+    const key = file;
+    const hit = staticCache.get(key);
+    const mime = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
+    const headers = { 'Content-Type': mime, 'Cache-Control': 'no-cache', 'Vary': 'Accept-Encoding' };
+    const useGzip = acceptsGzip(req) && st.size > 512;
+    if (hit && hit.mtimeMs === st.mtimeMs) {
+      if (useGzip) { headers['Content-Encoding'] = 'gzip'; res.writeHead(200, headers); res.end(hit.gz); }
+      else { res.writeHead(200, headers); res.end(hit.data); }
+      return;
+    }
+    fs.readFile(file, (e2, data) => {
+      if (e2) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('404 Not Found'); return; }
+      staticCache.set(key, { mtimeMs: st.mtimeMs, data, gz: data.length > 512 ? zlib.gzipSync(data) : null });
+      if (useGzip) { headers['Content-Encoding'] = 'gzip'; res.writeHead(200, headers); res.end(staticCache.get(key).gz); }
+      else { res.writeHead(200, headers); res.end(data); }
+    });
+  });
+}
 function readBody(req, res, cb) {
   const chunks = [];
   let size = 0;
@@ -118,25 +141,27 @@ const server = http.createServer((req, res) => {
       // 版本一致 → 返回极小的“未变化”响应，避免每次轮询都传输完整状态（隧道带宽/CPU 关键优化）
       const clientV = parseInt(url.searchParams.get('v') || '-1', 10);
       if (clientV === room.version) return sendJSON(res, { v: room.version, changed: false });
-      return sendJSON(res, Game.viewFor(room, me));
+      // 聊天增量：客户端带上最后一条消息的 ts（since），服务端只发新消息，避免全量重发
+      const chatSince = parseInt(url.searchParams.get('since') || '0', 10) || 0;
+      return sendJSON(res, Game.viewFor(room, me, chatSince));
     }
     if (pathname === '/api/action' && req.method === 'POST') {
       return readBody(req, res, body => {
-        const r = Game.handleAction(body.room, body.me, body.action, body.data || {});
+        const r = Game.handleAction(body.room, body.me, body.action, body.data || {}, body.chatSince || 0);
         if (r.error) return sendJSON(res, { error: r.error });
         sendJSON(res, { ok: true, view: r.view, left: !!r.left });
       });
     }
     if (pathname === '/api/chat' && req.method === 'POST') {
       return readBody(req, res, body => {
-        const r = Game.handleChat(body.room, body.me, body.data || {});
+        const r = Game.handleChat(body.room, body.me, body.data || {}, body.chatSince || 0);
         if (r.error) return sendJSON(res, { error: r.error });
         sendJSON(res, { ok: true, view: r.view });
       });
     }
     if (pathname === '/api/advance' && req.method === 'POST') {
       return readBody(req, res, body => {
-        const r = Game.handleAdvance(body.room, body.me);
+        const r = Game.handleAdvance(body.room, body.me, body.chatSince || 0);
         if (r.error) return sendJSON(res, { error: r.error });
         sendJSON(res, { ok: true, view: r.view });
       });
@@ -146,7 +171,7 @@ const server = http.createServer((req, res) => {
     }
     if (pathname === '/api/kick' && req.method === 'POST') {
       return readBody(req, res, body => {
-        const r = Game.handleKick(body.room, body.me, body.target);
+        const r = Game.handleKick(body.room, body.me, body.target, body.chatSince || 0);
         if (r.error) return sendJSON(res, { error: r.error });
         sendJSON(res, { ok: true, view: r.view });
       });
@@ -159,18 +184,7 @@ const server = http.createServer((req, res) => {
   const publicDir = path.join(__dirname, 'public');
   const file = path.join(publicDir, pathname);
   if (!file.startsWith(publicDir + path.sep)) { res.writeHead(403); res.end('Forbidden'); return; }
-  fs.readFile(file, (err, data) => {
-    if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('404 Not Found'); return; }
-    const headers = { 'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-cache', 'Vary': 'Accept-Encoding' };
-    if (acceptsGzip(req) && data.length > 512) {
-      headers['Content-Encoding'] = 'gzip';
-      res.writeHead(200, headers);
-      res.end(zlib.gzipSync(data));
-    } else {
-      res.writeHead(200, headers);
-      res.end(data);
-    }
-  });
+  return serveStatic(req, res, file);
 });
 
 /* ---------------------------- 崩溃容错 ---------------------------- */

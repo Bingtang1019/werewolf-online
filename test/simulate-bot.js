@@ -69,6 +69,8 @@ async function hostDriver(room, me, v) {
       const n = v.night || {};
       if (n.step === 'hunter') {
         if (n.hunter && n.hunter.shooter === me) await act(room, me, 'hunter_shoot', { target: null });
+      } else if (n.step === 'lovers' && (n.actors || []).some(a => a.id === me)) {
+        await act(room, me, 'lovers_ok', {}); // 情侣步优先于职业分支（避免房主被丘比特选进情侣时误发本职业动作）
       } else if ((n.actors || []).some(a => a.id === me)) {
         const ids = aliveIds();
         if (myRole === 'wolf') await act(room, me, 'wolf_set', { kill: ids.length ? pick(ids) : null, confirm: true });

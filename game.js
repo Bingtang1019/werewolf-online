@@ -611,7 +611,7 @@ function resolveNight(room) {
     }
   }
   if (wPoison && wPoison !== dreamT) die(wPoison, 'poison');
-  if (dreamT && dreamer && !dreamer.alive) die(dreamT, 'dream');
+  if (dreamT && dreamer && !dreamer.alive && dreamer.deadBy !== 'left') die(dreamT, 'dream'); // 摄梦人离开≠死亡，不带走梦游者
   applyLoverChain(room, deaths, die);
   room.nightDeaths = deaths;
   if (checkWin(room)) { bump(room); return; }
@@ -657,12 +657,9 @@ function resolveShot(room, target) {
 function applyLoverChain(room, deaths, die) {
   if (!room.lovers || !room.lovers[0]) return;
   const [a, b] = room.lovers;
-  let changed = true;
-  while (changed) {
-    changed = false;
-    if (deaths.includes(a) && byId(room, a) && !byId(room, a).alive) { if (die(b, 'lover') !== undefined) changed = true; }
-    if (deaths.includes(b) && byId(room, b) && !byId(room, b).alive) { if (die(a, 'lover') !== undefined) changed = true; }
-  }
+  // 情侣二人中一方死亡 → 另一方殉情（链只涉及两人，一次判定即可；die 内部已判活/去重）
+  if (deaths.includes(a)) die(b, 'lover');
+  if (deaths.includes(b)) die(a, 'lover');
 }
 function dieAndApplyLoverChain(room, deaths, pid, by) {
   const q = byId(room, pid);
@@ -889,8 +886,11 @@ function checkWin(room) {
     // 注意：若本局配置中本就没有某类职业（如 4 人局狼1+民3 无神职），
     // 该类别恒为 0 不应触发“全灭”——只按配置中存在的类别判定，否则狼人首刀即误判狼胜。
     const GOD_KEYS = ['seer', 'witch', 'hunter', 'dreamer', 'guard'];
-    const cfgGods = GOD_KEYS.reduce((a, k) => a + (room.roleCounts[k] || 0), 0);
-    const cfgCivs = room.roleCounts.villager || 0;
+    // 本局是否“配置了”神职/平民：按实际发出去的牌判定（盗贼玩法中可能被作废的身份卡不计入），
+    // 否则无神职/无民（或神职卡被作废）的局会因该类别恒为 0 而首刀即误判狼胜。
+    const hasRole = p => !!(p.role && (p.role !== 'thief' || p.pickedRole));
+    const cfgGods = room.players.some(p => hasRole(p) && GOD_KEYS.includes(effRole(p)));
+    const cfgCivs = room.players.some(p => hasRole(p) && effRole(p) === 'villager');
     const gods = goodCamp.filter(p => typeOf(room, p) === 'god');
     const civs = goodCamp.filter(p => typeOf(room, p) === 'civil');
     if ((gods.length === 0 && cfgGods > 0) || (civs.length === 0 && cfgCivs > 0)) {
@@ -1051,7 +1051,10 @@ function resolvePkVote(room) {
 
 /* ---------------------------- 消息 ---------------------------- */
 function addMessage(room, p, ch, text, marker) {
-  room.messages.push({ id: uid(), ch, from: p ? p.id : null, name: p ? p.name : '系统', text, marker: marker || null, ts: Date.now(), day: room.dayNum, night: room.nightNum });
+  const prev = room.messages[room.messages.length - 1];
+  // ts 严格递增：作为聊天增量传输的锚点（同一毫秒内的多条消息也不会丢失）
+  const ts = Math.max(Date.now(), (prev ? prev.ts : 0) + 1);
+  room.messages.push({ id: uid(), ch, from: p ? p.id : null, name: p ? p.name : '系统', text, marker: marker || null, ts, day: room.dayNum, night: room.nightNum });
   if (room.messages.length > 500) room.messages.splice(0, room.messages.length - 500);
 }
 function chatAccess(room, p, ch) {
@@ -1260,13 +1263,7 @@ function autoAdvanceInner(room) {
       return;
     }
     if (room.phase === 'pk_vote') {
-      if (allAliveVoted(room)) {
-        const res = computeVotes(room, true);
-        room.lastVoteResult = { kind: 'pk', totals: res.totals, max: res.max, result: res.tie ? 'tie' : (res.winner ? 'exile' : 'none'), exiled: res.winner, tied: res.tied || null };
-        if (res.winner && !res.tie) exilePlayer(room, res.winner);
-        else beginNight(room);
-        continue;
-      }
+      if (allAliveVoted(room)) { resolvePkVote(room); continue; }
       return;
     }
     return;
@@ -1289,31 +1286,31 @@ function applyAction(room, p, action, data) {
   if (res && res.ok) autoAdvance(room);
   return res;
 }
-function handleAction(roomId, pid, action, data) {
+function handleAction(roomId, pid, action, data, chatSince) {
   const room = rooms.get(roomId);
   if (!room) return { error: '房间不存在或已解散' };
   const p = byId(room, pid);
   if (!p) return { error: '玩家不存在' };
   const res = applyAction(room, p, action, data);
-  if (res && res.ok) return { ok: true, view: viewFor(room, pid), left: !!res.left };
+  if (res && res.ok) return { ok: true, view: viewFor(room, pid, chatSince || 0), left: !!res.left };
   return { error: res.error || '操作失败' };
 }
-function handleChat(roomId, pid, data) {
+function handleChat(roomId, pid, data, chatSince) {
   const room = rooms.get(roomId);
   if (!room) return { error: '房间不存在或已解散' };
   const p = byId(room, pid);
   if (!p) return { error: '玩家不存在' };
   const res = chatAction(room, p, data);
-  if (res.ok) return { ok: true, view: viewFor(room, pid) };
+  if (res.ok) return { ok: true, view: viewFor(room, pid, chatSince || 0) };
   return { error: res.error };
 }
-function handleAdvance(roomId, pid) {
+function handleAdvance(roomId, pid, chatSince) {
   const room = rooms.get(roomId);
   if (!room) return { error: '房间不存在或已解散' };
   const res = advance(room, pid);
   if (res.ok) {
     autoAdvance(room);
-    return { ok: true, view: viewFor(room, pid) };
+    return { ok: true, view: viewFor(room, pid, chatSince || 0) };
   }
   return { error: res.error };
 }
@@ -1323,12 +1320,12 @@ function handleLeave(roomId, pid) {
   removePlayer(room, pid, false);
   return { ok: true };
 }
-function handleKick(roomId, pid, target) {
+function handleKick(roomId, pid, target, chatSince) {
   const room = rooms.get(roomId);
   if (!room) return { error: '房间不存在或已解散' };
   if (pid !== room.host) return { error: '只有房主可以踢人' };
   removePlayer(room, target, true);
-  return { ok: true, view: viewFor(room, pid) };
+  return { ok: true, view: viewFor(room, pid, chatSince || 0) };
 }
 
 /* ============================ 人机玩家（房主调试功能） ============================
@@ -1506,7 +1503,7 @@ function maybeRunBots(room) {
 }
 
 /* ---------------------------- 玩家视图（个性化） ---------------------------- */
-function viewFor(room, pid) {
+function viewFor(room, pid, chatSince) {
   const me = byId(room, pid);
   const view = {
     v: room.version,
@@ -1544,7 +1541,8 @@ function viewFor(room, pid) {
       const q = byId(room, h.target);
       return { name: q ? q.name : '', result: h.result, night: h.night };
     }) : null,
-    chat: room.messages.filter(m => chatView(room, me, m.ch)),
+    chat: (chatSince > 0 ? room.messages.filter(m => m.ts > chatSince && chatView(room, me, m.ch)) : room.messages.filter(m => chatView(room, me, m.ch))),
+    chatFull: !(chatSince > 0),
     lastVoteResult: room.lastVoteResult,
     morningDeaths: room.morningDeaths.map(id => { const q = byId(room, id); return q ? { id, name: q.name, role: roleText(room, q), deadBy: q.deadBy, deadNote: q.deadNote } : null; }).filter(Boolean),
     dayDeaths: room.dayDeaths.map(id => { const q = byId(room, id); return q ? { id, name: q.name, role: roleText(room, q), deadBy: q.deadBy, deadNote: q.deadNote } : null; }).filter(Boolean),
@@ -1645,6 +1643,7 @@ function viewFor(room, pid) {
     view.sheriffVote = {
       candidates: room.candidates.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '' }; }),
       myVote: room.votes[pid] || null,
+      myVoted: room.votes.hasOwnProperty(pid),
       voted: room.players.filter(q => q.alive && room.votes.hasOwnProperty(q.id)).length,
       need: room.players.filter(q => q.alive).length,
     };
@@ -1653,6 +1652,7 @@ function viewFor(room, pid) {
   if (room.phase === 'vote' || room.phase === 'pk_vote') {
     view.vote = {
       myVote: room.votes[pid] || null,
+      myVoted: room.votes.hasOwnProperty(pid),
       voted: room.players.filter(q => q.alive && room.votes.hasOwnProperty(q.id)).length,
       need: room.players.filter(q => q.alive).length,
       pkTied: room.phase === 'pk_vote' ? room.pkTied.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '' }; }) : null,
