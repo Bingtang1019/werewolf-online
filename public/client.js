@@ -11,6 +11,9 @@ let me = null;
 let pollTimer = null;
 let pollMs = 0;
 let pollBusy = false; // 轮询在途标记：慢网络下跳过重叠轮询，防止增量叠加
+let sse = null;            // EventSource（SSE 推送唤醒）
+let sseConnected = false;  // SSE 当前是否可用
+const SSE_HEARTBEAT_MS = 30000; // SSE 可用时的心跳轮询间隔（30 秒）
 let draft = {};       // 当前面板的草稿选择 { target, target2, kill, charm }
 let lastPhaseKey = null; // 上次渲染的阶段标识（变化时清空草稿）
 let chatTab = 'all';
@@ -162,6 +165,11 @@ function resetPollTimer() {
 /* 自适应轮询间隔：需要我操作时快（700ms），否则慢（1600ms），大幅降低隧道带宽占用 */
 function currentPollMs() {
   if (!view) return 800;
+  // 连续失败（>=2 次）→ 指数退避，避免断线时轰炸隧道
+  if (pollFail >= 2) return Math.min(15000, 2000 * Math.pow(2, pollFail - 2));
+  // SSE 正常 → 长心跳即可（状态变化由推送即时触发）
+  if (sseConnected) return SSE_HEARTBEAT_MS;
+  // 常规轮询（SSE 不可用时回退原逻辑）
   return needsFastPoll() ? 700 : 1600;
 }
 function ensurePollTimer() {
@@ -223,6 +231,39 @@ async function poll() {
     if (pollFail >= 2) showNetBanner(); // 连续失败 2 次提示弱网，成功自动消失（29）
   }
   finally { pollBusy = false; }
+}
+
+/* 立即执行一次轮询（SSE 推送触发；pollBusy 防重入） */
+function pollNow() {
+  if (!roomId || !me) return;
+  poll();
+}
+
+/* ============ SSE 推送唤醒（可选优化，失败自动回退轮询） ============ */
+function connectSSE() {
+  if (!roomId || !me) return;
+  try { if (sse) sse.close(); } catch (e) {}
+  sseConnected = false;
+  try {
+    sse = new EventSource(`api/stream?room=${encodeURIComponent(roomId)}&me=${encodeURIComponent(me)}`);
+    sse.onopen = () => { sseConnected = true; ensurePollTimer(); }; // 切到 30s 心跳
+    sse.onmessage = e => {
+      try {
+        const j = JSON.parse(e.data);
+        if (!j) return;
+        if (j.gone) { toast('房间已解散'); clearSession(); setTimeout(() => location.reload(), 1200); return; }
+        if (j.v && view && j.v > view.v) pollNow(); // 版本变化 → 立即拉取最新状态
+      } catch (e) { /* 忽略非 JSON 数据 */ }
+    };
+    sse.onerror = () => {
+      // SSE 断开：立即回退常规轮询（含指数退避），5 秒后尝试重连
+      sseConnected = false;
+      try { if (sse) sse.close(); } catch (e) {}
+      sse = null;
+      ensurePollTimer();
+      setTimeout(connectSSE, 5000);
+    };
+  } catch (e) { sse = null; sseConnected = false; }
 }
 
 /* ---------------------------- 状态变化提示 ---------------------------- */
@@ -1521,5 +1562,6 @@ function enterRoom(room, playerId, v) {
   render();
   resetPollTimer();
   poll();
+  connectSSE(); // SSE 推送唤醒（失败自动回退轮询）
 }
 init();

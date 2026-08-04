@@ -97,6 +97,28 @@ function readBody(req, res, cb) {
   });
 }
 
+/* ---------------------------- SSE 推送唤醒（可选优化，不影响轮询 API） ---------------------------- */
+const sseClients = new Map(); // roomId -> { lastV: number, res: Set<ServerResponse> }
+// 每 1 秒检查订阅房间的版本变化，变化即推送 {v}（几字节），客户端收到后再拉 /api/state
+setInterval(() => {
+  const now = Date.now();
+  for (const [roomId, entry] of sseClients) {
+    const room = Game.rooms.get(roomId);
+    if (!room) {
+      // 房间已解散/被 TTL 回收：结束所有订阅连接
+      for (const res of entry.res) { try { res.end(); } catch (e) {} }
+      sseClients.delete(roomId);
+      continue;
+    }
+    room.lastActive = now; // SSE 订阅也算活跃，防 TTL 误回收
+    if (entry.lastV !== room.version) {
+      entry.lastV = room.version;
+      const msg = `data: ${JSON.stringify({ v: room.version })}\n\n`;
+      for (const res of entry.res) { try { res.write(msg); } catch (e) {} }
+    }
+  }
+}, 1000);
+
 const server = http.createServer((req, res) => {
   let pathname;
   try { pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname); }
@@ -144,6 +166,35 @@ const server = http.createServer((req, res) => {
       // 聊天增量：客户端带上最后一条消息的 ts（since），服务端只发新消息，避免全量重发
       const chatSince = parseInt(url.searchParams.get('since') || '0', 10) || 0;
       return sendJSON(res, Game.viewFor(room, me, chatSince));
+    }
+    if (pathname === '/api/stream' && req.method === 'GET') {
+      const url = new URL(req.url, 'http://x');
+      const roomId = (url.searchParams.get('room') || '').toUpperCase();
+      const me = url.searchParams.get('me') || '';
+      if (!/^[0-9A-Z]{6}$/.test(roomId)) { res.writeHead(404); res.end(); return; }
+      if (!/^[0-9a-f]{16}$/.test(me)) { res.writeHead(404); res.end(); return; }
+      const room = Game.rooms.get(roomId);
+      if (!room) { res.writeHead(404); res.end(); return; }
+      const p = room.players.find(q => q.id === me);
+      if (!p) { res.writeHead(404); res.end(); return; }
+      // SSE：只推送版本号，数据仍走 /api/state（保持单一数据源）
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-store',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no', // 告知部分反向代理不要缓冲 SSE
+      });
+      res.write(`data: ${JSON.stringify({ v: room.version })}\n\n`);
+      let entry = sseClients.get(roomId);
+      if (!entry) { entry = { lastV: room.version, res: new Set() }; sseClients.set(roomId, entry); }
+      entry.res.add(res);
+      const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch (e) {} }, 25000); // 防中间设备掐空闲连接
+      req.on('close', () => {
+        clearInterval(hb);
+        entry.res.delete(res);
+        if (!entry.res.size) sseClients.delete(roomId);
+      });
+      return;
     }
     if (pathname === '/api/action' && req.method === 'POST') {
       return readBody(req, res, body => {

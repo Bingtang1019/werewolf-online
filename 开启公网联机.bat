@@ -35,7 +35,7 @@ echo   Send this URL to your friends:
 echo   (look for https://xxx.trycloudflare.com above)
 echo ==============================================
 :cf
-"%CF%" tunnel --url http://localhost:3000 --protocol http2 --edge-ip-version 4 --no-autoupdate
+"%CF%" tunnel --url http://localhost:3000 --protocol http2 --edge-ip-version 4 --no-autoupdate --metrics localhost:39571
 echo [WARN] Tunnel exited/crashed. Restarting in 3s...  (press Ctrl+C twice to quit)
 timeout /t 3 /nobreak >nul
 goto cf
