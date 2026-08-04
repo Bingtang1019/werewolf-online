@@ -371,23 +371,26 @@ function renderPanel() {
   panel.classList.remove('night-panel');
   // 轮到我行动 → 面板呼吸光圈（“睁眼”高亮）
   panel.classList.toggle('my-turn', view.phase !== 'lobby' && view.phase !== 'reveal' && view.phase !== 'ended' && needsFastPoll());
+  let html;
   switch (view.phase) {
-    case 'lobby': panel.innerHTML = renderLobby(); break;
-    case 'reveal': panel.innerHTML = renderReveal(); break;
-    case 'night': panel.innerHTML = renderNight(); panel.classList.add('night-panel'); break;
-    case 'morning': panel.innerHTML = renderMorning(); break;
-    case 'lastword': panel.innerHTML = renderLastword(); break;
-    case 'handover': panel.innerHTML = renderHandover(); break;
-    case 'sheriff_campaign': panel.innerHTML = renderCampaign(); break;
-    case 'sheriff_vote': panel.innerHTML = renderSheriffVote(); break;
-    case 'discuss': panel.innerHTML = renderDiscuss(); break;
-    case 'vote': panel.innerHTML = renderVote(); break;
-    case 'pk_speech': panel.innerHTML = renderPkSpeech(); break;
-    case 'pk_vote': panel.innerHTML = renderVote(true); break;
-    case 'hunter_shot': panel.innerHTML = renderHunterShot(); break;
-    case 'ended': panel.innerHTML = renderEnded(); break;
-    default: panel.innerHTML = '';
+    case 'lobby': html = renderLobby(); break;
+    case 'reveal': html = renderReveal(); break;
+    case 'night': html = renderNight(); panel.classList.add('night-panel'); break;
+    case 'morning': html = renderMorning(); break;
+    case 'lastword': html = renderLastword(); break;
+    case 'handover': html = renderHandover(); break;
+    case 'sheriff_campaign': html = renderCampaign(); break;
+    case 'sheriff_vote': html = renderSheriffVote(); break;
+    case 'discuss': html = renderDiscuss(); break;
+    case 'vote': html = renderVote(); break;
+    case 'pk_speech': html = renderPkSpeech(); break;
+    case 'pk_vote': html = renderVote(true); break;
+    case 'hunter_shot': html = renderHunterShot(); break;
+    case 'ended': html = renderEnded(); break;
+    default: html = '';
   }
+  // 重绘守卫：内容未变化时不替换 DOM——避免轮询高频重绘把“正在进行的点击”吞掉（偶现按钮点不动）
+  if (panel.innerHTML !== html) panel.innerHTML = html;
 }
 
 /* ---------------- 大厅 ---------------- */
@@ -425,7 +428,7 @@ function renderLobby() {
       </div>
       <div class="tip-text">人机自动执行本职业行动（夜晚决策/白天投票），用于缺人陪练与调试；添加后请同步调整人数上限，也可用「踢出」移除任意人机。</div></div>`;
     const ready = view.players.length === view.playerCap;
-    html += `<div class="btn-row"><button class="primary" id="btn-start" onclick="act('start')" ${ready ? '' : 'disabled'}>开始游戏</button></div>`;
+    html += `<div class="btn-row"><button class="primary" id="btn-start" onpointerdown="act('start')" ${ready ? '' : 'disabled'}>开始游戏</button></div>`;
     if (!ready) html += `<div class="tip-text">还需 ${view.playerCap - view.players.length} 人加入</div>`;
   } else {
     html += `<div class="waiting">等待房主配置并开始游戏…</div>`;
@@ -469,7 +472,7 @@ function renderReveal() {
     html += `<div class="role-cards">` + (rv.thiefCards || []).map((r, i) =>
       `<div class="role-card ${ROLE_CAMP[r.key] || ''} ${draft.thiefIdx === i ? 'chosen' : ''}" style="animation-delay:${i * 80}ms" onclick="draft.thiefIdx = ${i}; render()"><div class="rc-emoji">${ROLE_EMOJI[r.key] || ''}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
     ).join('') + `</div>`;
-    html += `<div class="btn-row"><button class="primary" onclick="doThiefPick()" ${draft.thiefIdx === undefined ? 'disabled' : ''}>确认选择</button></div>`;
+    html += `<div class="btn-row"><button class="primary" onpointerdown="doThiefPick()" ${draft.thiefIdx === undefined ? 'disabled' : ''}>确认选择</button></div>`;
   } else if (rv.thiefPicking) {
     html += `<div class="waiting">🃏 盗贼正在窃走......（30 秒内自动选择）</div>`;
   } else if (!rv.dealt) {
@@ -484,7 +487,7 @@ function renderReveal() {
     const meP = view.players.find(p => p.isMe);
     html += meP && meP.confirmed
       ? `<div class="tip-text">✅ 已确认，等待其他人…</div>`
-      : `<div class="btn-row"><button class="primary" onclick="act('confirm')">确认身份</button></div>`;
+      : `<div class="btn-row"><button class="primary" onpointerdown="act('confirm')">确认身份</button></div>`;
     html += `<div class="tip-text">${rv.thiefTook ? '⏳ 盗贼结果展示中，5 秒后自动进入夜晚…' : '⏳ 全员确认或等待 5 秒后自动进入夜晚'}</div>`;
   }
   const done = (rv.confirmed || []).filter(c => c.ok).length;
@@ -517,13 +520,13 @@ function renderNight() {
         if (view.nightNum === 1) {
           html += `<div class="panel-desc">选择两名玩家成为情侣（可包含自己），点选两名玩家后确认：</div>`;
           html += pickTip;
-          html += `<div class="btn-row"><button class="primary" onclick="doCupidPick()" ${draft.target && draft.target2 ? '' : 'disabled'}>确定情侣</button></div>`;
+          html += `<div class="btn-row"><button class="primary" onpointerdown="doCupidPick()" ${draft.target && draft.target2 ? '' : 'disabled'}>确定情侣</button></div>`;
           if (!draft.target || !draft.target2) html += `<div class="tip-text">在左侧玩家列表中点选两名玩家</div>`;
         } else {
           html += `<div class="panel-desc">上一对情侣已殉情，你可以重新指定两名玩家为情侣（阵营将随新情侣变化），也可以选择不再指定：</div>`;
           html += pickTip;
-          html += `<div class="btn-row"><button class="primary" onclick="doCupidPick()" ${draft.target && draft.target2 ? '' : 'disabled'}>重新指定情侣</button></div>`;
-          html += `<div class="btn-row"><button onclick="act('cupid_pick',{ids:null})">本轮不指定（放弃重选）</button></div>`;
+          html += `<div class="btn-row"><button class="primary" onpointerdown="doCupidPick()" ${draft.target && draft.target2 ? '' : 'disabled'}>重新指定情侣</button></div>`;
+          html += `<div class="btn-row"><button onpointerdown="act('cupid_pick',{ids:null})">本轮不指定（放弃重选）</button></div>`;
           if (!draft.target || !draft.target2) html += `<div class="tip-text">在左侧玩家列表中点选两名玩家</div>`;
         }
       } else html += `<div class="waiting">等待丘比特处理情侣…</div>`;
@@ -535,7 +538,7 @@ function renderNight() {
         html += `<div class="panel-desc">被丘比特指认的瞬间你们醒来，<b>彼此确认了对方的身份</b>：</div>`;
         html += `<div class="role-card" style="max-width:340px;margin:8px auto"><div class="rc-name">${escapeHtml(n.lovers.partnerName)} 的身份：${escapeHtml(n.lovers.partnerRole)}</div></div>`;
         html += `<div class="panel-desc">💘 指认你们的丘比特是：<b>${escapeHtml(n.lovers.cupidName)}</b>（对方不知道你的身份，丘比特也不知道你们各自的真实阵营）</div>`;
-        html += `<div class="btn-row"><button class="primary" onclick="act('lovers_ok')">知道了</button></div>`;
+        html += `<div class="btn-row"><button class="primary" onpointerdown="act('lovers_ok')">知道了</button></div>`;
       } else html += `<div class="waiting">等待情侣确认…</div>`;
       break;
     }
@@ -544,7 +547,7 @@ function renderNight() {
         const last = n.guard && n.guard.last;
         html += `<div class="panel-desc">守护一名玩家（可守自己，不能连续两晚守同一人）。上一晚守护：${last ? escapeHtml(nameOf(last)) : '无'}</div>`;
         html += `<div class="tip-text">已选：${draft.target ? escapeHtml(nameOf(draft.target)) : '—'}</div>`;
-        html += `<div class="btn-row"><button class="primary" onclick="doPick('guard_pick', 'guard')" ${draft.target ? '' : 'disabled'}>确认守护</button></div>`;
+        html += `<div class="btn-row"><button class="primary" onpointerdown="doPick('guard_pick', 'guard')" ${draft.target ? '' : 'disabled'}>确认守护</button></div>`;
         if (!draft.target) html += `<div class="tip-text">在左侧玩家列表中点选目标</div>`;
       } else html += `<div class="waiting">等待守卫行动…</div>`;
       break;
@@ -553,7 +556,7 @@ function renderNight() {
       if (view.my.roleKey === 'dreamer') {
         html += `<div class="panel-desc">选择一名玩家成为梦游者（不能梦自己；梦游者免疫夜间伤害）。</div>`;
         html += `<div class="tip-text">已选：${draft.target ? escapeHtml(nameOf(draft.target)) : '—'}</div>`;
-        html += `<div class="btn-row"><button class="primary" onclick="doPick('dreamer_pick', 'dreamer')" ${draft.target ? '' : 'disabled'}>确认</button></div>`;
+        html += `<div class="btn-row"><button class="primary" onpointerdown="doPick('dreamer_pick', 'dreamer')" ${draft.target ? '' : 'disabled'}>确认</button></div>`;
         if (!draft.target) html += `<div class="tip-text">在左侧玩家列表中点选目标</div>`;
       } else html += `<div class="waiting">等待摄梦人行动…</div>`;
       break;
@@ -574,15 +577,15 @@ function renderNight() {
         const killed = draft.kill === 'none' ? '空刀' : draft.kill ? nameOf(draft.kill) : (n.wolf.kill ? nameOf(n.wolf.kill) : '未选择');
         const charmed = draft.charm === 'none' ? '不魅惑' : draft.charm ? nameOf(draft.charm) : (n.wolf.charm ? nameOf(n.wolf.charm) : '未选择');
         html += `<div class="set-group"><div class="sg-title">🔪 刀人目标：${escapeHtml(killed)}</div>
-          <div class="btn-row">${alivePlayers().map(p => `<button class="mini" onclick="setWolfKill('${p.id}')">${escapeHtml(p.name)}</button>`).join('')}
-          <button class="mini" onclick="setWolfKill('none')">空刀</button></div></div>`;
+          <div class="btn-row">${alivePlayers().map(p => `<button class="mini" onpointerdown="setWolfKill('${p.id}')">${escapeHtml(p.name)}</button>`).join('')}
+          <button class="mini" onpointerdown="setWolfKill('none')">空刀</button></div></div>`;
         if (hasWolfBeauty) {
           html += `<div class="set-group"><div class="sg-title">💘 魅惑目标：${escapeHtml(charmed)}</div>
-            <div class="btn-row">${alivePlayers().filter(p => p.id !== view.my.id).map(p => `<button class="mini" onclick="setWolfCharm('${p.id}')">${escapeHtml(p.name)}</button>`).join('')}
-            <button class="mini" onclick="setWolfCharm('none')">不魅惑</button></div></div>`;
+            <div class="btn-row">${alivePlayers().filter(p => p.id !== view.my.id).map(p => `<button class="mini" onpointerdown="setWolfCharm('${p.id}')">${escapeHtml(p.name)}</button>`).join('')}
+            <button class="mini" onpointerdown="setWolfCharm('none')">不魅惑</button></div></div>`;
         }
         const meActed = n.actors.find(a => a.id === view.my.id);
-        html += `<div class="btn-row"><button class="primary" onclick="doWolfConfirm()" ${meActed && meActed.acted ? 'disabled' : ''}>确认行动</button></div>`;
+        html += `<div class="btn-row"><button class="primary" onpointerdown="doWolfConfirm()" ${meActed && meActed.acted ? 'disabled' : ''}>确认行动</button></div>`;
         if (meActed && meActed.acted) html += `<div class="tip-text">✅ 你已确认，等待其他狼人…</div>`;
       } else html += `<div class="waiting">等待狼人行动…</div>`;
       break;
@@ -591,7 +594,7 @@ function renderNight() {
       if (view.my.roleKey === 'seer') {
         html += `<div class="panel-desc">查验一名玩家是好人还是狼人。</div>`;
         html += `<div class="tip-text">已选：${draft.target ? escapeHtml(nameOf(draft.target)) : '—'}</div>`;
-        html += `<div class="btn-row"><button class="primary" onclick="doPick('seer_pick', 'seer')" ${draft.target ? '' : 'disabled'}>查验</button></div>`;
+        html += `<div class="btn-row"><button class="primary" onpointerdown="doPick('seer_pick', 'seer')" ${draft.target ? '' : 'disabled'}>查验</button></div>`;
         if (n.seer && n.seer.history && n.seer.history.length) {
           html += `<div class="set-group"><div class="sg-title">历史查验</div>` +
             n.seer.history.map(h => `<div class="count-row"><div class="cr-name">第${h.night}夜 · ${escapeHtml(h.name)}</div><div class="cr-ctrl">${h.result === 'wolf' ? '<span style="color:var(--wolf)">🐺 狼人</span>' : '<span style="color:var(--good)">✅ 好人</span>'}</div></div>`).join('') + `</div>`;
@@ -605,11 +608,11 @@ function renderNight() {
         const victim = w.victim ? nameOf(w.victim) : '无人被袭击';
         html += `<div class="panel-desc">今晚被狼人袭击的是：<b>${escapeHtml(victim)}</b>（解药可救；每晚最多用一瓶药，可自救）。</div>`;
         html += `<div class="set-group"><div class="sg-title">解药 ${w.saveUsed ? '（已使用）' : '（未使用）'}</div>
-          <div class="btn-row"><button class="primary" onclick="witchSave()" ${!w.saveUsed && w.victim ? '' : 'disabled'}>使用解药救他</button></div></div>`;
+          <div class="btn-row"><button class="primary" onpointerdown="witchSave()" ${!w.saveUsed && w.victim ? '' : 'disabled'}>使用解药救他</button></div></div>`;
         html += `<div class="set-group"><div class="sg-title">毒药 ${w.poisonUsed ? '（已使用）' : '（未使用）'}</div>
           <div class="tip-text">已选：${draft.poison ? escapeHtml(nameOf(draft.poison)) : '—'}</div>
-          <div class="btn-row">${alivePlayers().filter(p => p.id !== view.my.id).map(p => `<button class="mini" onclick="draft.poison='${p.id}'; renderPanel()">${escapeHtml(p.name)}</button>`).join('')}</div></div>`;
-        html += `<div class="btn-row"><button class="primary" onclick="witchPoison()" ${draft.poison && !w.poisonUsed ? '' : 'disabled'}>毒杀他</button><button onclick="act('witch_act',{save:false})">跳过（本晚不用药）</button></div>`;
+          <div class="btn-row">${alivePlayers().filter(p => p.id !== view.my.id).map(p => `<button class="mini" onpointerdown="draft.poison='${p.id}'; renderPanel()">${escapeHtml(p.name)}</button>`).join('')}</div></div>`;
+        html += `<div class="btn-row"><button class="primary" onpointerdown="witchPoison()" ${draft.poison && !w.poisonUsed ? '' : 'disabled'}>毒杀他</button><button onpointerdown="act('witch_act',{save:false})">跳过（本晚不用药）</button></div>`;
       } else html += `<div class="waiting">等待女巫行动…</div>`;
       break;
     }
@@ -629,8 +632,8 @@ function hunterShotHtml(h) {
     return `<div class="panel-title" style="color:var(--accent)">🔫 你被狼人杀害 / 放逐，可以开枪</div>
       <div class="panel-desc">选择一名玩家枪杀（不能开枪自杀），或选择放弃。</div>
       <div class="tip-text">已选：${draft.target ? escapeHtml(nameOf(draft.target)) : '—'}</div>
-      <div class="btn-row">${alivePlayers().filter(p => p.id !== view.my.id).map(p => `<button class="mini" onclick="draft.target='${p.id}'; renderPanel()">${escapeHtml(p.name)}</button>`).join('')}</div>
-      <div class="btn-row"><button class="primary" onclick="hunterShoot()" ${draft.target ? '' : 'disabled'}>开枪</button><button onclick="hunterShoot()" ${draft.target ? 'style="display:none"' : ''}>放弃开枪</button></div>`;
+      <div class="btn-row">${alivePlayers().filter(p => p.id !== view.my.id).map(p => `<button class="mini" onpointerdown="draft.target='${p.id}'; renderPanel()">${escapeHtml(p.name)}</button>`).join('')}</div>
+      <div class="btn-row"><button class="primary" onpointerdown="hunterShoot()" ${draft.target ? '' : 'disabled'}>开枪</button><button onpointerdown="hunterShoot()" ${draft.target ? 'style="display:none"' : ''}>放弃开枪</button></div>`;
   }
   return `<div class="waiting">等待猎人开枪…</div>`;
 }
@@ -641,7 +644,7 @@ function renderMorning() {
   if (view.morningDeaths && view.morningDeaths.length === 0) html += `<div class="safe-night">昨夜平安无事</div>`;
   else if (view.morningDeaths) html += deathListHtml(view.morningDeaths, '昨夜死亡');
   html += `<div class="tip-text">请阅读公告。${view.morning.canContinue ? '点击继续进入白天流程。' : '等待房主继续…'}</div>`;
-  if (view.morning.canContinue) html += `<div class="btn-row"><button class="primary" onclick="doAdvance()">继续</button></div>`;
+  if (view.morning.canContinue) html += `<div class="btn-row"><button class="primary" onpointerdown="doAdvance()">继续</button></div>`;
   return html;
 }
 function renderLastword() {
@@ -651,12 +654,12 @@ function renderLastword() {
   if (myEnt && !myEnt.posted) {
     html += `<div class="panel-desc">你有一句遗言可以发表（仅一次）：</div>`;
     html += `<textarea id="lw-text" rows="3" placeholder="最后的遗言…" maxlength="200"></textarea>`;
-    html += `<div class="btn-row"><button class="primary" onclick="sendLastword()">发表遗言</button><button onclick="act('skip')">放弃遗言</button></div>`;
+    html += `<div class="btn-row"><button class="primary" onpointerdown="sendLastword()">发表遗言</button><button onpointerdown="act('skip')">放弃遗言</button></div>`;
   } else {
     const wait = (lw.entitled || []).map(e => `${escapeHtml(e.name)}${e.posted ? ' ✅' : '…'}`).join('、');
     html += `<div class="waiting">等待遗言：${escapeHtml(wait)}</div>`;
   }
-  if (lw.canAdvance) html += `<div class="btn-row"><button onclick="doAdvance()">跳过遗言</button></div>`;
+  if (lw.canAdvance) html += `<div class="btn-row"><button onpointerdown="doAdvance()">跳过遗言</button></div>`;
   return html;
 }
 function renderHandover() {
@@ -667,13 +670,13 @@ function renderHandover() {
     html += `<div class="tip-text">已选：${draft.target ? escapeHtml(nameOf(draft.target)) : '—'}</div>`;
     // 目标选择按钮（与点玩家卡双保险：任一方式均可选定移交对象）
     html += `<div class="btn-row">` + alivePlayers().filter(p => p.id !== view.my.id).map(p =>
-      `<button class="mini ${draft.target === p.id ? 'chosen' : ''}" onclick="draft.target='${p.id}'; renderPanel()">${escapeHtml(p.name)}</button>`
+      `<button class="mini ${draft.target === p.id ? 'chosen' : ''}" onpointerdown="draft.target='${p.id}'; renderPanel()">${escapeHtml(p.name)}</button>`
     ).join('') + `</div>`;
-    html += `<div class="btn-row"><button class="primary" onclick="handoverPick()" ${draft.target ? '' : 'disabled'}>移交警徽</button><button onclick="act('handover',{target:null})">撕毁警徽</button></div>`;
+    html += `<div class="btn-row"><button class="primary" onpointerdown="handoverPick()" ${draft.target ? '' : 'disabled'}>移交警徽</button><button onpointerdown="act('handover',{target:null})">撕毁警徽</button></div>`;
   } else {
     html += `<div class="waiting">${escapeHtml(h.fromName || '')} 正在处理警徽…</div>`;
   }
-  if (h.canAdvance) html += `<div class="btn-row"><button onclick="doAdvance()">跳过（撕毁）</button></div>`;
+  if (h.canAdvance) html += `<div class="btn-row"><button onpointerdown="doAdvance()">跳过（撕毁）</button></div>`;
   return html;
 }
 function renderCampaign() {
@@ -681,12 +684,12 @@ function renderCampaign() {
   let html = `<div class="panel-title">🗳️ 警长竞选 · 报名</div>`;
   html += `<div class="panel-desc">是否竞选警长？竞选者稍后接受全体投票（警长白天最后发言，投票计 1.5 票）。</div>`;
   if (!c.myDecided) {
-    html += `<div class="btn-row"><button class="primary" onclick="act('campaign',{run:true})">我要竞选</button><button onclick="act('campaign',{run:false})">放弃</button></div>`;
+    html += `<div class="btn-row"><button class="primary" onpointerdown="act('campaign',{run:true})">我要竞选</button><button onpointerdown="act('campaign',{run:false})">放弃</button></div>`;
   } else {
     html += `<div class="tip-text">✅ 你已做出选择</div>`;
   }
   html += `<div class="tip-text" style="margin-top:8px">报名进度：${c.progress}/${c.need}${c.candidates.length ? '　竞选者：' + c.candidates.map(x => escapeHtml(x.name)).join('、') : ''}</div>`;
-  if (c.canAdvance) html += `<div class="btn-row"><button onclick="doAdvance()">跳过报名</button></div>`;
+  if (c.canAdvance) html += `<div class="btn-row"><button onpointerdown="doAdvance()">跳过报名</button></div>`;
   return html;
 }
 function renderSheriffVote() {
@@ -694,8 +697,8 @@ function renderSheriffVote() {
   let html = `<div class="panel-title">🗳️ 警长竞选 · 投票</div>`;
   html += `<div class="panel-desc">投给一名竞选者（或弃票）。</div>`;
   html += `<div class="tip-text">已选：${draft.target ? escapeHtml(nameOf(draft.target)) : '—'}</div>`;
-  html += `<div class="btn-row">${s.candidates.map(p => `<button class="mini" onclick="draft.target='${p.id}'; renderPanel()">${escapeHtml(p.name)}</button>`).join('')}</div>`;
-  html += `<div class="btn-row"><button class="primary" onclick="castVote()" ${draft.target ? '' : 'disabled'}>投票</button><button onclick="castVote(true)">弃票</button></div>`;
+  html += `<div class="btn-row">${s.candidates.map(p => `<button class="mini" onpointerdown="draft.target='${p.id}'; renderPanel()">${escapeHtml(p.name)}</button>`).join('')}</div>`;
+  html += `<div class="btn-row"><button class="primary" onpointerdown="castVote()" ${draft.target ? '' : 'disabled'}>投票</button><button onpointerdown="castVote(true)">弃票</button></div>`;
   html += `<div class="tip-text">已投 ${s.voted}/${s.need}</div>`;
   return html;
 }
@@ -703,7 +706,7 @@ function renderDiscuss() {
   let html = `<div class="panel-title">☀️ 白天发言（第 ${view.dayNum} 天）</div>`;
   html += `<div class="panel-desc">自由发言讨论，找出狼人。死后玩家也可发言。</div>`;
   if (view.discuss && view.discuss.canStartVote) {
-    html += `<div class="btn-row"><button class="primary" onclick="act('startVote')">进入放逐投票</button></div>`;
+    html += `<div class="btn-row"><button class="primary" onpointerdown="act('startVote')">进入放逐投票</button></div>`;
   } else {
     html += `<div class="waiting">等待房主宣布进入投票…</div>`;
   }
@@ -721,8 +724,8 @@ function renderVote(isPk) {
   html += `<div class="tip-text">已选：${draft.target ? escapeHtml(nameOf(draft.target)) : '—'}</div>`;
   // PK 投票只列出平票玩家；普通投票列出所有存活玩家
   const candidates = isPk && v.pkTied && v.pkTied.length ? v.pkTied : alivePlayers();
-  html += `<div class="btn-row">${candidates.map(p => `<button class="mini" onclick="draft.target='${p.id}'; renderPanel()">${escapeHtml(p.name)}</button>`).join('')}</div>`;
-  html += `<div class="btn-row"><button class="primary" onclick="castVote()" ${draft.target ? '' : 'disabled'}>投票</button><button onclick="castVote(true)">弃票</button></div>`;
+  html += `<div class="btn-row">${candidates.map(p => `<button class="mini" onpointerdown="draft.target='${p.id}'; renderPanel()">${escapeHtml(p.name)}</button>`).join('')}</div>`;
+  html += `<div class="btn-row"><button class="primary" onpointerdown="castVote()" ${draft.target ? '' : 'disabled'}>投票</button><button onpointerdown="castVote(true)">弃票</button></div>`;
   const pct = v.need ? Math.round(v.voted / v.need * 100) : 0;
   html += `<div class="vote-progress"><div class="vp-bar"><div class="vp-fill" style="width:${pct}%"></div></div><span>已投 ${v.voted}/${v.need}</span></div>`;
   return html;
@@ -731,7 +734,7 @@ function renderPkSpeech() {
   const p = view.pkSpeech || {};
   let html = `<div class="panel-title">⚔️ PK 发言</div>`;
   html += `<div class="panel-desc">平票玩家 ${(p.tied || []).map(x => escapeHtml(x.name)).join('、')} 做最后陈述，然后重新投票。</div>`;
-  if (p.canStartVote) html += `<div class="btn-row"><button class="primary" onclick="act('startVote')">开始 PK 投票</button></div>`;
+  if (p.canStartVote) html += `<div class="btn-row"><button class="primary" onpointerdown="act('startVote')">开始 PK 投票</button></div>`;
   else html += `<div class="waiting">等待房主开始 PK 投票…</div>`;
   return html;
 }
@@ -745,7 +748,7 @@ function renderEnded() {
   html += `<div class="end-roles">` + (e.roles || []).map(r =>
     `<div class="player ${r.alive ? '' : 'dead'}"><div class="phead"><div class="avatar ${r.alive ? '' : 'dead'}">${avatarOf(r)}</div><div class="pmeta"><div class="pname">${escapeHtml(r.name)}${r.alive ? '' : ' 💀'}</div><div class="prole ${campClass(r.camp)}-role">${ROLE_EMOJI_TEXT[r.role] || ''} ${escapeHtml(r.role)}</div><div class="pdead"><span class="camp-tag ${campClass(r.camp)}">${escapeHtml(r.camp)}</span></div></div></div></div>`
   ).join('') + `</div>`;
-  if (view.canRematch) html += `<div class="btn-row"><button class="primary" onclick="act('rematch')">再来一局</button></div>`;
+  if (view.canRematch) html += `<div class="btn-row"><button class="primary" onpointerdown="act('rematch')">再来一局</button></div>`;
   return html;
 }
 function campClass(c) {
