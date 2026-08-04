@@ -1,0 +1,13 @@
+{
+  "name": "狼人杀 · 在线版",
+  "short_name": "狼人杀",
+  "description": "和朋友们一起玩狼人杀：纯网页、零安装、零依赖",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#10131a",
+  "theme_color": "#10131a",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -224,6 +224,10 @@ button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 
 /* 夜晚 */
 #panel.night-panel { background: linear-gradient(180deg, #121a2e 0%, #0c101c 100%); border-color: #253052; }
+/* 角色睁眼氛围（v1.3.0）：面板光晕随夜晚步骤变角色色（--step-glow 由 JS 按 step 设置） */
+#panel.night-panel {
+  box-shadow: 0 0 46px -10px var(--step-glow, transparent), inset 0 0 34px -16px var(--step-glow, transparent);
+}
 .night-title { color: #8fa8e8; }
 .role-cards { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
 .role-card {
@@ -434,6 +438,18 @@ body.theme-day {
 .vp-bar { flex: 1; height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
 .vp-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #f2c35c); border-radius: 3px; transition: width .35s ease; }
 .vote-progress span { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+/* 房主“已投明细”（v1.3.0）：仅房主可见（服务端 votedBy 只下发给房主） */
+.vote-detail { margin-top: 10px; padding: 8px 10px; border: 1px dashed rgba(96,116,160,.5); border-radius: 10px; background: rgba(255,255,255,.02); }
+.vd-title { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.vd-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.vd-item { font-size: 12px; padding: 2px 8px; border-radius: 12px; background: var(--bg3); border: 1px solid var(--line); }
+
+/* 赛后趣味统计（v1.3.0） */
+.fun-stats { margin-bottom: 14px; padding: 12px 14px; border-radius: 12px; background: linear-gradient(180deg, rgba(232,182,76,.08), transparent); border: 1px solid rgba(232,182,76,.25); }
+.fun-stats .panel-title { margin-bottom: 8px; }
+.fs-row { font-size: 13px; line-height: 1.9; color: var(--muted); }
+.fs-row b { color: var(--accent); }
 
 /* 顶栏底部倒计时进度条 */
 #topbar { position: relative; }
@@ -827,12 +843,49 @@ body.less-motion .flip-card .fc-inner { transform: rotateY(180deg); animation: n
 }
 @keyframes fxBadgeFly { from { transform: translate(0, 0); } to { transform: var(--fx, translate(0, 0)); } }
 
+/* 行动反馈动画（v1.3.0）：验/守/梦/魅/刀/救/毒/枪，目标卡闪现职业图标 */
+.fx-seer, .fx-shield, .fx-dream, .fx-heart, .fx-blade, .fx-heal, .fx-shot {
+  font-size: 34px; line-height: 1; animation: fxTargetPop 1s cubic-bezier(.2, .9, .3, 1.1) both;
+}
+.fx-seer { filter: drop-shadow(0 0 10px rgba(90, 162, 255, .95)); }
+.fx-shield { filter: drop-shadow(0 0 10px rgba(74, 222, 128, .95)); }
+.fx-dream { filter: drop-shadow(0 0 10px rgba(106, 216, 208, .95)); }
+.fx-heart { filter: drop-shadow(0 0 10px rgba(255, 122, 200, .95)); }
+.fx-blade { filter: drop-shadow(0 0 10px rgba(224, 96, 96, .95)); }
+.fx-heal { filter: drop-shadow(0 0 10px rgba(120, 200, 120, .95)); }
+.fx-shot { filter: drop-shadow(0 0 10px rgba(255, 140, 90, .95)); }
+@keyframes fxTargetPop {
+  0% { opacity: 0; transform: scale(.3) translateY(8px); }
+  20% { opacity: 1; transform: scale(1.3) translateY(-4px); }
+  55% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(.85) translateY(-18px); }
+}
+
+/* 环境粒子（v1.3.0）：夜晚流星 / 白天阳光粒子 */
+.fx-meteor { font-size: 20px; animation: fxMeteor 1.6s cubic-bezier(.3, .1, .9, .4) forwards; filter: drop-shadow(0 0 6px rgba(255, 235, 180, .8)); }
+@keyframes fxMeteor {
+  0% { opacity: 0; transform: translate(0, 0) rotate(-18deg); }
+  10% { opacity: 1; }
+  100% { opacity: 0; transform: var(--fx, translate(-40vw, 30vh)) rotate(-18deg); }
+}
+.fx-sun { font-size: 13px; animation: fxSun 2.4s ease-out forwards; filter: drop-shadow(0 0 5px rgba(255, 235, 180, .7)); }
+@keyframes fxSun {
+  0% { opacity: 0; transform: translate(0, 0); }
+  15% { opacity: .9; }
+  100% { opacity: 0; transform: var(--fx, translate(0, -30vh)); }
+}
+
 /* 减少动效（31）：localStorage ww_less_motion，禁用全部瞬时动画 */
 body.less-motion *, body.less-motion *::before, body.less-motion *::after {
   animation: none !important; transition: none !important;
 }
 .lm-toggle { display: block; margin-top: 12px; color: var(--muted); font-size: 13px; cursor: pointer; user-select: none; }
 .lm-toggle input { vertical-align: -2px; }
+/* 首页设置行（v1.3.0）：减少动效 + 字号调节 */
+.lm-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
+.lm-toggle-row .lm-toggle { margin-top: 0; }
+.font-scale { display: inline-flex; gap: 4px; }
+.font-scale button { min-width: 30px; }
 
 /* 行动区固定底部（#22 轻量版）：面板最后一排按钮吸在视口底部，零重构、不动滚动容器 */
 #panel .btn-row:last-child { position: sticky; bottom: 8px; z-index: 2; }

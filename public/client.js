@@ -113,6 +113,7 @@ let lastInfoHtml = null;   // 信息区内容缓存（配合重绘守卫：内�
 let prevSheriff = null;    // 上次渲染的警长（变化时触发警徽飞行/撕毁提示）
 let prevFocusPhase = null; // 上次触发过“选人自动滚动”的阶段键（每阶段仅滚动一次）
 let pollFail = 0;          // 连续轮询失败计数（>=2 显示弱网横幅）
+let prevMyTurn = false;    // 上次是否轮到我行动（变化时短震，v1.3.0）
 let AC = null;             // Web Audio 上下文（首次用户交互后创建）
 let sfxOn = true;          // 音效开关（localStorage ww_sfx）
 
@@ -129,6 +130,7 @@ async function act(action, data) {
   const r = await api('api/action', { room: roomId, me, action, data: data || {}, chatSince: lastChatTs() });
   if (r.error) { toast(r.error); return null; }
   if (r.left) { clearSession(); location.reload(); return null; }
+  fxForAction(action, data || {}); // v1.3.0：行动成功 → 目标卡反馈动画
   applyView(r.view);
   resetPollTimer();
   render();
@@ -156,6 +158,9 @@ function lastChatTs() {
 function applyView(v) {
   if (!v || v.error) return;
   if (view && v.v < view.v) return;
+  collectStats(v); // v1.3.0：赛后趣味统计本地累积（增量聊天按 id 去重）
+  // 新一局（rematch / 重新开局）→ 清空本局统计
+  if (view && view.phase === 'ended' && v.phase !== 'ended' && stat.deaths.length) resetStats();
   // 聊天增量合并：服务端只发 since 之后的新消息，本地拼接；全量（首载/重连）时直接替换
   // 防重：在途轮询/发送可能携带重叠增量（同一 since），按消息 id 去重，避免同一条消息被拼接多次
   if (v.chatFull !== true && view && Array.isArray(v.chat) && view.chat && view.chat.length) {
@@ -226,7 +231,7 @@ async function poll() {
     pollFail = 0; hideNetBanner(); // 服务器有响应即视为网络正常（29）
     if (j.error) {
       if (j.error === 'room-not-found') { toast('房间已解散'); clearSession(); setTimeout(() => location.reload(), 1200); return; }
-      if (j.error === 'player-not-found') { clearSession(); setTimeout(() => location.reload(), 800); return; }
+      if (j.error === 'player-not-found') { vibrate([120, 60, 120]); clearSession(); setTimeout(() => location.reload(), 800); return; } // 被踢：两段震（v1.3.0）
       return;
     }
     if (j.changed === false) { ensurePollTimer(); return; } // 版本未变化：无需重绘，直接等下一轮
@@ -449,6 +454,7 @@ function renderPlayers() {
       deadFlash[p.id] = Date.now() + 1500;
       toast(`💀 ${p.name}：${DEATH_TEXT[p.deadBy] || p.deadBy}`, 'death');
       sfxHeavy(); // 死亡重击音效（33）
+      if (p.id === view.my.id) vibrate(300); // 自己被刀：长震（v1.3.0）
     }
     prevAlive[p.id] = false;
   }
@@ -551,8 +557,11 @@ function nameOf(id) { const p = view.players.find(x => x.id === id); return p ? 
 function renderPanel() {
   const panel = $('panel');
   panel.classList.remove('night-panel', 'wolf-panel');
-  // 轮到我行动 → 面板呼吸光圈（“睁眼”高亮）
-  panel.classList.toggle('my-turn', view.phase !== 'lobby' && view.phase !== 'reveal' && view.phase !== 'ended' && needsFastPoll());
+  // 轮到我行动 → 面板呼吸光圈（“睁眼”高亮）+ 首次轮到我时短震（v1.3.0）
+  const myTurn = view.phase !== 'lobby' && view.phase !== 'reveal' && view.phase !== 'ended' && needsFastPoll();
+  if (myTurn && !prevMyTurn) vibrate(60);
+  prevMyTurn = myTurn;
+  panel.classList.toggle('my-turn', myTurn);
   let html;
   switch (view.phase) {
     case 'lobby': html = renderLobby(); break;
@@ -560,6 +569,12 @@ function renderPanel() {
     case 'night': {
       html = renderNight();
       panel.classList.add('night-panel');
+      // 角色睁眼氛围（v1.3.0）：面板光晕随夜晚步骤变角色色（预言家蓝/女巫紫/守卫绿…）
+      const nstep = view.night && view.night.step;
+      if (nstep) {
+        const STEP_GLOW = { thief: 'rgba(232,182,76,.4)', cupid: 'rgba(255,122,200,.5)', lovers: 'rgba(255,122,200,.35)', guard: 'rgba(74,222,128,.4)', dreamer: 'rgba(106,216,208,.45)', wolf: 'rgba(224,96,96,.45)', seer: 'rgba(90,162,255,.5)', witch: 'rgba(176,106,240,.5)', hunter: 'rgba(255,140,90,.45)' }[nstep];
+        if (glow) panel.style.setProperty('--step-glow', glow);
+      }
       // 狼人行动时面板整体泛红 + 狼印水印（9）
       if (view.night && view.night.step === 'wolf' && view.my && (view.my.roleKey === 'wolf' || view.my.roleKey === 'wolfBeauty')) panel.classList.add('wolf-panel');
       break;
@@ -903,6 +918,12 @@ function renderSheriffVote() {
   if (s.myVoted) html += `<div class="tip-text voted-ok">✅ 已投${s.myVote ? '：' + escapeHtml(nameOf(s.myVote)) : '（弃票）'}</div>`; // 投票确认条（15）
   else html += `<div class="btn-row"><button class="primary" onpointerdown="castVote()" ${draft.target ? '' : 'disabled'}>投票</button><button onpointerdown="castVote(true)">弃票</button></div>`;
   html += `<div class="tip-text">已投 ${s.voted}/${s.need}</div>`;
+  // 房主可见的“谁已投/投给谁”明细（v1.3.0）；非房主不下发
+  if (s.votedBy && s.votedBy.length) {
+    html += `<div class="vote-detail"><div class="vd-title">👁️ 房主 · 已投明细</div><div class="vd-list">` +
+      s.votedBy.map(x => `<span class="vd-item">${escapeHtml(x.name)}${x.vote ? ' → ' + escapeHtml(nameOf(x.vote)) : '（弃票）'}</span>`).join('') +
+      `</div></div>`;
+  }
   return html;
 }
 function renderDiscuss() {
@@ -932,6 +953,12 @@ function renderVote(isPk) {
   else html += `<div class="btn-row"><button class="primary" onpointerdown="castVote()" ${draft.target ? '' : 'disabled'}>投票</button><button onpointerdown="castVote(true)">弃票</button></div>`;
   const pct = v.need ? Math.round(v.voted / v.need * 100) : 0;
   html += `<div class="vote-progress${v.need > v.voted ? ' incomplete' : ''}"><div class="vp-bar"><div class="vp-fill" style="width:${pct}%"></div></div><span>已投 ${v.voted}/${v.need}</span></div>`; // 未投完进度条闪烁提醒（15）
+  // 房主可见的“谁已投/投给谁”明细（v1.3.0）；非房主不下发（votedBy undefined）
+  if (v.votedBy && v.votedBy.length) {
+    html += `<div class="vote-detail"><div class="vd-title">👁️ 房主 · 已投明细</div><div class="vd-list">` +
+      v.votedBy.map(x => `<span class="vd-item">${escapeHtml(x.name)}${x.vote ? ' → ' + escapeHtml(nameOf(x.vote)) : '（弃票）'}</span>`).join('') +
+      `</div></div>`;
+  }
   return html;
 }
 function renderPkSpeech() {
@@ -948,6 +975,15 @@ function renderHunterShot() {
 function renderEnded() {
   const e = view.endInfo || {};
   let html = `<div class="winner-banner ${e.winner || ''}">${escapeHtml(e.text || '游戏结束')}</div>`;
+  // 赛后趣味统计（v1.3.0）：整局本地累积的彩蛋
+  const fun = statStats();
+  if (fun) {
+    html += `<div class="fun-stats"><div class="panel-title">🎉 本局趣闻</div>`;
+    if (fun.talker) html += `<div class="fs-row">🗣️ 最话痨：<b>${escapeHtml(fun.talker)}</b>（${fun.talkerN} 条）</div>`;
+    if (fun.first) html += `<div class="fs-row">💀 最快出局：<b>${escapeHtml(fun.first)}</b>（第 1 夜）</div>`;
+    if (fun.worst) html += `<div class="fs-row">🌙 最惨烈之夜：<b>第 ${fun.worst.night} 夜</b>（${fun.worst.names.length} 人阵亡）</div>`;
+    html += `</div>`;
+  }
   html += `<div class="panel-desc">本局身份公开：</div>`;
   html += `<div class="end-roles">` + (e.roles || []).map(r =>
     `<div class="player ${r.alive ? '' : 'dead'}"><div class="phead"><div class="avatar ${r.alive ? '' : 'dead'}">${avatarOf(r)}</div><div class="pmeta"><div class="pname">${escapeHtml(r.name)}${r.alive ? '' : ' 💀'}</div><div class="prole ${campClass(r.camp)}-role">${ROLE_EMOJI_TEXT[r.role] || ''} ${escapeHtml(r.role)}</div><div class="pdead"><span class="camp-tag ${campClass(r.camp)}">${escapeHtml(r.camp)}</span></div></div></div></div>`
@@ -1347,6 +1383,124 @@ function spawnFx(html, klass, styles) {
   setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 2600);
   return el;
 }
+
+/* ============ v1.3.0 提升组 ============ */
+/* 移动端震动（v1.3.0）：轮到我短震 / 死亡长震 / 被踢两段震；减少动效时静默 */
+const vibrate = ms => { try { if (navigator.vibrate && !lessMotion()) navigator.vibrate(ms); } catch (e) {} };
+
+/* 行动反馈动画（v1.3.0）：行动成功后目标卡闪现职业图标——“我的行动有回应” */
+const FX_ACTION_MAP = {
+  seer_pick: { icon: '🔮', klass: 'fx-seer', ids: d => [d.target] },
+  guard_pick: { icon: '🛡️', klass: 'fx-shield', ids: d => [d.target] },
+  dreamer_pick: { icon: '😴', klass: 'fx-dream', ids: d => [d.target] },
+  cupid_pick: { icon: '💘', klass: 'fx-heart', ids: d => d.ids || [] },
+  witch_act: {
+    icon: '💊', klass: 'fx-heal', ids: d => {
+      if (d.save && view && view.night && view.night.witch && view.night.witch.victim) return [view.night.witch.victim]; // 解药飞向被袭者
+      if (d.poison) return [d.poison];
+      return [];
+    },
+  },
+  wolf_set: {
+    icon: '🔪', klass: 'fx-blade', ids: d => {
+      const ids = [];
+      if (d.kill !== undefined && d.kill !== null) ids.push(d.kill);
+      if (d.charm !== undefined && d.charm !== null) fxTarget(d.charm, '💘', 'fx-heart'); // 狼美人魅惑单独红心
+      return ids;
+    },
+  },
+  hunter_shoot: { icon: '🔫', klass: 'fx-shot', ids: d => d.target ? [d.target] : [] },
+};
+function fxForAction(action, data) {
+  const fx = FX_ACTION_MAP[action];
+  if (!fx) return;
+  for (const id of fx.ids(data)) fxTarget(id, fx.icon, fx.klass);
+}
+function fxTarget(id, icon, klass) {
+  const el = document.querySelector(`.player[data-id="${id}"]`);
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  spawnFx(icon, klass, { left: r.left + r.width / 2 - 20, top: r.top + r.height / 2 - 20 });
+}
+
+/* 赛后趣味统计（v1.3.0）：整局本地累积，不依赖服务端新增数据 */
+const stat = { deaths: [], chat: {}, firstNight: null };
+const statSeen = {};      // 死亡记录去重：night:m / night:d
+const statMsgIds = new Set(); // 聊天按消息 id 去重（增量下发可能重叠）
+function collectStats(v) {
+  if (!v) return;
+  // 夜晚死亡（morning 阶段下发）
+  if (v.phase === 'morning' && v.morningDeaths && v.morningDeaths.length) {
+    const key = v.nightNum + ':m';
+    if (!statSeen[key]) {
+      statSeen[key] = true;
+      stat.deaths.push({ night: v.nightNum, names: v.morningDeaths.map(d => d.name) });
+      if (v.nightNum === 1 && !stat.firstNight) stat.firstNight = v.morningDeaths[0].name;
+    }
+  }
+  // 放逐死亡（dayDeaths）：并入同夜记录
+  if (v.dayDeaths && v.dayDeaths.length) {
+    const key = v.nightNum + ':d';
+    if (!statSeen[key]) {
+      statSeen[key] = true;
+      const last = stat.deaths[stat.deaths.length - 1];
+      if (last && last.night === v.nightNum) last.names = last.names.concat(v.dayDeaths.map(d => d.name));
+      else stat.deaths.push({ night: v.nightNum, names: v.dayDeaths.map(d => d.name) });
+    }
+  }
+  // 发言数：只统计全体频道真人消息（私聊不算“话痨”）
+  if (Array.isArray(v.chat)) {
+    for (const m of v.chat) {
+      if (!m || !m.id || m.marker === '系统' || m.ch !== 'all' || !m.from || statMsgIds.has(m.id)) continue;
+      statMsgIds.add(m.id);
+      stat.chat[m.from] = (stat.chat[m.from] || 0) + 1;
+    }
+  }
+}
+function resetStats() {
+  stat.deaths.length = 0; stat.chat = {}; stat.firstNight = null;
+  for (const k in statSeen) delete statSeen[k];
+  statMsgIds.clear();
+}
+function statStats() {
+  let talker = null, talkerN = 0;
+  for (const id in stat.chat) if (stat.chat[id] > talkerN) { talkerN = stat.chat[id]; talker = id; }
+  let worst = null;
+  for (const d of stat.deaths) if (d.names.length > (worst ? worst.names.length : 0)) worst = d;
+  if (!talker && !stat.firstNight && !worst) return null;
+  return { talker: talker ? nameOf(talker) : null, talkerN, first: stat.firstNight, worst };
+}
+
+/* 环境粒子（v1.3.0）：夜晚流星、白天阳光粒子，低频随机触发（减少动效时 spawnFx 内部跳过） */
+function ambientFx() {
+  if (!view || view.phase === 'lobby' || view.phase === 'reveal' || view.phase === 'ended') return;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  if (view.phase === 'night') {
+    spawnFx('☄️', 'fx-meteor', { left: vw * (0.5 + Math.random() * 0.45), top: vh * (0.05 + Math.random() * 0.25), '--fx': `translate(${-vw * 0.45}px, ${vh * 0.32}px)` });
+  } else {
+    spawnFx('✨', 'fx-sun', { left: vw * (0.1 + Math.random() * 0.8), top: vh * 0.7, '--fx': `translate(0, ${-vh * 0.35}px)` });
+  }
+}
+
+/* 字号调节（v1.3.0）：整页缩放三档，localStorage 记住（A-/A/A+） */
+function setFontScale(k) {
+  const scale = [0.9, 1, 1.12][k] || 1;
+  document.documentElement.style.zoom = scale === 1 ? '' : String(scale);
+  try { localStorage.ww_font = String(k); } catch (e) {}
+}
+
+/* 邀请链接（v1.3.0）：origin + ?room=，复制/原生分享 */
+function inviteUrl() { return location.origin + location.pathname + '?room=' + ((view && view.roomId) || localStorage.lwRoom || ''); }
+function copyInvite() {
+  const url = inviteUrl();
+  if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => toast('🔗 邀请链接已复制'));
+  else toast('邀请链接：' + url);
+}
+function shareInvite() {
+  const url = inviteUrl();
+  if (navigator.share) navigator.share({ title: '狼人杀房间', text: '来和我玩一局狼人杀！', url }).catch(() => {});
+  else copyInvite();
+}
 /* 警徽飞行（13）：fixed 徽章从旧警长卡飞到新警长卡（走 spawnFx 动效层样板） */
 function flySheriffBadge(fromId, toId) {
   const from = document.querySelector(`.player[data-id="${fromId}"]`);
@@ -1534,15 +1688,10 @@ function init() {
   });
   $('btn-join-go').addEventListener('click', joinRoom);
   const ccp = $('btn-copy-code');
-  if (ccp) ccp.addEventListener('click', () => {
-    const code = localStorage.lwRoom || (view && view.roomId) || '';
-    if (navigator.clipboard) navigator.clipboard.writeText(code).then(() => toast('房间号已复制'));
-    else toast('房间号：' + code);
-  });
-  $('btn-copy').addEventListener('click', () => {
-  if (navigator.clipboard) navigator.clipboard.writeText(view.roomId).then(() => toast('房间号已复制'));
-  else toast('房间号：' + view.roomId);
-});
+  if (ccp) ccp.addEventListener('click', copyInvite); // v1.3.0：创建大卡复制邀请链接（原复制房号）
+  $('btn-copy').addEventListener('click', copyInvite); // v1.3.0：顶栏复制邀请链接
+  const bsh = $('btn-share');
+  if (bsh) bsh.addEventListener('click', shareInvite); // v1.3.0：移动端原生分享面板
 $('btn-leave').addEventListener('click', async () => {
     // 离开二次确认（10）：第一次变红色确认态，3 秒内再点才生效
     if (!leaveArmed) {
@@ -1558,11 +1707,8 @@ $('btn-leave').addEventListener('click', async () => {
     clearSession();
     location.reload();
   });
-  // 房号点击即复制（9）
-  $('room-code').addEventListener('click', () => {
-    if (navigator.clipboard) navigator.clipboard.writeText(view.roomId).then(() => toast('房间号已复制'));
-    else toast('房间号：' + view.roomId);
-  });
+  // 房号点击即复制（9）→ v1.3.0：复制邀请链接
+  $('room-code').addEventListener('click', copyInvite);
   // 身份芯片点击 → 大卡弹窗（8）
   const elChip = $('my-role-chip'); if (elChip) elChip.addEventListener('click', openRolePop);
   const elPop = $('role-pop'); if (elPop) elPop.addEventListener('click', closeRolePop);
@@ -1592,6 +1738,25 @@ $('btn-leave').addEventListener('click', async () => {
     else el.classList.remove('invalid');
   });
   $('in-name').addEventListener('keydown', e => { if (e.key === 'Enter') createRoom(); });
+
+  // 字号（v1.3.0）：恢复上次选择
+  try { const fk = parseInt(localStorage.ww_font, 10); if (!isNaN(fk)) setFontScale(fk); } catch (e) {}
+  // 邀请链接直达（v1.3.0）：?room=XXXXXX → 自动填入并高亮加入卡（不自动进入，避免误入他人房间）
+  try {
+    const qr = new URLSearchParams(location.search).get('room');
+    if (qr && /^[0-9A-Z]{6}$/.test(qr)) {
+      const el = $('in-code');
+      el.value = qr;
+      el.classList.add('valid');
+      toast('🔗 已带入邀请链接的房间号，点击「进入」即可');
+    }
+  } catch (e) {}
+  // PWA（v1.3.0）：注册 Service Worker（网络优先，弱网回退缓存；API 永不缓存）
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+  }
+  // 环境粒子（v1.3.0）：夜晚流星 / 白天阳光粒子，低频随机触发
+  setInterval(() => { try { ambientFx(); } catch (e) {} }, 28000);
 
   // 音效开关（33）：顶栏 🔊/🔇；首次交互后创建 AudioContext（浏览器自动播放策略）
   const sb = $('btn-sound');

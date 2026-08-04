@@ -1764,6 +1764,8 @@ function viewFor(room, pid, chatSince) {
       myVoted: room.votes.hasOwnProperty(pid),
       voted: room.players.filter(q => q.alive && room.votes.hasOwnProperty(q.id)).length,
       need: room.players.filter(q => q.alive).length,
+      // 房主可见的“谁已投/投给谁”明细（v1.3.0）；非房主不下发，避免多余信息泄露
+      votedBy: room.host === pid ? room.players.filter(q => q.alive && room.votes.hasOwnProperty(q.id)).map(q => ({ id: q.id, name: q.name, vote: room.votes[q.id] })) : undefined,
     };
   }
   if (room.phase === 'discuss') view.discuss = { canStartVote: room.host === pid };
@@ -1774,6 +1776,8 @@ function viewFor(room, pid, chatSince) {
       voted: room.players.filter(q => q.alive && room.votes.hasOwnProperty(q.id)).length,
       need: room.players.filter(q => q.alive).length,
       pkTied: room.phase === 'pk_vote' ? room.pkTied.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '' }; }) : null,
+      // 房主可见的“谁已投/投给谁”明细（v1.3.0）；非房主不下发
+      votedBy: room.host === pid ? room.players.filter(q => q.alive && room.votes.hasOwnProperty(q.id)).map(q => ({ id: q.id, name: q.name, vote: room.votes[q.id] })) : undefined,
     };
   }
   if (room.phase === 'pk_speech') view.pkSpeech = { tied: room.pkTied.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '' }; }), canStartVote: room.host === pid };
