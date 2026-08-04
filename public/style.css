@@ -280,21 +280,24 @@ button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 /* 昼夜主题：夜晚全局压暗变冷，白天回暖（ToS/狼人杀APP经典氛围切换） */
 body { transition: background .45s ease; }
 body.theme-night {
-  --bg: #0a0d15; --bg2: #101623; --bg3: #172031; --line: #222d47;
+  --bg: #070a12; --bg2: #0d1220; --bg3: #141b2e; --line: #1e2844; --muted: #7d8aa8;
   background:
-    radial-gradient(1100px 750px at 50% -10%, #15203c 0%, transparent 60%),
-    radial-gradient(800px 600px at 92% 108%, rgba(84, 62, 150, .22), transparent 65%),
-    radial-gradient(700px 520px at 6% 92%, rgba(44, 96, 150, .18), transparent 65%),
-    #0a0d15;
+    radial-gradient(1100px 750px at 50% -10%, #0e1a38 0%, transparent 62%),
+    radial-gradient(800px 600px at 92% 108%, rgba(68, 48, 140, .32), transparent 65%),
+    radial-gradient(700px 520px at 6% 92%, rgba(28, 78, 140, .26), transparent 65%),
+    #070a12;
 }
 body.theme-day {
-  --bg: #12141c; --bg2: #1a1f2d; --bg3: #252c40; --line: #34415f;
+  --bg: #1a1e2a; --bg2: #232a3b; --bg3: #2e3750; --line: #45557c; --muted: #98a6c4;
   background:
-    radial-gradient(1100px 750px at 50% -10%, #28344f 0%, transparent 60%),
-    radial-gradient(800px 600px at 92% 108%, rgba(150, 110, 70, .13), transparent 65%),
-    radial-gradient(700px 520px at 6% 92%, rgba(80, 140, 180, .15), transparent 65%),
-    #12141c;
+    radial-gradient(1100px 750px at 50% -10%, #38466a 0%, transparent 60%),
+    radial-gradient(800px 600px at 92% 108%, rgba(200, 150, 95, .22), transparent 65%),
+    radial-gradient(700px 520px at 6% 92%, rgba(105, 180, 220, .22), transparent 65%),
+    #1a1e2a;
 }
+/* 主题切换时面板/卡片背景平滑过渡 */
+#topbar, #panel, #info, #right, .home-box { transition: background .45s ease, border-color .45s ease; }
+#players .player { transition: background .45s ease, border-color .45s ease, transform .15s, box-shadow .15s; }
 
 /* 玩家卡：头像圈 + 座位号 */
 .player .phead { display: flex; align-items: center; gap: 10px; }

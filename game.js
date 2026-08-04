@@ -1292,6 +1292,15 @@ function handleAction(roomId, pid, action, data, chatSince) {
   if (!room) return { error: '房间不存在或已解散' };
   const p = byId(room, pid);
   if (!p) return { error: '玩家不存在' };
+  // 心情表情：任意阶段可切换（点击自己的表情按钮循环，null=关闭）
+  if (action === 'mood') {
+    const MOODS = ['😀', '😨', '😤', '😭', '😏', '🤔', '😇', '🤡', '😴', '😱', '🥳', '🕶️'];
+    const mood = data.mood == null ? null : String(data.mood).slice(0, 8);
+    if (mood && !MOODS.includes(mood)) return { error: '无效的表情' };
+    p.mood = mood;
+    bump(room);
+    return { ok: true, view: viewFor(room, pid, chatSince || 0) };
+  }
   const res = applyAction(room, p, action, data);
   if (res && res.ok) return { ok: true, view: viewFor(room, pid, chatSince || 0), left: !!res.left };
   return { error: res.error || '操作失败' };
@@ -1526,8 +1535,9 @@ function viewFor(room, pid, chatSince) {
       id: q.id, name: q.name, seat: q.seat, alive: q.alive, deadBy: q.deadBy, deadNote: q.deadNote,
       role: (!q.alive || q.id === pid || room.phase === 'ended' || room.phase === 'lobby') ? roleText(room, q) : null,
       isBot: !!q.isBot, isMe: q.id === pid, sheriff: q.id === room.sheriff, confirmed: q.confirmed,
+      mood: q.mood || null,
     })),
-    my: { id: pid, name: me ? me.name : '', alive: me ? me.alive : false, isHost: room.host === pid, role: me ? roleText(room, me) : null, roleKey: me ? effRole(me) : null, camp: me ? ((effRole(me) === 'cupid' || (me.role === 'thief' && !me.pickedRole)) ? null : campText(room, me)) : null },
+    my: { id: pid, name: me ? me.name : '', alive: me ? me.alive : false, isHost: room.host === pid, role: me ? roleText(room, me) : null, roleKey: me ? effRole(me) : null, camp: me ? ((effRole(me) === 'cupid' || (me.role === 'thief' && !me.pickedRole)) ? null : campText(room, me)) : null, mood: me ? (me.mood || null) : null },
     myChannels: me ? (['all'].filter(() => room.phase !== 'night').concat(isWolfRole(me) && room.phase === 'night' ? ['wolf'] : []).concat(room.lovers && room.lovers.includes(me.id) ? ['lover'] : [])) : ['all'],
     phaseTimed: !!room.phaseDeadline,
     phaseDeadline: room.phaseDeadline,
@@ -1553,11 +1563,12 @@ function viewFor(room, pid, chatSince) {
   if (room.phase === 'reveal') {
     const rv = room.reveal || { stage: 'hostChoice', hostPicked: false, thiefId: null, thiefPicked: false, dealt: false, deck: [] };
     view.reveal = {
-      stage: rv.stage,
-      hostPicked: rv.hostPicked,
-      thiefPicked: rv.thiefPicked,
       dealt: rv.dealt,
       canPick: room.host === pid && !rv.hostPicked && !rv.dealt,
+      // 非房主不暴露“房主正在选职业”的阶段细节（stage/hostPicked 仅房主与已发牌时可见）
+      stage: (room.host === pid || rv.dealt) ? rv.stage : null,
+      hostPicked: room.host === pid ? rv.hostPicked : null,
+      thiefPicked: (rv.stage === 'thiefPick' && rv.thiefId === pid) ? rv.thiefPicked : null,
       available: (room.host === pid && !rv.hostPicked && !rv.dealt) ? Array.from(new Set(rv.deck)).map(k => ({ key: k, name: ROLE_INFO[k].name, desc: ROLE_INFO[k].desc })) : [],
       isThief: rv.stage === 'thiefPick' && rv.thiefId === pid,
       thiefCards: (rv.stage === 'thiefPick' && rv.thiefId === pid && room.center) ? room.center.map(k => ({ key: k, name: ROLE_INFO[k].name, desc: ROLE_INFO[k].desc })) : null,

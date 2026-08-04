@@ -455,9 +455,9 @@ function renderReveal() {
     ).join('') + `</div>`;
     html += `<div class="btn-row"><button class="primary" onclick="doThiefPick()" ${draft.thiefIdx === undefined ? 'disabled' : ''}>确认选择</button></div>`;
   } else if (!rv.dealt && rv.stage === 'thiefPick') {
-    html += `<div class="waiting">🃏 盗贼正在选择身份…</div>`;
+    html += `<div class="waiting">正在分配身份牌，请稍候…</div>`;
   } else if (!rv.dealt) {
-    html += `<div class="waiting">房主正在选择自己的职业…</div>`;
+    html += `<div class="waiting">正在准备身份牌，请稍候…</div>`;
   } else if (rv.myRole) {
     html += `<div class="panel-title" style="color:var(--accent)">你的身份：${ROLE_EMOJI_TEXT[rv.myRole] || ''} ${rv.myRole}</div>`;
     html += `<div class="panel-desc">${escapeHtml(rv.myDesc || '')}</div>`;
