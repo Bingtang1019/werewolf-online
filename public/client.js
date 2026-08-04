@@ -272,8 +272,8 @@ function onStateChange(prev, next) {
       const flipHtml = `<div class="flip-grid">` + deaths.map((d, i) => {
         const glow = ROLE_GLOW_TEXT[d.role] || '';
         return `<div class="flip-card" style="animation-delay:${i * 240}ms"><div class="fc-inner">` +
-          `<div class="fc-face fc-back">🂠</div>` +
-          `<div class="fc-face fc-front" ${glow ? `style="--rc:${glow}"` : ''}><div class="fc-emoji">${ROLE_EMOJI_TEXT[d.role] || '💀'}</div>` +
+          `<div class="fc-face fc-back"></div>` +
+          `<div class="fc-face fc-front" ${glow ? `style="--rc:${glow}"` : ''}><div class="fc-name">${escapeHtml(d.name)}</div><div class="fc-emoji">${ROLE_EMOJI_TEXT[d.role] || '💀'}</div>` +
           `<div class="fc-role">${escapeHtml(d.role || '？')}</div><div class="fc-cause">${DEATH_TEXT[d.deadBy] || d.deadBy}</div></div>` +
           `</div></div>`;
       }).join('') + `</div>`;
@@ -341,7 +341,7 @@ function render() {
   const playersEl = $('players');
   if (playersEl) {
     playersEl.dataset.pick = pIcon;
-    playersEl.classList.toggle('pick-mode', !!pIcon);
+    playersEl.classList.toggle('pick-mode', !!pIcon && view.players.some(x => x.alive && x.id !== view.my.id));
   }
   // 顶栏
   $('room-code').textContent = view.roomId;
@@ -392,7 +392,7 @@ function renderPlayers() {
   for (const p of dead) {
     if (prevAlive[p.id] === true && !deadFlash[p.id]) {
       deadFlash[p.id] = Date.now() + 1500;
-      toast(`💀 ${p.name}：${DEATH_TEXT[p.deadBy] || p.deadBy}`, 'err');
+      toast(`💀 ${p.name}：${DEATH_TEXT[p.deadBy] || p.deadBy}`, 'death');
       sfxHeavy(); // 死亡重击音效（33）
     }
     prevAlive[p.id] = false;
@@ -475,11 +475,11 @@ function animateTotals() {
   document.querySelectorAll('#info .vt-n[data-n]').forEach(el => {
     if (el.dataset.done) return;
     el.dataset.done = '1';
-    const n = parseInt(el.dataset.n, 10) || 0;
+    const n = parseFloat(el.dataset.n) || 0;
     const t0 = performance.now();
     const step = now => {
       const p = Math.min(1, (now - t0) / 520);
-      el.textContent = Math.round(n * (1 - Math.pow(1 - p, 3)));
+      el.textContent = Math.round(n * (1 - Math.pow(1 - p, 3)) * 10) / 10; // R2：保留 1.5 票等小数（parseFloat + 一位小数）
       if (p < 1) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
@@ -490,7 +490,6 @@ function deathListHtml(list, title) {
     `<div class="death-item"><div class="di-emoji">${ROLE_EMOJI_TEXT[d.role] || '💀'}</div><div class="di-name">${escapeHtml(d.name)}</div><div class="di-role">${ROLE_EMOJI_TEXT[d.role] || ''} ${escapeHtml(d.role || '?')}</div><div class="di-cause">${DEATH_TEXT[d.deadBy] || d.deadBy}${d.deadNote ? '（' + escapeHtml(d.deadNote) + '）' : ''}</div></div>`
   ).join('') + `</div>`;
 }
-function fmtVote(n) { return n + ' 票'; }
 function nameOf(id) { const p = view.players.find(x => x.id === id); return p ? p.name : '?'; }
 
 /* ---------------------------- 主面板 ---------------------------- */
@@ -614,10 +613,10 @@ function renderReveal() {
     // 盗贼选牌（注意：非房主拿到的 stage 为 null，不能作为判断依据；isThief/thiefCards 已由服务端判定）
     html += `<div class="panel-desc">🃏 你是<b>盗贼</b>！从以下两张身份牌中选择一张作为你的身份（若有狼人牌则必须选狼人），另一张作废：</div>`;
     // 盗贼警示（24）：两张牌含狼时红框闪烁提示条
-    const thiefHasWolf = (rv.thiefCards || []).some(r => r.key === 'wolf');
+    const thiefHasWolf = (rv.thiefCards || []).some(r => r.key === 'wolf' || r.key === 'wolfBeauty');
     if (thiefHasWolf) html += `<div class="tip-text thief-warn">⚠️ <b>两张牌中有狼人牌，你必须选择狼人！</b></div>`;
     html += `<div class="role-cards">` + (rv.thiefCards || []).map((r, i) =>
-      `<div class="role-card ${ROLE_CAMP[r.key] || ''} ${thiefHasWolf && r.key === 'wolf' ? 'thief-wolf' : ''} ${draft.thiefIdx === i ? 'chosen' : ''}" style="--rc:${ROLE_GLOW_TEXT[r.name] || ''};animation-delay:${i * 80}ms" onclick="draft.thiefIdx = ${i}; render()"><div class="rc-emoji">${ROLE_EMOJI[r.key] || ''}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
+      `<div class="role-card ${ROLE_CAMP[r.key] || ''} ${thiefHasWolf && (r.key === 'wolf' || r.key === 'wolfBeauty') ? 'thief-wolf' : ''} ${draft.thiefIdx === i ? 'chosen' : ''}" style="--rc:${ROLE_GLOW_TEXT[r.name] || ''};animation-delay:${i * 80}ms" onclick="draft.thiefIdx = ${i}; render()"><div class="rc-emoji">${ROLE_EMOJI[r.key] || ''}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
     ).join('') + `</div>`;
     html += `<div class="btn-row"><button class="primary" onpointerdown="doThiefPick()" ${draft.thiefIdx === undefined ? 'disabled' : ''}>确认选择</button></div>`;
   } else if (rv.thiefPicking) {
@@ -1342,7 +1341,7 @@ function init() {
     const lr = $('last-room'); if (lr) lr.classList.remove('hidden');
     const b = $('btn-last-room'); if (b) b.textContent = '🚪 上次房间 ' + lastRoom + ' · 重新进入';
   }
-  $('btn-last-room').addEventListener('click', async () => {
+  const elLR = $('btn-last-room'); if (elLR) elLR.addEventListener('click', async () => {
     const code = localStorage.lwRoom; if (!code) return;
     const name = $('in-name').value.trim() || '玩家' + Math.floor(Math.random() * 900 + 100);
     $('home-err').textContent = '';
@@ -1444,12 +1443,12 @@ $('btn-leave').addEventListener('click', async () => {
     else toast('房间号：' + view.roomId);
   });
   // 身份芯片点击 → 大卡弹窗（8）
-  $('my-role-chip').addEventListener('click', openRolePop);
-  $('role-pop').addEventListener('click', closeRolePop);
+  const elChip = $('my-role-chip'); if (elChip) elChip.addEventListener('click', openRolePop);
+  const elPop = $('role-pop'); if (elPop) elPop.addEventListener('click', closeRolePop);
   // 移动端聊天抽屉（2）
   const bco = $('btn-chat-open');
   if (bco) bco.classList.remove('hidden');
-  $('btn-chat-open').addEventListener('click', e => { e.stopPropagation(); document.body.classList.toggle('chat-open'); });
+  if (bco) bco.addEventListener('click', e => { e.stopPropagation(); document.body.classList.toggle('chat-open'); });
   document.addEventListener('click', e => {
     if (document.body.classList.contains('chat-open') && !e.target.closest('#right') && !e.target.closest('#btn-chat-open')) {
       document.body.classList.remove('chat-open');
