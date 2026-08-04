@@ -74,13 +74,20 @@ async function playReveal(room, A, ids, hostRole) {
       await act(room, thief, 'thief_pick', { idx: 0 });
     }
   }
-  // 全员确认（可提前开始；否则 5 秒后自动进入夜晚）
+  // 全员确认（可提前开始；盗贼局强制等待 5 秒展示盗贼结果后自动入夜）
   for (const id of ids) {
     const sv = await state(room, id);
     const meP = (sv.players || []).find(p => p.isMe);
     if (sv.phase === 'reveal' && meP && !meP.confirmed) await act(room, id, 'confirm');
   }
-  v = await state(room, A);
+  // 盗贼局：等待 5 秒展示“盗贼窃走”结果后再入夜；非盗贼局：全员确认后立即入夜
+  const nightWait = thief ? 9000 : 3000;
+  const t0 = Date.now();
+  while (Date.now() - t0 < nightWait) {
+    v = await state(room, A);
+    if (v.phase === 'night') break;
+    await sleep(300);
+  }
   eq(v.phase, 'night', '进入第一晚');
   return { thief, thiefCards, roles: await rolesOf(room, ids) };
 }

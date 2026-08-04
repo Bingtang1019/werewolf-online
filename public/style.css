@@ -367,23 +367,35 @@ body.theme-day {
 
 /* 玩家死亡红闪（首次发现死亡的 1.5s 内保留，红晕渐隐） */
 .player.death-flash {
-  animation: deathFlash 1.2s ease;
-  border-color: #e05a5a;
+  animation: deathFlash 1.6s ease;
+  border-color: #ff6b6b;
 }
 @keyframes deathFlash {
-  0% { background: rgba(224, 90, 90, .55); box-shadow: 0 0 26px rgba(224, 90, 90, .5); transform: scale(1.02); }
+  0% { background: rgba(224, 80, 80, .7); box-shadow: 0 0 40px rgba(224, 80, 80, .75); transform: scale(1.04); }
+  60% { background: rgba(224, 80, 80, .25); }
   100% { background: var(--bg2); box-shadow: none; }
 }
 
 /* 轮到我行动 → 面板呼吸光圈（夜晚“睁眼”高亮） */
 #panel.my-turn {
   border-color: var(--accent);
-  animation: breathe 2.2s ease-in-out infinite;
+  animation: breathe 1.8s ease-in-out infinite;
 }
 @keyframes breathe {
-  0%, 100% { box-shadow: 0 0 0 rgba(232, 182, 76, 0); }
-  50% { box-shadow: 0 0 34px rgba(232, 182, 76, .3); }
+  0%, 100% { box-shadow: 0 0 0 rgba(232, 182, 76, 0), inset 0 0 0 rgba(232, 182, 76, 0); }
+  50% { box-shadow: 0 0 48px rgba(232, 182, 76, .55), inset 0 0 26px rgba(232, 182, 76, .12); }
 }
+
+/* 身份确认：翻开动画 + 卡片化展示 */
+.identity-reveal {
+  text-align: center; padding: 22px 16px; border-radius: 14px;
+  border: 1px solid rgba(232, 182, 76, .45);
+  background: linear-gradient(180deg, rgba(232, 182, 76, .12), transparent 75%), var(--bg3);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, .38);
+  animation: cardFlip .5s cubic-bezier(.2, .8, .3, 1.1) both;
+}
+.identity-reveal .ir-emoji { font-size: 46px; line-height: 1; display: block; margin-bottom: 10px; }
+.identity-reveal .ir-name { font-size: 21px; font-weight: 700; color: var(--accent); }
 
 /* 心情表情 */
 .mood-btn {

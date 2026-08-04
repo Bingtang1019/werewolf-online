@@ -75,9 +75,15 @@ async function testThiefGodDiscard() {
     if (discarded === 'seer') seerDiscarded++;
     console.log(`   第${attempt + 1}局: 中心牌[${thiefCards.map(c => c.key)}] → 盗贼拿${kept}, 作废${discarded}`);
     for (const id of ids) await act(room, id, 'confirm');
-    await sleep(150);
-    let v = await (await fetch(`${BASE}/api/state?room=${room}&me=${me}`)).json();
-    if (v.phase !== 'night') { allOk = false; break; }
+    // 盗贼局强制 5 秒展示盗贼结果后才入夜
+    const t0 = Date.now();
+    let v = null;
+    while (Date.now() - t0 < 9000) {
+      v = await (await fetch(`${BASE}/api/state?room=${room}&me=${me}`)).json();
+      if (v.phase === 'night') break;
+      await sleep(300);
+    }
+    if (!v || v.phase !== 'night') { allOk = false; break; }
     let wolfId = null;
     const roles = {};
     for (const id of ids) {

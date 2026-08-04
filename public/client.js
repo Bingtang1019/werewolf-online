@@ -55,7 +55,7 @@ const ROLE_CAMP_TEXT = { '平民': 'good', '预言家': 'good', '女巫': 'good'
 const ROLE_EMOJI = { villager: '🏡', seer: '🔮', witch: '🧪', hunter: '🔫', dreamer: '😴', guard: '🛡️', wolf: '🐺', wolfBeauty: '🌹', cupid: '💘', thief: '🃏' };
 const ROLE_EMOJI_TEXT = { '平民': '🏡', '预言家': '🔮', '女巫': '🧪', '猎人': '🔫', '摄梦人': '😴', '守卫': '🛡️', '狼人': '🐺', '狼美人': '🌹', '丘比特': '💘', '盗贼': '🃏' };
 // 盗贼“窃走”文案：各职业的被窃之物
-const THIEF_ITEM = { villager: '身份', seer: '水晶球', witch: '魔药', hunter: '猎枪', dreamer: '梦境', guard: '护盾', wolf: '爪牙', wolfBeauty: '玫瑰', cupid: '弓箭' };
+const THIEF_ITEM = { villager: '身份', seer: '水晶球', witch: '魔药', hunter: '猎枪', dreamer: '幻境', guard: '护盾', wolf: '爪牙', wolfBeauty: '魅力', cupid: '弓箭' };
 // 按座位号固定的动物头像
 const SEAT_AVATARS = ['🦉', '🐱', '🐶', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐰', '🦄', '🐙', '🐳', '🦋'];
 const avatarOf = p => {
@@ -465,13 +465,13 @@ function renderReveal() {
       const item = THIEF_ITEM[rv.thiefTook] || '身份';
       html += `<div class="tip-text" style="margin-bottom:8px">🃏 盗贼窃走了「${ROLE_NAMES[rv.thiefTook] || '神秘身份'}的${item}」</div>`;
     }
-    html += `<div class="panel-title" style="color:var(--accent)">你的身份：${ROLE_EMOJI_TEXT[rv.myRole] || ''} ${rv.myRole}</div>`;
-    html += `<div class="panel-desc">${escapeHtml(rv.myDesc || '')}</div>`;
+    html += `<div class="identity-reveal"><span class="ir-emoji">${ROLE_EMOJI_TEXT[rv.myRole] || '🎭'}</span><div class="ir-name">${escapeHtml(rv.myRole)}</div></div>`;
+    html += `<div class="panel-desc" style="margin-top:10px">${escapeHtml(rv.myDesc || '')}</div>`;
     const meP = view.players.find(p => p.isMe);
     html += meP && meP.confirmed
       ? `<div class="tip-text">✅ 已确认，等待其他人…</div>`
       : `<div class="btn-row"><button class="primary" onclick="act('confirm')">确认身份</button></div>`;
-    html += `<div class="tip-text">⏳ 全员确认或等待 5 秒后自动进入夜晚</div>`;
+    html += `<div class="tip-text">${rv.thiefTook ? '⏳ 盗贼结果展示中，5 秒后自动进入夜晚…' : '⏳ 全员确认或等待 5 秒后自动进入夜晚'}</div>`;
   }
   const done = (rv.confirmed || []).filter(c => c.ok).length;
   const need = (rv.confirmed || []).length;

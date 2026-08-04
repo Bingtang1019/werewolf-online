@@ -337,12 +337,12 @@ function revealAction(room, p, action, data) {
     bump(room);
     return { ok: true };
   }
-  // 确认身份（全员确认可提前开始，否则发牌后等待 5 秒自动开始）
+  // 确认身份（全员确认可提前开始；盗贼局强制等待 5 秒展示盗贼结果，否则发牌后等待 5 秒自动开始）
   if (action === 'confirm') {
     if (!rv.dealt) return { error: '身份还未发放' };
     p.confirmed = true;
     bump(room);
-    if (room.players.every(q => q.confirmed || q.leftGame)) {
+    if (room.players.every(q => q.confirmed || q.leftGame) && !room.reveal.thiefPicked) {
       if (room._nightTimer) { clearTimeout(room._nightTimer); room._nightTimer = null; }
       beginNight(room);
     }
@@ -1236,7 +1236,7 @@ function autoAdvanceInner(room) {
   while (guard++ < 60) {
     if (room.phase === 'ended') return;
     if (room.phase === 'reveal') {
-      if (room.reveal.dealt && room.players.every(q => q.confirmed || q.leftGame)) { beginNight(room); continue; }
+      if (room.reveal.dealt && room.players.every(q => q.confirmed || q.leftGame) && !room.reveal.thiefPicked) { beginNight(room); continue; }
       return;
     }
     if (room.phase === 'night') {
