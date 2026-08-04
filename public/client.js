@@ -649,7 +649,7 @@ function renderHandover() {
   const h = view.handover || {};
   let html = `<div class="panel-title">👮 警徽移交</div>`;
   if (h.from === view.my.id) {
-    html += `<div class="panel-desc">你被狼人杀害，可以选择将警徽移交给一名玩家，或撕毁警徽。</div>`;
+    html += `<div class="panel-desc">你已出局，可以选择将警徽移交给一名存活玩家，或撕毁警徽。</div>`;
     html += `<div class="tip-text">已选：${draft.target ? escapeHtml(nameOf(draft.target)) : '—'}</div>`;
     html += `<div class="btn-row"><button class="primary" onclick="handoverPick()" ${draft.target ? '' : 'disabled'}>移交警徽</button><button onclick="act('handover',{target:null})">撕毁警徽</button></div>`;
   } else {

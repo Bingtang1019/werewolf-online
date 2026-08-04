@@ -685,11 +685,11 @@ function continueMorning(room) {
     const entitled = room.morningDeaths.filter(id => !byId(room, id).lastWordUsed);
     if (entitled.length) { startLastWord(room, entitled, 'night'); return; }
   }
-  // 警徽移交（仅狼刀致死）
+  // 警徽移交：只要不是被魅惑带走、被摄梦人带走、被毒杀，其余死因（狼刀/枪杀/放逐/殉情等）均可移交
   const sheriff = room.sheriff;
   if (sheriff) {
     const sq = byId(room, sheriff);
-    if (sq && !sq.alive && sq.deadBy === 'wolf') { startHandover(room); return; }
+    if (sq && !sq.alive && sq.deadBy !== 'charm' && sq.deadBy !== 'dream' && sq.deadBy !== 'poison') { startHandover(room); return; }
   }
   startDaySteps(room);
 }

@@ -47,8 +47,8 @@ async function testThiefGodDiscard() {
   console.log('\n== 盗贼玩法：神职卡作废不触发屠边误判 ==');
   const GOD_KEYS = ['seer', 'witch', 'hunter', 'dreamer', 'guard'];
   let seerDiscarded = 0, allOk = true, runs = 0;
-  // 循环开局直到命中“预言家被作废”的关键场景（最多 4 局）
-  for (let attempt = 0; attempt < 4 && seerDiscarded === 0; attempt++) {
+  // 循环开局直到命中“预言家被作废”的关键场景（最多 8 局，单局命中率约 50%）
+  for (let attempt = 0; attempt < 8 && seerDiscarded === 0; attempt++) {
     runs++;
     const r = await api('/api/create', { name: '房主' });
     const room = r.roomId, me = r.playerId;
