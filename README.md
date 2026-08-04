@@ -2,7 +2,7 @@
 
 和朋友一起玩的 Web 在线狼人杀。**零依赖**：只使用 Node.js 内置模块，无需 `npm install`。
 
-> 当前版本：**1.4.1**（全职业能力/频道回归验证 + 狼美人出刀确认 + 夜晚 45s/白天 60s 倒计时 + 人机行动延迟 10s±2.5s + 离线模式；更新公告见 `更新公告.md`）
+> 当前版本：**1.4.2**（修复夜晚面板渲染崩溃：行动按钮消失/频道消失；新增客户端渲染回归测试；更新公告见 `更新公告.md`）
 
 ## 快速开始
 
@@ -90,7 +90,7 @@ werewolf/
 ├── 启动游戏.bat       # 局域网联机启动
 ├── server-loop.bat    # 服务器崩溃自动重启（供公网联机脚本调用）
 ├── public/            # 网页客户端（index.html / style.css / client.js）
-└── test/              # 自动化测试（23 个脚本）
+└── test/              # 自动化测试（24 个脚本）
 ```
 
 ## 技术说明
@@ -126,7 +126,7 @@ node test/check-stats.js             # 在线统计 /api/stats（初始 0/创建
 node test/check-votedby.js           # 房主投票明细（votedBy 仅房主可见/弃票 null/警长投票同规则）
 node test/check-pwa.js               # PWA 静态资源（manifest/sw/icon 200 + MIME + API 不缓存）
 node test/check-bot-smart.js         # 人机三档决策（level 参数校验/smart 狼刀预言家/smart+easy 投被查杀者）
-node test/check-allroles.js          # 全职业能力+频道（盗贼局 10 人全职业 HTTP 路径：身份发放/各职业 action/狼美人出刀）
+node test/check-client-render.js      # 客户端渲染回归（DOM stub 跑 client.js 渲染链：夜晚各职业步骤/狼人+情侣频道/白天各阶段）
 ```
 
 - `simulate.js`：模拟 6 个完整对局场景（基础局、全职业+盗贼玩法局、守卫/摄梦人局、盗贼局、平票 PK 局、丘比特重选/频道规则局），验证夜晚结算、猎人开枪、殉情、魅惑、同守同救、警徽移交、1.5 票、胜负判定、频道权限等；盗贼可能抽到与配置重复的职业牌（两个守卫/女巫等）或作废任意职业，测试覆盖了这些随机组合。

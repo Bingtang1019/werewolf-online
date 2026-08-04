@@ -573,7 +573,7 @@ function renderPanel() {
       // 角色睁眼氛围（v1.3.0）：面板光晕随夜晚步骤变角色色（预言家蓝/女巫紫/守卫绿…）
       const nstep = view.night && view.night.step;
       if (nstep) {
-        const STEP_GLOW = { thief: 'rgba(232,182,76,.4)', cupid: 'rgba(255,122,200,.5)', lovers: 'rgba(255,122,200,.35)', guard: 'rgba(74,222,128,.4)', dreamer: 'rgba(106,216,208,.45)', wolf: 'rgba(224,96,96,.45)', seer: 'rgba(90,162,255,.5)', witch: 'rgba(176,106,240,.5)', hunter: 'rgba(255,140,90,.45)' }[nstep];
+        const glow = { thief: 'rgba(232,182,76,.4)', cupid: 'rgba(255,122,200,.5)', lovers: 'rgba(255,122,200,.35)', guard: 'rgba(74,222,128,.4)', dreamer: 'rgba(106,216,208,.45)', wolf: 'rgba(224,96,96,.45)', seer: 'rgba(90,162,255,.5)', witch: 'rgba(176,106,240,.5)', hunter: 'rgba(255,140,90,.45)' }[nstep];
         if (glow) panel.style.setProperty('--step-glow', glow);
       }
       // 狼人行动时面板整体泛红 + 狼印水印（9）
