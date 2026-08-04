@@ -105,6 +105,7 @@ button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 .camp-tag.wolf { background: rgba(224,96,96,.15); color: var(--wolf); }
 .camp-tag.third { background: rgba(176,124,232,.15); color: var(--third); }
 .badge { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--bg3); color: var(--muted); }
+.badge.bot-badge { background: rgba(138, 116, 232, .2); color: #a99be8; }
 .badge.sheriff { background: rgba(232,182,76,.18); color: var(--accent); }
 .sheriff-mark { color: var(--accent); }
 

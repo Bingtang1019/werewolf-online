@@ -61,6 +61,7 @@ function schedulePhase(room, expectedPhase, fn) {
     if (room.phase !== expectedPhase) return; // 阶段已变化（玩家/房主提前推进）则不再触发
     fn(room);
   }, PHASE_TIMEOUT * 1000);
+  maybeRunBots(room); // 计时阶段进入时：若有待行动人机，立即安排执行
 }
 function byId(room, id) { return room.players.find(p => p.id === id) || null; }
 function rolePlayer(room, key) { return room.players.find(p => effRole(p) === key) || null; }
@@ -141,7 +142,7 @@ function createRoom(hostName) {
     dayNum: 0, nightNum: 0, nightStep: null,
     playerCap: 6,
     roleCounts: defaultCounts(6),
-    settings: { sheriff: true, winMode: 'edge', tieRule: 'pk', thief: false },
+    settings: { sheriff: true, winMode: 'edge', tieRule: 'pk', thief: false, botMode: 'auto' }, // botMode: 人机难度 'auto'简单AI | 'passive'挂机
     players: [],
     messages: [],
     winner: null, endInfo: null,
@@ -203,7 +204,25 @@ function lobbyAction(room, p, action, data) {
     if (data.winMode === 'city' || data.winMode === 'edge') s.winMode = data.winMode;
     if (data.tieRule === 'none' || data.tieRule === 'pk') s.tieRule = data.tieRule;
     if (typeof data.thief === 'boolean') s.thief = data.thief;
+    if (data.botMode === 'passive' || data.botMode === 'auto') s.botMode = data.botMode;
     bump(room); return { ok: true };
+  }
+  if (action === 'add_bot') {
+    if (room.players.length >= room.playerCap) return { error: '房间已满，请先调大人数上限' };
+    const bot = addPlayer(room, (data.name || '').trim() || autoBotName(room));
+    bot.isBot = true;
+    bump(room);
+    return { ok: true };
+  }
+  if (action === 'remove_bot') {
+    const bots = room.players.filter(q => q.isBot);
+    if (!bots.length) return { error: '当前没有可移除的人机' };
+    if (room.players.length <= 1) return { error: '至少需要保留一名玩家' };
+    const t = data.target ? byId(room, data.target) : bots[bots.length - 1];
+    if (!t || !t.isBot) return { error: '玩家不存在或不是人机' };
+    removePlayer(room, t.id, false);
+    bump(room);
+    return { ok: true };
   }
   if (action === 'setCounts') {
     const c = data.counts;
@@ -375,6 +394,7 @@ function beginNight(room) {
   };
   room.shooter = null; room.shotContext = null;
   setNightStep(room);
+  maybeRunBots(room); // 夜晚开始/换步：安排人机行动
   bump(room);
 }
 /* 夜晚行动顺序：
@@ -602,6 +622,7 @@ function resolveNight(room) {
     room.shooter = hunter;
     room.shotContext = 'night';
     bump(room);
+    maybeRunBots(room); // 被刀猎人若是人机 →自动决定是否开枪
     return;
   }
   finishNight(room);
@@ -808,6 +829,7 @@ function afterExile(room) {
     room.shooter = hunter;
     room.shotContext = 'exile';
     bump(room);
+    maybeRunBots(room); // 被放逐猎人若是人机 →自动决定是否开枪
     return;
   }
   beginNight(room);
@@ -864,9 +886,14 @@ function checkWin(room) {
     }
   } else {
     // 屠边：好人阵营的神职或平民全灭（第三方不计）
+    // 注意：若本局配置中本就没有某类职业（如 4 人局狼1+民3 无神职），
+    // 该类别恒为 0 不应触发“全灭”——只按配置中存在的类别判定，否则狼人首刀即误判狼胜。
+    const GOD_KEYS = ['seer', 'witch', 'hunter', 'dreamer', 'guard'];
+    const cfgGods = GOD_KEYS.reduce((a, k) => a + (room.roleCounts[k] || 0), 0);
+    const cfgCivs = room.roleCounts.villager || 0;
     const gods = goodCamp.filter(p => typeOf(room, p) === 'god');
     const civs = goodCamp.filter(p => typeOf(room, p) === 'civil');
-    if (gods.length === 0 || civs.length === 0) {
+    if ((gods.length === 0 && cfgGods > 0) || (civs.length === 0 && cfgCivs > 0)) {
       room.winner = 'wolf';
       room.endInfo = { winner: 'wolf', text: '狼人阵营获胜（屠边）', roles: room.players.map(p => ({ id: p.id, name: p.name, role: roleText(room, p), camp: campText(room, p), alive: p.alive })) };
       room.phase = 'ended';
@@ -1164,8 +1191,10 @@ function removePlayer(room, pid, isKick) {
     }
   }
   if (room.host === pid) {
-    const rest = room.players.filter(q => q.id !== pid && !q.leftGame);
-    room.host = rest.length ? rest[0].id : null;
+    // 房主离开：新房主仅从真人中产生；无真人则解散房间
+    const rest = room.players.filter(q => q.id !== pid && !q.leftGame && !q.isBot);
+    if (rest.length) room.host = rest[0].id;
+    else { rooms.delete(room.id); return; }
   }
   bump(room);
   if (room.phase === 'night' && room.nightStep && room.nightStep !== 'hunter') { if (nightActors(room, room.nightStep).length && nightActors(room, room.nightStep).every(id => (room.nightActed[room.nightStep] || {})[id])) setNightStep(room); }
@@ -1198,7 +1227,7 @@ function rematch(room) {
 }
 
 /* 自动推进（动作完成后链式推进阶段） */
-function autoAdvance(room) {
+function autoAdvanceInner(room) {
   let guard = 0;
   while (guard++ < 60) {
     if (room.phase === 'ended') return;
@@ -1243,13 +1272,13 @@ function autoAdvance(room) {
     return;
   }
 }
+function autoAdvance(room) {
+  try { autoAdvanceInner(room); }
+  finally { maybeRunBots(room); } // 阶段推进后：若有待行动人机，安排执行
+}
 
 /* ---------------------------- 统一入口 ---------------------------- */
-function handleAction(roomId, pid, action, data) {
-  const room = rooms.get(roomId);
-  if (!room) return { error: '房间不存在或已解散' };
-  const p = byId(room, pid);
-  if (!p) return { error: '玩家不存在' };
+function applyAction(room, p, action, data) {
   let res;
   switch (room.phase) {
     case 'lobby': res = lobbyAction(room, p, action, data); break;
@@ -1257,10 +1286,16 @@ function handleAction(roomId, pid, action, data) {
     case 'night': res = nightAction(room, p, action, data); break;
     default: res = dayAction(room, p, action, data); break;
   }
-  if (res && res.ok) {
-    autoAdvance(room);
-    return { ok: true, view: viewFor(room, pid), left: !!res.left };
-  }
+  if (res && res.ok) autoAdvance(room);
+  return res;
+}
+function handleAction(roomId, pid, action, data) {
+  const room = rooms.get(roomId);
+  if (!room) return { error: '房间不存在或已解散' };
+  const p = byId(room, pid);
+  if (!p) return { error: '玩家不存在' };
+  const res = applyAction(room, p, action, data);
+  if (res && res.ok) return { ok: true, view: viewFor(room, pid), left: !!res.left };
   return { error: res.error || '操作失败' };
 }
 function handleChat(roomId, pid, data) {
@@ -1296,6 +1331,180 @@ function handleKick(roomId, pid, target) {
   return { ok: true, view: viewFor(room, pid) };
 }
 
+/* ============================ 人机玩家（房主调试功能） ============================
+ * 人机 = 服务端自动行动的正常玩家（p.isBot = true），所有决策复用与真人相同的
+ * action 入口（applyAction），保证校验与结算一致。
+ * settings.botMode 控制难度：
+ *   'auto'   简单AI：夜晚按职业启发式决策（狼优先刀好人/女巫常规用药等），白天随机投票；
+ *   'passive'挂机：只补必要动作（被刀自救/全员人机时补狼刀），白天一律弃票。
+ * 队内有人类时，人机只补 confirm、绝不覆盖人类的共享选择（狼刀/魅惑）。
+ */
+const BOT_NAMES = ['豆豆', '阿蓝', '阿紫', '阿青', '阿黄', '阿绿', '阿橙', '阿粉', '阿灰', '阿白', '阿棕', '小雾'];
+function autoBotName(room) {
+  const used = new Set(room.players.map(p => p.name));
+  let i = 0, name;
+  do { name = '人机·' + BOT_NAMES[(room.players.length + i++) % BOT_NAMES.length]; } while (used.has(name));
+  return name;
+}
+function botDelay() { return 400 + Math.floor(Math.random() * 300); } // 400~700ms，模拟真人节奏
+
+/* 当前阶段需要人机行动的玩家列表 */
+function pendingBotActors(room) {
+  if (room.phase === 'lobby' || room.phase === 'ended') return [];
+  switch (room.phase) {
+    case 'reveal': {
+      const rv = room.reveal;
+      if (!rv) return [];
+      if (room.settings.thief && rv.stage === 'thiefPick' && rv.thiefId) {
+        const t = byId(room, rv.thiefId);
+        return t && t.isBot && !rv.thiefPicked ? [t] : [];
+      }
+      if (rv.dealt) return room.players.filter(p => p.isBot && !p.confirmed && !p.leftGame);
+      return [];
+    }
+    case 'night': {
+      if (room.nightStep === 'hunter') {
+        const sh = room.shooter ? byId(room, room.shooter) : null;
+        return sh && sh.isBot && !(room.nightActed['hunter'] || {})[sh.id] ? [sh] : [];
+      }
+      const actors = nightActors(room, room.nightStep || '');
+      if (!actors.length) return [];
+      const acted = room.nightActed[room.nightStep] || {};
+      return actors.filter(id => !acted[id]).map(id => byId(room, id)).filter(p => p && p.isBot);
+    }
+    case 'lastword':
+      return room.lastWorders.filter(id => !room.lastWordDone[id]).map(id => byId(room, id)).filter(p => p && p.isBot);
+    case 'handover': {
+      const sh = room.handoverFrom ? byId(room, room.handoverFrom) : null;
+      return sh && sh.isBot ? [sh] : [];
+    }
+    case 'sheriff_campaign':
+      return room.players.filter(p => p.isBot && p.alive && !room.campaignDecided[p.id]);
+    case 'sheriff_vote':
+    case 'vote':
+    case 'pk_vote':
+      return room.players.filter(p => p.isBot && p.alive && !room.votes.hasOwnProperty(p.id));
+    case 'hunter_shot': {
+      const sh = room.shooter ? byId(room, room.shooter) : null;
+      return sh && sh.isBot ? [sh] : [];
+    }
+    default: return [];
+  }
+}
+
+/* 人机决策：返回 { action, data }；null = 无需动作 */
+function botDecision(room, p) {
+  const auto = room.settings.botMode === 'auto';
+  const alive = () => room.players.filter(q => q.alive);
+  const aliveOthers = () => alive().filter(q => q.id !== p.id);
+  const pick = arr => (arr.length ? arr[randInt(arr.length)] : null);
+  const pickId = arr => { const q = pick(arr); return q ? q.id : null; };
+  const goodOthers = () => aliveOthers().filter(q => campOf(room, q) !== 'wolf');
+  if (room.phase === 'reveal') {
+    const rv = room.reveal;
+    if (room.settings.thief && rv.stage === 'thiefPick' && rv.thiefId === p.id && !rv.thiefPicked) {
+      const wolfIdx = room.center.findIndex(k => WOLF_ROLES.includes(k)); // 有狼必选狼
+      return { action: 'thief_pick', data: { idx: wolfIdx >= 0 ? wolfIdx : randInt(2) } };
+    }
+    return { action: 'confirm', data: {} };
+  }
+  if (room.phase === 'night') {
+    switch (room.nightStep) {
+      case 'cupid': {
+        if (room.nightNum === 1 || auto) {
+          const a = pick(alive());
+          const b = pick(alive().filter(q => q.id !== a.id));
+          return b ? { action: 'cupid_pick', data: { ids: [a.id, b.id] } } : null;
+        }
+        return { action: 'cupid_pick', data: { ids: null } }; // 挂机：放弃重选
+      }
+      case 'lovers': return { action: 'lovers_ok', data: {} };
+      case 'guard': {
+        const valid = alive().filter(q => q.id !== room.guardLast); // 服务端禁止连守同一人
+        const target = auto ? pickId(valid) : (room.guardLast === p.id ? pickId(valid) : p.id); // 挂机守自己
+        return target ? { action: 'guard_pick', data: { target } } : null;
+      }
+      case 'dreamer': {
+        const t = pickId(aliveOthers());
+        return t ? { action: 'dreamer_pick', data: { target: t } } : null;
+      }
+      case 'wolf': {
+        const humans = room.players.some(q => q.alive && isWolfRole(q) && !q.isBot);
+        if (humans) return { action: 'wolf_set', data: { confirm: true } }; // 有人类狼：只确认，不覆盖
+        const data = { confirm: true };
+        if (!room.night.wolf.kill) { // 首个狼人机出刀（含魅惑）
+          const targets = goodOthers();
+          data.kill = pickId(targets.length ? targets : aliveOthers());
+          const beauty = alive().find(q => effRole(q) === 'wolfBeauty');
+          if (auto && beauty) data.charm = pickId(aliveOthers().filter(q => !isWolfRole(q) && q.id !== beauty.id));
+        }
+        return { action: 'wolf_set', data };
+      }
+      case 'seer': {
+        const t = pickId(aliveOthers());
+        return t ? { action: 'seer_pick', data: { target: t } } : null;
+      }
+      case 'witch': {
+        const attacked = room.night.wolf.kill;
+        const save = !room.witchPots.saveUsed && !!attacked && (auto || attacked === p.id); // 挂机仅被刀自救
+        let poison = null;
+        if (auto && !save && !room.witchPots.poisonUsed && room.nightNum >= 2) {
+          const t = pick(aliveOthers());
+          if (t) poison = t.id;
+        }
+        return { action: 'witch_act', data: { save, poison } };
+      }
+      case 'hunter': {
+        const t = auto ? pick(aliveOthers()) : null;
+        return { action: 'hunter_shoot', data: { target: t ? t.id : null } };
+      }
+      default: return null;
+    }
+  }
+  if (room.phase === 'lastword') return { action: 'skip', data: {} };
+  if (room.phase === 'handover') return { action: 'handover', data: { target: null } }; // 人机警长默认撕毁警徽
+  if (room.phase === 'sheriff_campaign') return { action: 'campaign', data: { run: auto ? Math.random() < 0.5 : false } };
+  if (room.phase === 'sheriff_vote') {
+    const target = auto && room.candidates.length ? room.candidates[randInt(room.candidates.length)] : null;
+    return { action: 'vote', data: { target } };
+  }
+  if (room.phase === 'vote') return { action: 'vote', data: { target: auto ? pickId(aliveOthers()) : null } };
+  if (room.phase === 'pk_vote') {
+    const target = auto && room.pkTied && room.pkTied.length ? room.pkTied[randInt(room.pkTied.length)] : null;
+    return { action: 'vote', data: { target } };
+  }
+  if (room.phase === 'hunter_shot') {
+    const t = auto ? pick(aliveOthers()) : null;
+    return { action: 'hunter_shoot', data: { target: t ? t.id : null } };
+  }
+  return null;
+}
+
+/* 执行一批待行动的人机（每步都走与真人相同的 action 入口） */
+function runBots(room) {
+  const bots = pendingBotActors(room);
+  for (const b of bots) {
+    const dec = botDecision(room, b);
+    if (!dec) continue;
+    const res = applyAction(room, b, dec.action, dec.data);
+    if (!(res && res.ok)) break; // 动作异常或阶段已变：停止本轮
+  }
+}
+
+/* 检查当前是否需要人机行动；需要则安排一次延迟执行（单定时器，防重入） */
+function maybeRunBots(room) {
+  if (room.phase === 'lobby' || room.phase === 'ended') return;
+  if (!room.players.some(p => p.isBot)) return;
+  if (room._botTimer) return;
+  if (!pendingBotActors(room).length) return;
+  room._botTimer = setTimeout(() => {
+    room._botTimer = null;
+    if (!rooms.has(room.id)) return;
+    if (room.phase === 'lobby' || room.phase === 'ended') return;
+    runBots(room);
+  }, botDelay());
+}
+
 /* ---------------------------- 玩家视图（个性化） ---------------------------- */
 function viewFor(room, pid) {
   const me = byId(room, pid);
@@ -1317,7 +1526,7 @@ function viewFor(room, pid) {
     players: room.players.map(q => ({
       id: q.id, name: q.name, seat: q.seat, alive: q.alive, deadBy: q.deadBy, deadNote: q.deadNote,
       role: (!q.alive || q.id === pid || room.phase === 'ended' || room.phase === 'lobby') ? roleText(room, q) : null,
-      isMe: q.id === pid, sheriff: q.id === room.sheriff, confirmed: q.confirmed,
+      isBot: !!q.isBot, isMe: q.id === pid, sheriff: q.id === room.sheriff, confirmed: q.confirmed,
     })),
     my: { id: pid, name: me ? me.name : '', alive: me ? me.alive : false, isHost: room.host === pid, role: me ? roleText(room, me) : null, roleKey: me ? effRole(me) : null, camp: me ? ((effRole(me) === 'cupid' || (me.role === 'thief' && !me.pickedRole)) ? null : campText(room, me)) : null },
     myChannels: me ? (['all'].filter(() => room.phase !== 'night').concat(isWolfRole(me) && room.phase === 'night' ? ['wolf'] : []).concat(room.lovers && room.lovers.includes(me.id) ? ['lover'] : [])) : ['all'],

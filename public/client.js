@@ -242,7 +242,7 @@ function renderPlayers() {
   const alive = view.players.filter(p => p.alive);
   const dead = view.players.filter(p => !p.alive);
   const cards = [...alive, ...dead].map(p => {
-    const name = escapeHtml(p.name) + (p.isMe ? ' <span class="badge">我</span>' : '') + (p.sheriff ? ' <span class="sheriff-mark" title="警长">👮</span>' : '');
+    const name = escapeHtml(p.name) + (p.isBot ? ' <span class="badge bot-badge" title="人机">🤖</span>' : '') + (p.isMe ? ' <span class="badge">我</span>' : '') + (p.sheriff ? ' <span class="sheriff-mark" title="警长">👮</span>' : '');
     const role = p.role ? `<div class="prole">${escapeHtml(p.role)}</div>` : '';
     const deadTxt = p.alive ? '' : `<div class="pdead">💀 ${DEATH_TEXT[p.deadBy] || p.deadBy}${p.deadNote ? '（' + escapeHtml(p.deadNote) + '）' : ''}</div>`;
     return `<div class="player ${p.isMe ? 'me' : ''} ${p.alive ? '' : 'dead'} ${draft.target === p.id || draft.target2 === p.id ? 'selected' : ''}" data-id="${p.id}">
@@ -346,6 +346,16 @@ function renderLobby() {
         <label><input type="checkbox" ${view.settings.thief ? 'checked' : ''} onchange="onThief(this.checked)"> 🃏 盗贼玩法（身份牌总数须比人数多 1）</label>
       </div>
       <div class="tip-text">开启后：随机一名玩家为盗贼，从两张身份牌中择一（有狼必选狼），另一张作废。</div></div>`;
+    html += `<div class="set-group"><div class="sg-title">🤖 人机调试</div>
+      <div class="radio-row">
+        <label><input type="radio" name="botmode" value="auto" ${view.settings.botMode !== 'passive' ? 'checked' : ''} onchange="onSetting('botMode','auto')">简单AI（会投票）</label>
+        <label><input type="radio" name="botmode" value="passive" ${view.settings.botMode === 'passive' ? 'checked' : ''} onchange="onSetting('botMode','passive')">挂机（弃票）</label>
+      </div>
+      <div class="btn-row">
+        <button onclick="act('add_bot',{})">＋ 添加人机</button>
+        <button onclick="act('remove_bot',{})">－ 移除最后一个人机</button>
+      </div>
+      <div class="tip-text">人机自动执行本职业行动（夜晚决策/白天投票），用于缺人陪练与调试；添加后请同步调整人数上限，也可用「踢出」移除任意人机。</div></div>`;
     const ready = view.players.length === view.playerCap;
     html += `<div class="btn-row"><button class="primary" id="btn-start" onclick="act('start')" ${ready ? '' : 'disabled'}>开始游戏</button></div>`;
     if (!ready) html += `<div class="tip-text">还需 ${view.playerCap - view.players.length} 人加入</div>`;
@@ -354,7 +364,7 @@ function renderLobby() {
   }
   html += `<div class="set-group"><div class="sg-title">玩家列表（${view.players.length} 人）</div>` +
     view.players.map(p =>
-      `<div class="count-row"><div class="cr-name">${escapeHtml(p.name)}${p.id === view.host ? ' <span class="badge">房主</span>' : ''}</div>` +
+      `<div class="count-row"><div class="cr-name">${escapeHtml(p.name)}${p.isBot ? ' <span class="badge bot-badge">🤖人机</span>' : ''}${p.id === view.host ? ' <span class="badge">房主</span>' : ''}</div>` +
       (isHost && p.id !== view.my.id ? `<div class="cr-ctrl"><button class="danger mini" onclick="kick('${p.id}')">踢出</button></div>` : '') + `</div>`
     ).join('') + `</div>`;
   return html;

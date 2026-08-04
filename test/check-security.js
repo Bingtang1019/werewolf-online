@@ -1,6 +1,7 @@
 'use strict';
 /* 安全加固专项验证：路径穿越 / 参数校验 / body 上限 / 房间 TTL */
 const { spawn } = require('child_process');
+const path = require('path');
 const PORT = 8346;
 const BASE = `http://127.0.0.1:${PORT}`;
 let failures = 0;
@@ -13,7 +14,7 @@ async function post(p, body) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {
-  const srv = spawn(process.execPath, ['server.js'], { env: { ...process.env, PORT: String(PORT) }, stdio: 'ignore' });
+  const srv = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, PORT: String(PORT) }, stdio: 'ignore' });
   await sleep(700);
   try {
     // ---- 1. 路径穿越 ----
@@ -65,7 +66,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   }
   // ---- 6. TTL 验证（独立实例，TTL=1 分钟，5 秒扫一次） ----
   if (failures === 0) {
-    const srv2 = spawn(process.execPath, ['server.js'], { env: { ...process.env, PORT: String(8347), ROOM_TTL_MIN: '1', ROOM_SWEEP_SEC: '5' }, stdio: 'ignore' });
+    const srv2 = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, PORT: String(8347), ROOM_TTL_MIN: '1', ROOM_SWEEP_SEC: '5' }, stdio: 'ignore' });
     await sleep(700);
     try {
       const B2 = 'http://127.0.0.1:8347';

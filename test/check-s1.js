@@ -1,6 +1,7 @@
 'use strict';
 /* 专项验证 S1：狼频道消息白天不再下发到 view.chat（服务端 chatView 夜晚限制） */
 const { spawn } = require('child_process');
+const path = require('path');
 const PORT = 8345;
 const BASE = `http://127.0.0.1:${PORT}`;
 let failures = 0;
@@ -26,10 +27,10 @@ async function chat(room, me, ch, text) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {
-  const srv = spawn(process.execPath, ['server.js'], { env: { ...process.env, PORT: String(PORT) }, stdio: 'ignore' });
+  const srv = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, PORT: String(PORT) }, stdio: 'ignore' });
   await sleep(700);
   try {
-    // 4 人房：房主 A（选狼人），B/C/D 平民
+    // 4 人房：房主 A（选狼人），B/C/D 平民（纯平民局，狼刀任意人不会立刻触发屠边结算）
     const cr = await api('/api/create', { name: 'A' });
     const A = cr.playerId;
     const ids = [A];
@@ -37,7 +38,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       const jr = await api('/api/join', { roomId: cr.roomId, name: n });
       ids.push(jr.playerId);
     }
-    await act(cr.roomId, A, 'setCounts', { counts: { wolf: 1, villager: 2, seer: 1, witch: 0, hunter: 0, guard: 0, dreamer: 0, wolfBeauty: 0, cupid: 0 } });
+    await act(cr.roomId, A, 'setCounts', { counts: { wolf: 1, villager: 3, seer: 0, witch: 0, hunter: 0, guard: 0, dreamer: 0, wolfBeauty: 0, cupid: 0 } });
     await act(cr.roomId, A, 'setCap', { cap: 4 });
     await act(cr.roomId, A, 'start');
     // 身份展示：房主选狼人，其余自动
@@ -52,14 +53,18 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     v = await state(cr.roomId, A);
     assert(v.myChannels.includes('wolf'), '夜晚：狼频道存在');
     assert(v.chat.some(m => m.ch === 'wolf' && m.text === '今晚刀B'), '夜晚：狼频道消息可见');
-    // 狼行动 → 房主跳过预言家步骤 → 天亮 → 推进到白天发言
+    // 狼行动 → 推进直到夜晚结束（若夜间无其它步骤会在狼行动时自动天亮；有则 advance 跳过）
     await act(cr.roomId, A, 'wolf_set', { kill: ids[1], confirm: true });
-    await api('/api/advance', { room: cr.roomId, me: A });
-    await sleep(400);
+    for (let i = 0; i < 6; i++) {
+      v = await state(cr.roomId, A);
+      if (v.phase !== 'night') break;
+      await api('/api/advance', { room: cr.roomId, me: A });
+      await sleep(250);
+    }
     v = await state(cr.roomId, A);
-    assert(v.phase === 'morning', '进入天亮公告');
-    // 推进到白天发言（可能经过遗言阶段，循环推进）
-    for (let i = 0; i < 5; i++) {
+    assert(v.phase !== 'night', '夜晚结束（进入天亮流程）');
+    // 推进到白天发言（可能经过遗言/警长竞选等阶段，循环推进）
+    for (let i = 0; i < 8; i++) {
       v = await state(cr.roomId, A);
       if (v.phase === 'discuss') break;
       const ar = await api('/api/advance', { room: cr.roomId, me: A });
