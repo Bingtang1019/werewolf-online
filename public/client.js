@@ -527,10 +527,13 @@ function renderPanel() {
   if (panel.innerHTML !== html) {
     panel.innerHTML = html;
     // 面板切换轻过渡（5）：仅内容真正变化时触发；用 Web Animations，与 CSS 动画（呼吸光圈等）互不干扰
-    if (!lessMotion() && panel.animate) panel.animate(
-      [{ opacity: .4, transform: 'translateY(-5px)' }, { opacity: 1, transform: 'none' }],
-      { duration: 200, easing: 'ease-out' }
-    );
+    if (!lessMotion() && panel.animate) {
+      if (panel._swapAnim) panel._swapAnim.cancel(); // S5：终止上一次未完成的切换动画，避免叠加
+      panel._swapAnim = panel.animate(
+        [{ opacity: .4, transform: 'translateY(-5px)' }, { opacity: 1, transform: 'none' }],
+        { duration: 200, easing: 'ease-out' }
+      );
+    }
   }
 }
 
@@ -973,7 +976,8 @@ function renderChat() {
       qp.classList.remove('hidden');
       const tgt = draft.target ? nameOf(draft.target) : '';
       const phrases = ['我跳预言家', '过', tgt ? '踩 ' + tgt : '踩', tgt ? '保 ' + tgt : '保', '哈哈哈', '晚上见'];
-      qp.innerHTML = phrases.map(p => `<button onclick="quickPhrase('${p.replace(/'/g, '\\\'')}')">${escapeHtml(p)}</button>`).join('');
+      // B3：不拼 onclick 字符串——JSON.stringify 产出合法 JS 字符串字面量 + escapeHtml 防属性逃逸，玩家名/发言含恶意字符也安全
+      qp.innerHTML = phrases.map(p => `<button onclick="quickPhrase(${escapeHtml(JSON.stringify(p))})">${escapeHtml(p)}</button>`).join('');
     } else qp.classList.add('hidden');
   }
 }
@@ -1122,6 +1126,7 @@ function shouldForceContinue() {
   if (v.phase === 'vote' || v.phase === 'pk_vote') return !!(v.vote && v.vote.need > 0 && v.vote.voted < v.vote.need);
   if (v.phase === 'sheriff_vote') return !!(v.sheriffVote && v.sheriffVote.need > 0 && v.sheriffVote.voted < v.sheriffVote.need);
   if (v.phase === 'sheriff_campaign') return true;
+  if (v.phase === 'reveal') return true; // S3：reveal 阶段房主可强制推进（随机代选/跳过全员确认），服务端 advance 已支持
   if (v.phase === 'lastword') return (v.lastword && v.lastword.entitled || []).some(e => !e.posted);
   return false;
 }
@@ -1150,22 +1155,23 @@ function openRolePop() {
   if (!pop || !view.my.role) return;
   $('rp-emoji').textContent = ROLE_EMOJI_TEXT[view.my.role] || '🎭';
   $('rp-name').textContent = view.my.role;
-  $('rp-desc').textContent = view.my.desc || '';
+  $('rp-desc').textContent = SKILL_TEXT[view.my.roleKey] || '（暂无技能说明）'; // B1：my 无 desc 字段，改用全局技能文案
   const card = pop.querySelector('.rp-card');
   card.className = 'rp-card ' + (ROLE_CAMP_TEXT[view.my.role] || '');
   pop.classList.remove('hidden');
 }
 function closeRolePop() { const pop = $('role-pop'); if (pop) pop.classList.add('hidden'); }
+/* 职业技能文案（B1）：buildRulesList 与身份大卡弹窗共用，避免两处维护 */
+const SKILL_TEXT = {
+  villager: '无技能，靠发言找狼', seer: '每晚查验一人', witch: '一解药一毒药，可自救', hunter: '出局可开枪带人',
+  dreamer: '每晚梦游一人', guard: '每晚守护一人，不能连守', wolf: '夜晚刀人', wolfBeauty: '被放逐带走魅惑者',
+  cupid: '指定情侣', thief: '开局窃取一张身份牌',
+};
 /* 规则速览（14） */
 function buildRulesList() {
   const el = $('rules-list'); if (!el) return;
-  const skills = {
-    villager: '无技能，靠发言找狼', seer: '每晚查验一人', witch: '一解药一毒药，可自救', hunter: '出局可开枪带人',
-    dreamer: '每晚梦游一人', guard: '每晚守护一人，不能连守', wolf: '夜晚刀人', wolfBeauty: '被放逐带走魅惑者',
-    cupid: '指定情侣', thief: '开局窃取一张身份牌',
-  };
   el.innerHTML = Object.keys(ROLE_NAMES).map(k =>
-    `<div class="rules-item ${ROLE_CAMP[k] || ''}"><span class="ri-camp"></span><span>${ROLE_EMOJI[k] || ''} ${ROLE_NAMES[k]}：${skills[k] || ''}</span></div>`
+    `<div class="rules-item ${ROLE_CAMP[k] || ''}"><span class="ri-camp"></span><span>${ROLE_EMOJI[k] || ''} ${ROLE_NAMES[k]}：${SKILL_TEXT[k] || ''}</span></div>`
   ).join('');
   const rv = $('rules-view'); if (rv) rv.classList.remove('hidden');
 }
@@ -1252,8 +1258,10 @@ document.addEventListener('keydown', e => {
   if (tag === 'INPUT' || tag === 'TEXTAREA' || e.ctrlKey || e.metaKey || e.altKey) return;
   if (!view || !view.my || !view.my.alive) return;
   if (window.matchMedia('(pointer: coarse)').matches) return; // 触屏设备忽略快捷键
-  const n = parseInt(e.key, 10);
-  if (n >= 1 && n <= 9) {
+  // 数字键选座位：1~9 = 1~9 号位，0 = 10 号位；11~18 号位暂不覆盖（>10 人局罕见，且鼠标/触屏仍可用，S2）
+  let n = parseInt(e.key, 10);
+  if (e.key === '0') n = 10;
+  if (n >= 1 && n <= 10) {
     const p = view.players.find(x => x.seat === n && x.alive);
     if (p) {
       pickPlayerHotkey(p.id);

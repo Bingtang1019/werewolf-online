@@ -110,8 +110,7 @@ label { line-height: 1.5; cursor: pointer; }
 .phase-text { font-weight: 600; }
 #day-text { color: var(--muted); }
 .countdown { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; margin-left: 8px; }
-.countdown.urgent { color: #ff6b6b; animation: pulse 0.6s infinite alternate; }
-@keyframes pulse { from { opacity: 1; } to { opacity: 0.45; } }
+.countdown.urgent { color: #ff6b6b; }
 #my-role-chip { padding: 3px 12px; border-radius: 20px; background: var(--bg3); border: 1px solid var(--line); font-weight: 600; }
 button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 
@@ -148,12 +147,17 @@ button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 .sheriff-mark { color: var(--accent); }
 
 /* ---------- 面板 ---------- */
-#panel, #info {
+/* C1：只留 #info sticky（公告吸顶）；#panel 正常滚动，避免双 sticky 在 top:72px 处互相重叠 */
+#panel {
   background: var(--bg2); border: 1px solid var(--line); border-radius: 14px;
-  padding: 16px; position: sticky; top: 72px; z-index: 5; /* 公告吸顶，新事件始终可见 */
+  padding: 16px; z-index: 5;
   animation: fadeSlide .3s ease;
 }
-#info { display: none; }
+#info {
+  display: none; position: sticky; top: 72px; z-index: 5; /* 公告吸顶，新事件始终可见 */
+  background: var(--bg2); border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+  animation: fadeSlide .3s ease;
+}
 #info.show { display: block; }
 .panel-title { font-weight: 700; font-size: 16px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; letter-spacing: .3px; }
 .panel-title::before { content: ''; width: 4px; height: 16px; border-radius: 2px; background: linear-gradient(180deg, var(--accent), rgba(232,182,76,.25)); flex: none; }
@@ -252,9 +256,7 @@ button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 #overlay-night {
   position: fixed; inset: 0; background: rgba(5,8,16,.96); z-index: 50;
   display: flex; align-items: center; justify-content: center; flex-direction: column;
-  animation: ovFade .35s ease;
 }
-@keyframes ovFade { from { opacity: 0; } to { opacity: 1; } }
 #overlay-night .on-title { font-size: 42px; letter-spacing: 12px; color: #93a7e0; animation: moonGlow 2.6s ease-in-out infinite alternate; }
 @keyframes moonGlow { from { text-shadow: 0 0 22px rgba(120,150,255,.4); } to { text-shadow: 0 0 46px rgba(120,150,255,.85); } }
 #overlay-night .on-sub { color: var(--muted); margin-top: 16px; font-size: 14px; }
@@ -475,7 +477,7 @@ body.theme-day {
 /* 信息区渐入 */
 @keyframes fadeSlide { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 /* 聊天气泡 + 弹入 */
-.chat-msg { border-radius: 12px; margin: 2px -4px; animation: popIn .18s ease; }
+.chat-msg { border-radius: 12px; margin: 2px -4px; }
 .chat-msg.mine { background: rgba(232,182,76,.08); }
 .chat-msg .cm-avatar { display: inline-block; margin-right: 4px; font-size: 14px; }
 .chat-sys { text-align: center; padding: 6px 0; }
@@ -495,9 +497,10 @@ body.theme-day {
 .on-deaths .od-item { padding: 2px 0; }
 #overlay-night .on-card button { animation: breatheBtn 2s ease-in-out infinite; }
 /* toast 类型化 */
-#toast.toast-ok { background: #16301f; border-color: var(--good); color: var(--good); }
 #toast.toast-err { background: #33171a; border-color: #ff6b6b; color: #ffb3b3; }
 #toast.toast-sys { background: #222a3a; border-color: #6b7a9a; color: #b8c6e0; }
+/* 死亡播报（S1）：语义是“事件”不是“错误”，独立配色 */
+#toast.toast-death { background: #24101f; border-color: #b06af0; color: #d8b8f0; }
 @keyframes toastOut { to { opacity: 0; transform: translate(-50%, -12px); } }
 #toast.leaving { animation: toastOut .25s ease forwards; }
 /* 身份大卡弹窗 */
@@ -615,8 +618,10 @@ body.theme-night::after {
 }
 .fc-back {
   background: repeating-linear-gradient(45deg, #2a3550 0 6px, #232c44 6px 12px);
-  border: 1px solid #3d4a68; font-size: 30px;
+  border: 1px solid #3d4a68;
 }
+.fc-back::before { content: '★'; font-size: 30px; color: #5d6b8a; } /* C2：不用 U+1F0A0，Windows 缺字形会显方框 */
+.fc-front .fc-name { font-size: 12px; font-weight: 700; margin-bottom: 2px; }
 .fc-front {
   transform: rotateY(180deg); background: var(--bg3);
   border: 2px solid color-mix(in srgb, var(--rc, #e8b64c) 60%, var(--line));
@@ -650,6 +655,7 @@ body.less-motion .flip-card .fc-inner { transform: rotateY(180deg); animation: n
 .voted-ok { color: var(--good); }
 
 /* 聊天气泡强化（17/20）：自己右对齐带金色气泡，他人左对齐；频道专属气泡色 */
+#chat-msgs .chat-msg:last-child { animation: popIn .18s ease; } /* C3：整块重绘时只有新消息弹入，旧气泡不再一起重放 */
 .chat-msg { max-width: 88%; align-self: flex-start; background: rgba(255, 255, 255, .035); border: 1px solid rgba(60, 74, 110, .5); padding: 6px 10px; margin: 3px 0; }
 .chat-msg.mine { align-self: flex-end; background: rgba(232, 182, 76, .1); border-color: rgba(232, 182, 76, .22); }
 .chat-msg.ch-wolf { border-color: rgba(224, 96, 96, .3); background: rgba(224, 96, 96, .06); }
