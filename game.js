@@ -670,8 +670,7 @@ function resolveNight(room) {
   if (dreamT && dreamer && !dreamer.alive && dreamer.deadBy !== 'left') die(dreamT, 'dream'); // 摄梦人离开≠死亡，不带走梦游者
   applyLoverChain(room, deaths, die);
   room.nightDeaths = deaths;
-  if (checkWin(room)) { bump(room); return; }
-  // 猎人被狼刀杀死 → 夜间开枪
+  // 猎人被狼刀杀死 → 先结算猎人开枪，再判胜负（否则最后的神职猎人被刀会直接判狼胜而无法开枪；枪杀可能改变战局）
   const hunter = deaths.find(id => { const q = byId(room, id); return effRole(q) === 'hunter' && q.deadBy === 'wolf'; });
   if (hunter) {
     room.nightStep = 'hunter';
@@ -682,6 +681,7 @@ function resolveNight(room) {
     maybeRunBots(room); // 被刀猎人若是人机 →自动决定是否开枪
     return;
   }
+  if (checkWin(room)) { bump(room); return; }
   finishNight(room);
 }
 function finishNight(room) {
@@ -875,8 +875,7 @@ function afterExile(room) {
   }
   applyLoverChain(room, exileAndCharm, die);
   room.dayDeaths = room.dayDeaths.concat(deaths);
-  if (checkWin(room)) { bump(room); return; }
-  // 猎人被放逐 → 开枪
+  // 猎人被放逐 → 先结算开枪，再判胜负（枪杀可能改变战局，与夜晚猎人同规则）
   const hunter = room.exileDeaths.find(id => { const q = byId(room, id); return effRole(q) === 'hunter'; });
   if (hunter) {
     room.phase = 'hunter_shot';
@@ -886,6 +885,7 @@ function afterExile(room) {
     maybeRunBots(room); // 被放逐猎人若是人机 →自动决定是否开枪
     return;
   }
+  if (checkWin(room)) { bump(room); return; }
   beginNight(room);
 }
 
