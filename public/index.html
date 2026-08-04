@@ -22,6 +22,7 @@
       <button id="btn-create" class="primary">创建房间</button>
       <button id="btn-join">进入房间</button>
     </div>
+    <label class="lm-toggle"><input type="checkbox" id="in-less-motion"> ✨ 减少动效（低性能设备）</label>
     <div id="join-line" class="hidden">
       <input id="in-code" placeholder="输入 6 位房间号" maxlength="6" autocomplete="off">
       <button id="btn-join-go">进入</button>
@@ -45,6 +46,7 @@
     </div>
     <div class="tb-right">
       <span id="my-role-chip"></span>
+      <button id="btn-sound" class="mini" title="音效开关">🔊</button>
       <button id="btn-chat-open" class="mini hidden" title="打开聊天">💬 聊天</button>
       <button id="btn-force" class="mini hidden" title="房主强制继续：未操作者视为弃权/跳过">强制继续</button>
       <button id="btn-leave" class="mini">离开</button>
@@ -83,6 +85,7 @@
   </div>
 </div>
 
+<div id="net-banner" class="hidden" role="status">⚠️ 连接中断，正在重试…</div>
 <div id="toast" class="hidden" role="status" aria-live="polite"></div>
 <!-- 身份大卡弹窗（点顶栏身份芯片展开） -->
 <div id="role-pop" class="hidden">

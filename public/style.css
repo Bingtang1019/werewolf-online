@@ -519,3 +519,193 @@ h1, .panel-title, .rp-name { font-family: "Noto Serif SC", "Songti SC", "STSong"
 }
 
 .p-badge { margin-left: 4px; font-size: 12px; }
+
+/* ============================================================
+   Visual v4：夜空星光 / 角色光晕 / 扫光选人 / 狼人泛红 / 死亡翻牌
+              / 投票揭晓 / 警徽飞行 / 聊天气泡 / 弱网横幅 / 减少动效
+   ============================================================ */
+/* 夜空星星（1）：body::before 静态星野（夜晚淡入 1s），::after 三颗眨眼星。
+   两层伪元素 z-index:-1 位于内容之下、深色背景之上；#home 需去掉不透明背景露出星光 */
+#home { background: none; }
+body::before, body::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: -1;
+  opacity: 0; transition: opacity 1s ease;
+}
+body.theme-night::before {
+  opacity: 1;
+  background-image:
+    radial-gradient(1px 1px at 13% 18%, #fff, transparent 55%),
+    radial-gradient(1px 1px at 29% 71%, #dfe6ff, transparent 55%),
+    radial-gradient(1.5px 1.5px at 46% 12%, #fff, transparent 55%),
+    radial-gradient(1px 1px at 63% 45%, #e8ecff, transparent 55%),
+    radial-gradient(1.5px 1.5px at 79% 22%, #fff, transparent 55%),
+    radial-gradient(1px 1px at 89% 61%, #dfe6ff, transparent 55%),
+    radial-gradient(1px 1px at 19% 82%, #fff, transparent 55%),
+    radial-gradient(1.5px 1.5px at 56% 90%, #fff, transparent 55%),
+    radial-gradient(1px 1px at 73% 79%, #dfe6ff, transparent 55%),
+    radial-gradient(1px 1px at 41% 54%, #fff, transparent 55%),
+    radial-gradient(1.2px 1.2px at 8% 44%, #fff, transparent 55%),
+    radial-gradient(1.2px 1.2px at 92% 88%, #fff, transparent 55%),
+    radial-gradient(1px 1px at 68% 8%, #fff, transparent 55%),
+    radial-gradient(1px 1px at 34% 32%, #dfe6ff, transparent 55%);
+}
+body.theme-night::after {
+  opacity: .7; animation: starTwinkle 3.6s ease-in-out infinite alternate;
+  box-shadow: 130px 90px 0 0 rgba(255,255,255,.9), 460px 210px 0 0 rgba(232,236,255,.8), 760px 380px 0 0 rgba(255,255,255,.85);
+}
+@keyframes starTwinkle { from { opacity: .15; } to { opacity: 1; } }
+
+/* 角色专属光晕（3）：--rc 由客户端按职业下发，身份卡/死亡公告/睁眼提示共用 */
+.role-card { box-shadow: 0 0 18px color-mix(in srgb, var(--rc, transparent) 28%, transparent); }
+.identity-reveal {
+  border-color: color-mix(in srgb, var(--rc, #e8b64c) 55%, var(--line));
+  box-shadow: 0 10px 32px rgba(0, 0, 0, .38), 0 0 26px color-mix(in srgb, var(--rc, transparent) 20%, transparent);
+}
+.identity-reveal .ir-name { color: var(--rc, var(--accent)); }
+.death-item .di-emoji { filter: drop-shadow(0 0 6px var(--rc, transparent)); }
+.oc-role { color: var(--rc, #93a7e0); }
+
+/* 标题衬线扩展（4） */
+.winner-banner, #phase-text, .ir-name, .night-title, .oc-title {
+  font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
+  font-weight: 900; letter-spacing: 1px;
+}
+
+/* 睁眼仪式（6）：角色 emoji 从暗处浮出；非行动者看到“等待中”柔和呼吸光 */
+.oc-role { animation: emojiRise 1.1s cubic-bezier(.2, .9, .3, 1.2) .2s both; }
+@keyframes emojiRise { from { opacity: 0; transform: translateY(16px) scale(.5); } to { opacity: 1; transform: none; } }
+#overlay-night.night-wait .on-sub { animation: softPulse 2.4s ease-in-out infinite; color: #aab8d8; }
+@keyframes softPulse {
+  0%, 100% { opacity: .55; text-shadow: 0 0 0 rgba(147, 167, 224, 0); }
+  50% { opacity: 1; text-shadow: 0 0 18px rgba(147, 167, 224, .5); }
+}
+
+/* 选人聚焦（7/8）：玩家区扫光 + 选中卡片动作图标 + 放大发光 */
+#players { position: relative; }
+#players.pick-mode::after {
+  content: ''; position: absolute; inset: -2px; pointer-events: none; border-radius: 14px;
+  background: linear-gradient(115deg, transparent 40%, rgba(232, 182, 76, .09) 50%, transparent 60%);
+  background-size: 240% 100%;
+  animation: pickSweep 2.6s linear infinite;
+}
+@keyframes pickSweep { from { background-position: 130% 0; } to { background-position: -130% 0; } }
+#players.pick-mode .player.selected { transform: scale(1.04); }
+.player .pick-ic {
+  position: absolute; top: 5px; right: 7px; font-size: 15px; pointer-events: none;
+  animation: popIn .2s ease; filter: drop-shadow(0 0 5px rgba(232, 182, 76, .9));
+}
+
+/* 狼人泛红 + 狼印水印（9） */
+#panel.wolf-panel {
+  background: linear-gradient(180deg, #2b1418 0%, #140a0d 100%);
+  border-color: #6b2f2f;
+  box-shadow: inset 0 0 60px rgba(180, 40, 40, .16);
+}
+#panel.wolf-panel::after { content: '🐺'; position: absolute; right: 12px; bottom: 8px; font-size: 68px; opacity: .07; pointer-events: none; line-height: 1; }
+
+/* 天亮死亡翻牌（11）：背面牌 → 翻面露出身份 + 死因；平安夜金色光芒 */
+.flip-grid { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 8px; }
+.flip-card { width: 88px; height: 116px; perspective: 700px; }
+.flip-card .fc-inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; animation: flipDeal .85s cubic-bezier(.2, .8, .3, 1.1) both; }
+@keyframes flipDeal { from { transform: rotateY(0deg); } to { transform: rotateY(180deg); } }
+.fc-face {
+  position: absolute; inset: 0; backface-visibility: hidden; border-radius: 10px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; padding: 6px; text-align: center;
+}
+.fc-back {
+  background: repeating-linear-gradient(45deg, #2a3550 0 6px, #232c44 6px 12px);
+  border: 1px solid #3d4a68; font-size: 30px;
+}
+.fc-front {
+  transform: rotateY(180deg); background: var(--bg3);
+  border: 2px solid color-mix(in srgb, var(--rc, #e8b64c) 60%, var(--line));
+  box-shadow: 0 0 16px color-mix(in srgb, var(--rc, transparent) 25%, transparent);
+}
+.fc-front .fc-emoji { font-size: 28px; line-height: 1; }
+.fc-front .fc-role { font-size: 12px; font-weight: 700; }
+.fc-front .fc-cause { font-size: 10px; color: var(--muted); }
+body.less-motion .flip-card .fc-inner { transform: rotateY(180deg); animation: none; }
+.safe-morning { margin-top: 8px; font-size: 34px; animation: goldenGlow 2s ease-in-out infinite alternate; }
+@keyframes goldenGlow { from { text-shadow: 0 0 14px rgba(255, 210, 110, .35); } to { text-shadow: 0 0 40px rgba(255, 210, 110, .9); } }
+
+/* 投票揭晓（12）：计票弹入 + 放逐行红闪碎裂 + 平票对撞 */
+.vote-total .vt-line { animation: popIn .25s ease both; }
+.vote-total .vt-line.win { border-color: var(--accent); }
+.vote-total .vt-line.exile-shake { animation: exileShake .5s ease .25s both; border-color: #ff6b6b; color: #ff9d9d; }
+@keyframes exileShake {
+  0% { transform: translateX(0); background: rgba(224, 80, 80, .5); }
+  20% { transform: translateX(-5px); } 40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); } 80% { transform: translateX(3px); }
+  100% { transform: none; background: rgba(224, 80, 80, .12); }
+}
+.vote-total .vt-line.tie-shake { animation: tieClash .45s ease both; }
+@keyframes tieClash {
+  0% { transform: translateX(-6px); } 25% { transform: translateX(6px); }
+  50% { transform: translateX(-4px); } 75% { transform: translateX(4px); }
+  100% { transform: none; }
+}
+.vote-progress.incomplete .vp-fill { animation: vpBlink 1.15s ease-in-out infinite; }
+@keyframes vpBlink { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+.voted-ok { color: var(--good); }
+
+/* 聊天气泡强化（17/20）：自己右对齐带金色气泡，他人左对齐；频道专属气泡色 */
+.chat-msg { max-width: 88%; align-self: flex-start; background: rgba(255, 255, 255, .035); border: 1px solid rgba(60, 74, 110, .5); padding: 6px 10px; margin: 3px 0; }
+.chat-msg.mine { align-self: flex-end; background: rgba(232, 182, 76, .1); border-color: rgba(232, 182, 76, .22); }
+.chat-msg.ch-wolf { border-color: rgba(224, 96, 96, .3); background: rgba(224, 96, 96, .06); }
+.chat-msg.ch-lover { border-color: rgba(176, 124, 232, .32); background: rgba(176, 124, 232, .06); }
+.chat-msg.marker-lastword::before { content: '📜 '; }
+.chat-sys { align-self: center; max-width: none; background: none !important; border: none !important; margin: 4px 0; }
+
+/* 盗贼警示（24）：含狼牌红框闪烁提示 */
+.thief-warn { color: #ff9d9d; }
+.thief-warn b { color: #ff6b6b; }
+.role-card.thief-wolf { border-color: var(--wolf) !important; box-shadow: 0 0 24px rgba(224, 96, 96, .5) !important; }
+
+/* 竞选角标（16） */
+.badge.cam-badge { background: rgba(232, 182, 76, .18); color: var(--accent); animation: breatheBtn 1.8s ease-in-out infinite; }
+
+/* 胜利横幅光效扩散 + 再来一局脉冲（25/27） */
+.winner-banner { position: relative; overflow: hidden; }
+.winner-banner::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 260%; aspect-ratio: 1;
+  transform: translate(-50%, -50%); pointer-events: none;
+  background: radial-gradient(circle, color-mix(in srgb, currentColor 22%, transparent) 0%, transparent 55%);
+  animation: bannerGlow 2.4s ease-in-out infinite;
+}
+@keyframes bannerGlow {
+  0%, 100% { opacity: .35; transform: translate(-50%, -50%) scale(.85); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+}
+#btn-rematch { animation: breatheBtn 1.7s ease-in-out infinite; }
+
+/* 弱网横幅（29） */
+#net-banner {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+  background: rgba(190, 70, 70, .92); color: #fff;
+  padding: 8px 20px; border-radius: 20px; font-size: 13px; z-index: 110;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .5); animation: toastIn .25s ease;
+}
+
+/* 警徽飞行（13） */
+.badge-fly {
+  position: fixed; z-index: 120; font-size: 22px; width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center; border-radius: 50%;
+  background: rgba(232, 182, 76, .15); border: 1px solid var(--accent);
+  box-shadow: 0 0 14px rgba(232, 182, 76, .5);
+  transition: transform .8s cubic-bezier(.3, .8, .3, 1); pointer-events: none;
+}
+
+/* 减少动效（31）：localStorage ww_less_motion，禁用全部瞬时动画 */
+body.less-motion *, body.less-motion *::before, body.less-motion *::after {
+  animation: none !important; transition: none !important;
+}
+.lm-toggle { display: block; margin-top: 12px; color: var(--muted); font-size: 13px; cursor: pointer; user-select: none; }
+.lm-toggle input { vertical-align: -2px; }
+
+/* 移动端竖屏：玩家列表改横向滚动卡片（34） */
+@media (max-width: 900px) {
+  #players { display: flex; flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 6px; }
+  #players .player { flex: 0 0 136px; scroll-snap-align: start; }
+  #players .dead-title { flex: 0 0 100%; }
+}

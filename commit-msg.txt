@@ -1,0 +1,1 @@
+feat(ui): Visual v4 interaction and visual upgrade (24 items: death flip cards / starry night / pick sweep + icons / tap-again cancel / vote count-up + exile shatter / sheriff badge fly / wolf-red panel / thief warning / chat bubbles / offline banner / hotkeys / double-click guard / less-motion / Web Audio SFX / mobile horizontal players)
