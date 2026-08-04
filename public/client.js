@@ -404,7 +404,7 @@ function renderPlayers() {
     const isCandidate = view.phase === 'sheriff_campaign' && view.campaign && view.campaign.candidates.some(c => c.id === p.id);
     // 选中动作图标（8）：本轮需要选人时，已选卡片右上角浮出动作图标
     const pickIc = p.alive && (draft.target === p.id || draft.target2 === p.id) ? (($('players') && $('players').dataset.pick) || '✓') : '';
-    const name = escapeHtml(p.name) + (p.isBot ? ' <span class="badge bot-badge" title="人机">🤖</span>' : '') + (p.isMe ? ' <span class="badge">我</span>' : '') + (p.sheriff ? ' <span class="sheriff-mark" title="警长">👮</span>' : '') + (isCandidate ? ' <span class="badge cam-badge">🎤 竞选</span>' : '') + (p.isMe && view.myLover ? ' <span class="p-badge" title="情侣">💞</span>' : '');
+    const name = (p.alive ? '' : '💀 ') + escapeHtml(p.name) + (p.isBot ? ' <span class="badge bot-badge" title="人机">🤖</span>' : '') + (p.isMe ? ' <span class="badge">我</span>' : '') + (p.sheriff ? ' <span class="sheriff-mark" title="警长">👮</span>' : '') + (isCandidate ? ' <span class="badge cam-badge">🎤 竞选</span>' : '') + (p.isMe && view.myLover ? ' <span class="p-badge" title="情侣">💞</span>' : '');
     const moodHtml = p.isMe
       ? `<button class="mood-btn ${p.mood ? 'has' : ''}" onclick="cycleMood()" title="心情表情，点击切换">${p.mood || '🎭'}</button>`
       : (p.mood ? `<span class="mood-tag">${escapeHtml(p.mood)}</span>` : '');
@@ -416,9 +416,9 @@ function renderPlayers() {
       ${pickIc ? `<span class="pick-ic">${pickIc}</span>` : ''}
     </div>`;
   };
-  // 座位排序 + 墓地分区（3 轻量版）
+  // 座位排序 + 墓地分区（3 轻量版）：存活区按 seat 升序，墓地带分组头、死者保留座位号（hover 展开详情）
   $('players').innerHTML = alive.map(card).join('') +
-    (dead.length ? `<div class="dead-title">☠️ 已出局（${dead.length}）</div>` + dead.map(card).join('') : '');
+    (dead.length ? `<div class="dead-title">💀 已出局（${dead.length}）</div>` + dead.map(card).join('') : '');
 }
 
 /* ---------------------------- 信息区（公告/计票） ---------------------------- */
@@ -1198,23 +1198,34 @@ function pickIconFor() {
 /* 弱网横幅（29） */
 function showNetBanner() { const b = $('net-banner'); if (b) b.classList.remove('hidden'); }
 function hideNetBanner() { const b = $('net-banner'); if (b) b.classList.add('hidden'); }
-/* 警徽飞行（13）：fixed 徽章从旧警长卡飞到新警长卡，动画结束自删（不参与重绘） */
+/* 全局动效层（17/20 模板入口）：独立 DOM、动画完自毁（animationend 自删 + 2.6s 兜底防泄漏），
+ * 不参与 view 重绘；减少动效开关或系统 prefers-reduced-motion 时直接跳过。
+ * 用法：spawnFx('💥', 'fx-boom', { left: x, top: y, '--fx': '...' }) */
+function spawnFx(html, klass, styles) {
+  if (lessMotion() || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return null;
+  const el = document.createElement('div');
+  el.className = 'fx ' + (klass || '');
+  el.innerHTML = html;
+  if (styles) for (const k in styles) {
+    if (k === 'left' || k === 'top') el.style[k] = styles[k] + 'px';
+    else el.style.setProperty(k, styles[k]);
+  }
+  document.body.appendChild(el);
+  el.addEventListener('animationend', () => el.remove(), { once: true });
+  setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 2600);
+  return el;
+}
+/* 警徽飞行（13）：fixed 徽章从旧警长卡飞到新警长卡（走 spawnFx 动效层样板） */
 function flySheriffBadge(fromId, toId) {
-  if (lessMotion()) { toast('👮 警徽已移交', 'sys'); return; }
   const from = document.querySelector(`.player[data-id="${fromId}"]`);
   const to = document.querySelector(`.player[data-id="${toId}"]`);
   if (!from || !to) { toast('👮 警徽已移交', 'sys'); return; }
   const fr = from.getBoundingClientRect(), tr = to.getBoundingClientRect();
-  const badge = document.createElement('div');
-  badge.className = 'badge-fly';
-  badge.textContent = '👮';
-  badge.style.left = (fr.left + fr.width / 2 - 14) + 'px';
-  badge.style.top = (fr.top + fr.height / 2 - 14) + 'px';
-  document.body.appendChild(badge);
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    badge.style.transform = `translate(${tr.left - fr.left}px, ${tr.top - fr.top}px)`;
-  }));
-  setTimeout(() => { if (badge.parentNode) badge.parentNode.removeChild(badge); }, 1100);
+  spawnFx('👮', 'fx-badge-fly', {
+    left: fr.left + fr.width / 2 - 14,
+    top: fr.top + fr.height / 2 - 14,
+    '--fx': `translate(${tr.left - fr.left}px, ${tr.top - fr.top}px)`,
+  });
   toast('👮 警徽已移交', 'sys');
 }
 /* 新警长当选落位（16）：警徽弹入动画 */

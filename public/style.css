@@ -687,14 +687,15 @@ body.less-motion .flip-card .fc-inner { transform: rotateY(180deg); animation: n
   box-shadow: 0 6px 24px rgba(0, 0, 0, .5); animation: toastIn .25s ease;
 }
 
-/* 警徽飞行（13） */
-.badge-fly {
-  position: fixed; z-index: 120; font-size: 22px; width: 28px; height: 28px;
-  display: flex; align-items: center; justify-content: center; border-radius: 50%;
-  background: rgba(232, 182, 76, .15); border: 1px solid var(--accent);
+/* 全局动效层（17/20 模板入口）：spawnFx() 生成，独立 DOM、动画完自毁、不参与 view 重绘 */
+.fx { position: fixed; z-index: 130; pointer-events: none; }
+.fx-badge-fly {
+  font-size: 22px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: rgba(232, 182, 76, .15); border: 1px solid var(--accent);
   box-shadow: 0 0 14px rgba(232, 182, 76, .5);
-  transition: transform .8s cubic-bezier(.3, .8, .3, 1); pointer-events: none;
+  animation: fxBadgeFly .8s cubic-bezier(.3, .8, .3, 1) forwards;
 }
+@keyframes fxBadgeFly { from { transform: translate(0, 0); } to { transform: var(--fx, translate(0, 0)); } }
 
 /* 减少动效（31）：localStorage ww_less_motion，禁用全部瞬时动画 */
 body.less-motion *, body.less-motion *::before, body.less-motion *::after {
@@ -702,6 +703,24 @@ body.less-motion *, body.less-motion *::before, body.less-motion *::after {
 }
 .lm-toggle { display: block; margin-top: 12px; color: var(--muted); font-size: 13px; cursor: pointer; user-select: none; }
 .lm-toggle input { vertical-align: -2px; }
+
+/* 行动区固定底部（#22 轻量版）：面板最后一排按钮吸在视口底部，零重构、不动滚动容器 */
+#panel .btn-row:last-child { position: sticky; bottom: 8px; z-index: 2; }
+@media (max-width: 900px) {
+  #panel .btn-row:last-child { bottom: calc(10px + env(safe-area-inset-bottom)); }
+}
+
+/* 墓地紧凑卡片（#3 轻量版）：桌面 hover 展开角色/死因，触屏恒展开——完整信息在死亡公告面板始终可见，信息不丢。
+   仅作用于玩家区 #players（结算页展牌卡 .end-roles 不受影响，身份公开必须常显） */
+@media (hover: hover) and (pointer: fine) {
+  #players .player.dead .prole, #players .player.dead .pdead {
+    max-height: 0; opacity: 0; overflow: hidden; margin: 0;
+    transition: max-height .25s ease, opacity .2s ease;
+  }
+  #players .player.dead:hover .prole, #players .player.dead:hover .pdead { max-height: 60px; opacity: .95; }
+}
+#players .player.dead:hover { opacity: 1; filter: none; }
+#players .player.dead:hover .avatar.dead { filter: none; opacity: 1; }
 
 /* 移动端竖屏：玩家列表改横向滚动卡片（34） */
 @media (max-width: 900px) {
