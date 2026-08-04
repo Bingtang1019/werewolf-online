@@ -1,1 +1,1 @@
-feat(ui): Visual v4 follow-up - sticky action row (#22 light, zero refactor) / compact graveyard cards with hover-expand (#3 light) / spawnFx global FX layer template (badge fly refactored onto it, respects less-motion + prefers-reduced-motion)
+fix(ui): add-bot / kick / hostPick buttons unresponsive - busy-lock disabled onclick buttons on pointerdown which swallows the click event; onclick buttons now lock at click-capture phase instead (pointerdown buttons unchanged)

@@ -1267,17 +1267,28 @@ document.addEventListener('keydown', e => {
     if (btn) { btn.click(); e.preventDefault(); }
   }
 });
-/* 操作防连点（28）：捕获阶段禁用提交类按钮 650ms（服务端已有幂等，此为体验层防护） */
+/* 操作防连点（28）：提交类按钮 650ms 防连点（服务端已有幂等，此为体验层防护）。
+ * 关键：onpointerdown 按钮在 pointerdown 阶段锁定；onclick 按钮必须在 click 阶段锁定——
+ * 若在 pointerdown 就 disable，浏览器会吞掉随后的 click 事件（表现为“点了没反应”，曾导致添加人机按钮失效）。 */
 const SUBMIT_HANDLER_RE = /\b(act\(|doAdvance\(|hostPick\(|doThiefPick\(|doCupidPick\(|doPick\(|doWolfConfirm\(|witchSave\(|witchPoison\(|hunterShoot\(|sendLastword\(|handoverPick\(|castVote\(|kick\()/;
-document.addEventListener('pointerdown', e => {
-  const b = e.target.closest('button[onpointerdown], button[onclick]');
-  if (!b || b.dataset.busyLock) return;
-  const h = b.getAttribute('onpointerdown') || b.getAttribute('onclick') || '';
-  if (!SUBMIT_HANDLER_RE.test(h)) return;
+function lockButton(b) {
+  if (b.dataset.busyLock) return;
   b.dataset.busyLock = '1';
   const orig = b.disabled;
   b.disabled = true;
   setTimeout(() => { if (b.isConnected) b.disabled = orig; delete b.dataset.busyLock; }, 650);
+}
+document.addEventListener('pointerdown', e => {
+  const b = e.target.closest('button[onpointerdown]');
+  if (!b || b.disabled || b.hasAttribute('onclick')) return;
+  if (!SUBMIT_HANDLER_RE.test(b.getAttribute('onpointerdown') || '')) return;
+  lockButton(b);
+}, true);
+document.addEventListener('click', e => {
+  const b = e.target.closest('button[onclick]');
+  if (!b || b.disabled || b.hasAttribute('onpointerdown')) return;
+  if (!SUBMIT_HANDLER_RE.test(b.getAttribute('onclick') || '')) return;
+  lockButton(b); // 捕获阶段禁用：click 仍在派发中，目标阶段 onclick 照常执行，同时挡住连点
 }, true);
 /* 音效（33）：Web Audio 零依赖合成，localStorage ww_sfx 静音开关 */
 function ensureAudio() { try { if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); if (AC && AC.state === 'suspended') AC.resume(); } catch (e) {} }
