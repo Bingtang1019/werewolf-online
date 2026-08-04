@@ -881,6 +881,9 @@ body.less-motion *, body.less-motion *::before, body.less-motion *::after {
 }
 .lm-toggle { display: block; margin-top: 12px; color: var(--muted); font-size: 13px; cursor: pointer; user-select: none; }
 .lm-toggle input { vertical-align: -2px; }
+/* 人机级别选择（v1.4.0） */
+button.mini.bot-level.active { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 1px rgba(232, 182, 76, .4); }
+
 /* 首页设置行（v1.3.0）：减少动效 + 字号调节 */
 .lm-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
 .lm-toggle-row .lm-toggle { margin-top: 0; }

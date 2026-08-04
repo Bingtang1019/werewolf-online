@@ -15,6 +15,7 @@ let sse = null;            // EventSource（SSE 推送唤醒）
 let sseConnected = false;  // SSE 当前是否可用
 const SSE_HEARTBEAT_MS = 30000; // SSE 可用时的心跳轮询间隔（30 秒）
 let draft = {};       // 当前面板的草稿选择 { target, target2, kill, charm }
+let botLevelChoice = 'easy'; // v1.4.0：添加人机时的级别选择（idle/easy/smart）
 let lastPhaseKey = null; // 上次渲染的阶段标识（变化时清空草稿）
 let chatTab = 'all';
 let lastChatCount = -1;
@@ -632,14 +633,20 @@ function renderLobby() {
       <div class="tip-text">开启后：随机一名玩家为盗贼，从两张身份牌中择一（有狼必选狼），另一张作废。</div></div>`;
     html += `<div class="set-group"><div class="sg-title">🤖 人机调试</div>
       <div class="radio-row">
-        <label><input type="radio" name="botmode" value="auto" ${view.settings.botMode !== 'passive' ? 'checked' : ''} onchange="onSetting('botMode','auto')">简单AI（会投票）</label>
-        <label><input type="radio" name="botmode" value="passive" ${view.settings.botMode === 'passive' ? 'checked' : ''} onchange="onSetting('botMode','passive')">挂机（弃票）</label>
+        <label><input type="radio" name="botmode" value="auto" ${view.settings.botMode !== 'passive' ? 'checked' : ''} onchange="onSetting('botMode','auto')">默认简单</label>
+        <label><input type="radio" name="botmode" value="passive" ${view.settings.botMode === 'passive' ? 'checked' : ''} onchange="onSetting('botMode','passive')">默认挂机</label>
+      </div>
+      <div class="radio-row bot-level-row">
+        <span class="tip-text" style="margin-right:4px">新加人机级别：</span>
+        <button class="mini bot-level${botLevelChoice === 'idle' ? ' active' : ''}" onclick="setBotLevel('idle')">挂机</button>
+        <button class="mini bot-level${botLevelChoice === 'easy' ? ' active' : ''}" onclick="setBotLevel('easy')">简单</button>
+        <button class="mini bot-level${botLevelChoice === 'smart' ? ' active' : ''}" onclick="setBotLevel('smart')">智能</button>
       </div>
       <div class="btn-row">
-        <button onclick="act('add_bot',{})">＋ 添加人机</button>
+        <button onclick="act('add_bot',{level:botLevelChoice})">＋ 添加人机</button>
         <button onclick="act('remove_bot',{})">－ 移除最后一个人机</button>
       </div>
-      <div class="tip-text">人机自动执行本职业行动（夜晚决策/白天投票），用于缺人陪练与调试；添加后请同步调整人数上限，也可用「踢出」移除任意人机。</div></div>`;
+      <div class="tip-text">人机自动执行本职业行动（夜晚决策/白天投票），用于缺人陪练与调试；「智能」会分析发言（跳预言家/查杀/金水）与投票记录做贝叶斯推理，狼人视角还会优先刀跳预言家的玩家。botMode 作为默认级别，单个 bot 级别在添加时固化。</div></div>`;
     const ready = view.players.length === view.playerCap;
     html += `<div class="btn-row"><button class="primary" id="btn-start" onpointerdown="act('start')" ${ready ? '' : 'disabled'}>开始游戏</button></div>`;
     if (!ready) html += `<div class="tip-text">还需 ${view.playerCap - view.players.length} 人加入</div>`;
@@ -1487,6 +1494,12 @@ function setFontScale(k) {
   const scale = [0.9, 1, 1.12][k] || 1;
   document.documentElement.style.zoom = scale === 1 ? '' : String(scale);
   try { localStorage.ww_font = String(k); } catch (e) {}
+}
+/* 人机级别选择（v1.4.0）：lobby 人机区三选，添加时固化到 bot.botLevel */
+function setBotLevel(lv) {
+  if (lv !== 'idle' && lv !== 'easy' && lv !== 'smart') return;
+  botLevelChoice = lv;
+  renderPanel();
 }
 
 /* 邀请链接（v1.3.0）：origin + ?room=，复制/原生分享 */

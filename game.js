@@ -9,6 +9,7 @@
  * ========================================================================= */
 
 const crypto = require('crypto');
+const { createBotDecision } = require('./bot-brain'); // v1.4.0：人机三档决策（idle/easy/smart）
 
 /* ---------------------------- 角色定义 ---------------------------- */
 const ROLE_INFO = {
@@ -215,6 +216,8 @@ function lobbyAction(room, p, action, data) {
     if (room.players.length >= room.playerCap) return { error: '房间已满，请先调大人数上限' };
     const bot = addPlayer(room, (data.name || '').trim() || autoBotName(room));
     bot.isBot = true;
+    // v1.4.0：人机级别（idle 挂机 / easy 简单 / smart 智能）；非法值忽略，走房间 botMode 映射
+    if (data.level === 'idle' || data.level === 'easy' || data.level === 'smart') bot.botLevel = data.level;
     bump(room);
     return { ok: true };
   }
@@ -1489,92 +1492,9 @@ function pendingBotActors(room) {
   }
 }
 
-/* 人机决策：返回 { action, data }；null = 无需动作 */
+/* 人机决策（v1.4.0）：统一走 bot-brain 三档入口（idle/easy/smart），公共层+智力层分离 */
 function botDecision(room, p) {
-  const auto = room.settings.botMode === 'auto';
-  const alive = () => room.players.filter(q => q.alive);
-  const aliveOthers = () => alive().filter(q => q.id !== p.id);
-  const pick = arr => (arr.length ? arr[randInt(arr.length)] : null);
-  const pickId = arr => { const q = pick(arr); return q ? q.id : null; };
-  const goodOthers = () => aliveOthers().filter(q => campOf(room, q) !== 'wolf');
-  if (room.phase === 'reveal') {
-    const rv = room.reveal;
-    if (room.settings.thief && rv.stage === 'thiefPick' && rv.thiefId === p.id && !rv.thiefPicked) {
-      const wolfIdx = room.center.findIndex(k => WOLF_ROLES.includes(k)); // 有狼必选狼
-      return { action: 'thief_pick', data: { idx: wolfIdx >= 0 ? wolfIdx : randInt(2) } };
-    }
-    return { action: 'confirm', data: {} };
-  }
-  if (room.phase === 'night') {
-    switch (room.nightStep) {
-      case 'cupid': {
-        if (room.nightNum === 1 || auto) {
-          const a = pick(alive());
-          const b = pick(alive().filter(q => q.id !== a.id));
-          return b ? { action: 'cupid_pick', data: { ids: [a.id, b.id] } } : null;
-        }
-        return { action: 'cupid_pick', data: { ids: null } }; // 挂机：放弃重选
-      }
-      case 'lovers': return { action: 'lovers_ok', data: {} };
-      case 'guard': {
-        const valid = alive().filter(q => q.id !== room.guardLast); // 服务端禁止连守同一人
-        const target = auto ? pickId(valid) : (room.guardLast === p.id ? pickId(valid) : p.id); // 挂机守自己
-        return target ? { action: 'guard_pick', data: { target } } : null;
-      }
-      case 'dreamer': {
-        const t = pickId(aliveOthers());
-        return t ? { action: 'dreamer_pick', data: { target: t } } : null;
-      }
-      case 'wolf': {
-        const humans = room.players.some(q => q.alive && isWolfRole(q) && !q.isBot);
-        if (humans) return { action: 'wolf_set', data: { confirm: true } }; // 有人类狼：只确认，不覆盖
-        const data = { confirm: true };
-        if (!room.night.wolf.kill) { // 首个狼人机出刀（含魅惑）
-          const targets = goodOthers();
-          data.kill = pickId(targets.length ? targets : aliveOthers());
-          const beauty = alive().find(q => effRole(q) === 'wolfBeauty');
-          if (auto && beauty) data.charm = pickId(aliveOthers().filter(q => !isWolfRole(q) && q.id !== beauty.id));
-        }
-        return { action: 'wolf_set', data };
-      }
-      case 'seer': {
-        const t = pickId(aliveOthers());
-        return t ? { action: 'seer_pick', data: { target: t } } : null;
-      }
-      case 'witch': {
-        const attacked = room.night.wolf.kill;
-        const save = !room.witchPots.saveUsed && !!attacked && (auto || attacked === p.id); // 挂机仅被刀自救
-        let poison = null;
-        if (auto && !save && !room.witchPots.poisonUsed && room.nightNum >= 2) {
-          const t = pick(aliveOthers());
-          if (t) poison = t.id;
-        }
-        return { action: 'witch_act', data: { save, poison } };
-      }
-      case 'hunter': {
-        const t = auto ? pick(aliveOthers()) : null;
-        return { action: 'hunter_shoot', data: { target: t ? t.id : null } };
-      }
-      default: return null;
-    }
-  }
-  if (room.phase === 'lastword') return { action: 'skip', data: {} };
-  if (room.phase === 'handover') return { action: 'handover', data: { target: null } }; // 人机警长默认撕毁警徽
-  if (room.phase === 'sheriff_campaign') return { action: 'campaign', data: { run: auto ? Math.random() < 0.5 : false } };
-  if (room.phase === 'sheriff_vote') {
-    const target = auto && room.candidates.length ? room.candidates[randInt(room.candidates.length)] : null;
-    return { action: 'vote', data: { target } };
-  }
-  if (room.phase === 'vote') return { action: 'vote', data: { target: auto ? pickId(aliveOthers()) : null } };
-  if (room.phase === 'pk_vote') {
-    const target = auto && room.pkTied && room.pkTied.length ? room.pkTied[randInt(room.pkTied.length)] : null;
-    return { action: 'vote', data: { target } };
-  }
-  if (room.phase === 'hunter_shot') {
-    const t = auto ? pick(aliveOthers()) : null;
-    return { action: 'hunter_shoot', data: { target: t ? t.id : null } };
-  }
-  return null;
+  return createBotDecision(room, p);
 }
 
 /* 执行一批待行动的人机（每步都走与真人相同的 action 入口） */
