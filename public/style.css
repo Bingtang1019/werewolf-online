@@ -275,3 +275,79 @@ button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
   .role-card { flex: 1 1 120px; }
   #players { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 }
+
+/* ===== Visual v2：昼夜主题 / 头像 / 图标化 / 进度条 / 星空 ===== */
+/* 昼夜主题：夜晚全局压暗变冷，白天回暖（ToS/狼人杀APP经典氛围切换） */
+body { transition: background .45s ease; }
+body.theme-night {
+  --bg: #0a0d15; --bg2: #101623; --bg3: #172031; --line: #222d47;
+  background:
+    radial-gradient(1100px 750px at 50% -10%, #15203c 0%, transparent 60%),
+    radial-gradient(800px 600px at 92% 108%, rgba(84, 62, 150, .22), transparent 65%),
+    radial-gradient(700px 520px at 6% 92%, rgba(44, 96, 150, .18), transparent 65%),
+    #0a0d15;
+}
+body.theme-day {
+  --bg: #12141c; --bg2: #1a1f2d; --bg3: #252c40; --line: #34415f;
+  background:
+    radial-gradient(1100px 750px at 50% -10%, #28344f 0%, transparent 60%),
+    radial-gradient(800px 600px at 92% 108%, rgba(150, 110, 70, .13), transparent 65%),
+    radial-gradient(700px 520px at 6% 92%, rgba(80, 140, 180, .15), transparent 65%),
+    #12141c;
+}
+
+/* 玩家卡：头像圈 + 座位号 */
+.player .phead { display: flex; align-items: center; gap: 10px; }
+.player .avatar {
+  width: 38px; height: 38px; border-radius: 50%; flex: none;
+  background: var(--bg3); border: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: center; font-size: 20px;
+  transition: border-color .15s, box-shadow .15s, filter .2s;
+}
+.player .avatar.dead { filter: grayscale(1); opacity: .55; }
+.player.me .avatar { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(232,182,76,.18); }
+.player.selected .avatar { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(232,182,76,.3); }
+.player .pmeta { min-width: 0; flex: 1; }
+.player .pseat { color: var(--muted); font-size: 11px; font-weight: 400; margin-left: 4px; }
+
+/* 身份卡 / 死亡公告 图标 */
+.role-card .rc-emoji { font-size: 40px; line-height: 1; margin-bottom: 8px; filter: drop-shadow(0 4px 10px rgba(0,0,0,.4)); }
+.death-item .di-emoji { font-size: 22px; flex: none; }
+
+/* 投票进度条 */
+.vote-progress { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.vp-bar { flex: 1; height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+.vp-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #f2c35c); border-radius: 3px; transition: width .35s ease; }
+.vote-progress span { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+/* 顶栏底部倒计时进度条 */
+#topbar { position: relative; }
+#phase-bar { position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; pointer-events: none; }
+#phase-bar-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #f2c35c); transition: width 1s linear; border-radius: 2px; }
+#phase-bar-fill.urgent { background: linear-gradient(90deg, #ff6b6b, #ff9a6b); }
+
+/* 系统消息 → 居中公告（ToS 风格） */
+.chat-sys { text-align: center; padding: 4px 0; }
+
+/* 胜利横幅：发光入场 */
+.winner-banner { animation: bannerIn .5s cubic-bezier(.2, .9, .3, 1.2); }
+@keyframes bannerIn { from { opacity: 0; transform: scale(.92) translateY(-6px); } to { opacity: 1; transform: none; } }
+
+/* 夜晚遮罩星空 + 星光闪烁 */
+#overlay-night::before {
+  content: ''; position: absolute; inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 12% 22%, #fff, transparent 60%),
+    radial-gradient(1px 1px at 28% 68%, #dfe6ff, transparent 60%),
+    radial-gradient(1.5px 1.5px at 45% 15%, #fff, transparent 60%),
+    radial-gradient(1px 1px at 62% 42%, #e8ecff, transparent 60%),
+    radial-gradient(1.5px 1.5px at 78% 20%, #fff, transparent 60%),
+    radial-gradient(1px 1px at 88% 58%, #dfe6ff, transparent 60%),
+    radial-gradient(1px 1px at 18% 78%, #fff, transparent 60%),
+    radial-gradient(1.5px 1.5px at 55% 88%, #fff, transparent 60%),
+    radial-gradient(1px 1px at 72% 76%, #dfe6ff, transparent 60%),
+    radial-gradient(1px 1px at 40% 52%, #fff, transparent 60%);
+  animation: twinkle 3.2s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes twinkle { from { opacity: .45; } to { opacity: 1; } }

@@ -51,6 +51,15 @@ const ROLE_NAMES = {
 // 职业→阵营配色（good/wolf/third），用于职业配置列表/身份展示卡/玩家角色标签
 const ROLE_CAMP = { villager: 'good', seer: 'good', witch: 'good', hunter: 'good', dreamer: 'good', guard: 'good', wolf: 'wolf', wolfBeauty: 'wolf', cupid: 'third' };
 const ROLE_CAMP_TEXT = { '平民': 'good', '预言家': 'good', '女巫': 'good', '猎人': 'good', '摄梦人': 'good', '守卫': 'good', '狼人': 'wolf', '狼美人': 'wolf', '丘比特': 'third' };
+// 职业图标（key→emoji / 中文名→emoji）
+const ROLE_EMOJI = { villager: '🏡', seer: '🔮', witch: '🧪', hunter: '🔫', dreamer: '😴', guard: '🛡️', wolf: '🐺', wolfBeauty: '🌹', cupid: '💘', thief: '🃏' };
+const ROLE_EMOJI_TEXT = { '平民': '🏡', '预言家': '🔮', '女巫': '🧪', '猎人': '🔫', '摄梦人': '😴', '守卫': '🛡️', '狼人': '🐺', '狼美人': '🌹', '丘比特': '💘', '盗贼': '🃏' };
+// 按座位号固定的动物头像
+const SEAT_AVATARS = ['🦉', '🐱', '🐶', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐰', '🦄', '🐙', '🐳', '🦋'];
+const avatarOf = p => {
+  const n = p.seat ? p.seat - 1 : (p.id ? p.id.charCodeAt(0) : 0);
+  return SEAT_AVATARS[Math.abs(n) % SEAT_AVATARS.length];
+};
 const WOLF_KEYS = ['wolf', 'wolfBeauty'];
 
 /* ---------------------------- API ---------------------------- */
@@ -239,14 +248,24 @@ function render() {
   $('day-text').textContent = view.phase === 'night' ? `第 ${view.nightNum} 夜` : (view.dayNum ? `第 ${view.dayNum} 天` : '');
   const chip = $('my-role-chip');
   if (view.my.role) {
-    chip.textContent = `${view.my.role}${view.my.camp ? ' · ' + view.my.camp : ''}${view.my.alive ? '' : '（已出局）'}`;
+    chip.textContent = `${ROLE_EMOJI_TEXT[view.my.role] || ''} ${view.my.role}${view.my.camp ? ' · ' + view.my.camp : ''}${view.my.alive ? '' : '（已出局）'}`;
     chip.style.display = '';
   } else chip.style.display = 'none';
   renderPlayers();
   renderInfo();
   renderPanel();
   renderChat();
+  applyTheme(); // 昼夜主题：夜晚全局压暗变冷，白天回暖
   restoreEditing();
+}
+/* 昼夜主题切换（ToS/狼人杀APP经典氛围）：仅切换 CSS 变量，重绘安全 */
+function applyTheme() {
+  const body = document.body;
+  if (!view) { body.classList.remove('theme-night', 'theme-day'); return; }
+  const night = view.phase === 'night';
+  const day = ['morning', 'lastword', 'handover', 'sheriff_campaign', 'sheriff_vote', 'discuss', 'vote', 'pk_speech', 'pk_vote', 'hunter_shot'].includes(view.phase);
+  body.classList.toggle('theme-night', night);
+  body.classList.toggle('theme-day', day);
 }
 
 /* ---------------------------- 玩家列表 ---------------------------- */
@@ -255,10 +274,11 @@ function renderPlayers() {
   const dead = view.players.filter(p => !p.alive);
   const cards = [...alive, ...dead].map(p => {
     const name = escapeHtml(p.name) + (p.isBot ? ' <span class="badge bot-badge" title="人机">🤖</span>' : '') + (p.isMe ? ' <span class="badge">我</span>' : '') + (p.sheriff ? ' <span class="sheriff-mark" title="警长">👮</span>' : '');
-    const role = p.role ? `<div class="prole ${ROLE_CAMP_TEXT[p.role] || ''}">${escapeHtml(p.role)}</div>` : '';
+    const role = p.role ? `<div class="prole ${ROLE_CAMP_TEXT[p.role] || ''}">${ROLE_EMOJI_TEXT[p.role] || ''} ${escapeHtml(p.role)}</div>` : '';
     const deadTxt = p.alive ? '' : `<div class="pdead">💀 ${DEATH_TEXT[p.deadBy] || p.deadBy}${p.deadNote ? '（' + escapeHtml(p.deadNote) + '）' : ''}</div>`;
     return `<div class="player ${p.isMe ? 'me' : ''} ${p.alive ? '' : 'dead'} ${draft.target === p.id || draft.target2 === p.id ? 'selected' : ''}" data-id="${p.id}">
-      <div class="pname">${name}</div>${role}${deadTxt}
+      <div class="phead"><div class="avatar ${p.alive ? '' : 'dead'}">${avatarOf(p)}</div>
+      <div class="pmeta"><div class="pname">${name}<span class="pseat">#${p.seat}</span></div>${role}${deadTxt}</div></div>
     </div>`;
   }).join('');
   $('players').innerHTML = cards;
@@ -305,7 +325,7 @@ function renderInfo() {
 }
 function deathListHtml(list, title) {
   return `<div class="panel-title">💀 ${title}</div><div class="death-list">` + list.map(d =>
-    `<div class="death-item"><div class="di-name">${escapeHtml(d.name)}</div><div class="di-role">${escapeHtml(d.role || '?')}</div><div class="di-cause">${DEATH_TEXT[d.deadBy] || d.deadBy}${d.deadNote ? '（' + escapeHtml(d.deadNote) + '）' : ''}</div></div>`
+    `<div class="death-item"><div class="di-emoji">${ROLE_EMOJI_TEXT[d.role] || '💀'}</div><div class="di-name">${escapeHtml(d.name)}</div><div class="di-role">${ROLE_EMOJI_TEXT[d.role] || ''} ${escapeHtml(d.role || '?')}</div><div class="di-cause">${DEATH_TEXT[d.deadBy] || d.deadBy}${d.deadNote ? '（' + escapeHtml(d.deadNote) + '）' : ''}</div></div>`
   ).join('') + `</div>`;
 }
 function fmtVote(n) { return Number.isInteger(n) ? n + ' 票' : n + ' 票'; }
@@ -404,14 +424,14 @@ function renderReveal() {
   if (rv.canPick) {
     html += `<div class="panel-desc">由你决定本局职业（可选一种身份牌，或随机分配；之后随机指定盗贼——若开启）。</div>`;
     html += `<div class="role-cards">` + (rv.available || []).map(r =>
-      `<div class="role-card ${ROLE_CAMP[r.key] || ''}" onclick="hostPick('${r.key}')"><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
+      `<div class="role-card ${ROLE_CAMP[r.key] || ''}" onclick="hostPick('${r.key}')"><div class="rc-emoji">${ROLE_EMOJI[r.key] || ''}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
     ).join('') + `</div>`;
     html += `<div class="btn-row"><button onclick="hostPick('random')">🎲 随机分配</button></div>`;
   } else if (rv.stage === 'thiefPick' && rv.isThief) {
     // 盗贼选牌
     html += `<div class="panel-desc">🃏 你是<b>盗贼</b>！从以下两张身份牌中选择一张作为你的身份（若有狼人牌则必须选狼人），另一张作废：</div>`;
     html += `<div class="role-cards">` + (rv.thiefCards || []).map((r, i) =>
-      `<div class="role-card ${ROLE_CAMP[r.key] || ''} ${draft.thiefIdx === i ? 'chosen' : ''}" onclick="draft.thiefIdx = ${i}; render()"><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
+      `<div class="role-card ${ROLE_CAMP[r.key] || ''} ${draft.thiefIdx === i ? 'chosen' : ''}" onclick="draft.thiefIdx = ${i}; render()"><div class="rc-emoji">${ROLE_EMOJI[r.key] || ''}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
     ).join('') + `</div>`;
     html += `<div class="btn-row"><button class="primary" onclick="doThiefPick()" ${draft.thiefIdx === undefined ? 'disabled' : ''}>确认选择</button></div>`;
   } else if (!rv.dealt && rv.stage === 'thiefPick') {
@@ -419,7 +439,7 @@ function renderReveal() {
   } else if (!rv.dealt) {
     html += `<div class="waiting">房主正在选择自己的职业…</div>`;
   } else if (rv.myRole) {
-    html += `<div class="panel-title" style="color:var(--accent)">你的身份：${rv.myRole}</div>`;
+    html += `<div class="panel-title" style="color:var(--accent)">你的身份：${ROLE_EMOJI_TEXT[rv.myRole] || ''} ${rv.myRole}</div>`;
     html += `<div class="panel-desc">${escapeHtml(rv.myDesc || '')}</div>`;
     const meP = view.players.find(p => p.isMe);
     html += meP && meP.confirmed
@@ -659,7 +679,8 @@ function renderVote(isPk) {
   const candidates = isPk && v.pkTied && v.pkTied.length ? v.pkTied : alivePlayers();
   html += `<div class="btn-row">${candidates.map(p => `<button class="mini" onclick="draft.target='${p.id}'; renderPanel()">${escapeHtml(p.name)}</button>`).join('')}</div>`;
   html += `<div class="btn-row"><button class="primary" onclick="castVote()" ${draft.target ? '' : 'disabled'}>投票</button><button onclick="castVote(true)">弃票</button></div>`;
-  html += `<div class="tip-text">已投 ${v.voted}/${v.need}</div>`;
+  const pct = v.need ? Math.round(v.voted / v.need * 100) : 0;
+  html += `<div class="vote-progress"><div class="vp-bar"><div class="vp-fill" style="width:${pct}%"></div></div><span>已投 ${v.voted}/${v.need}</span></div>`;
   return html;
 }
 function renderPkSpeech() {
@@ -678,7 +699,7 @@ function renderEnded() {
   let html = `<div class="winner-banner ${e.winner || ''}">${escapeHtml(e.text || '游戏结束')}</div>`;
   html += `<div class="panel-desc">本局身份公开：</div>`;
   html += `<div class="end-roles">` + (e.roles || []).map(r =>
-    `<div class="player ${r.alive ? '' : 'dead'}"><div class="pname">${escapeHtml(r.name)}${r.alive ? '' : ' 💀'}</div><div class="prole">${escapeHtml(r.role)}</div><div class="pdead"><span class="camp-tag ${campClass(r.camp)}">${escapeHtml(r.camp)}</span></div></div>`
+    `<div class="player ${r.alive ? '' : 'dead'}"><div class="phead"><div class="avatar ${r.alive ? '' : 'dead'}">${avatarOf(r)}</div><div class="pmeta"><div class="pname">${escapeHtml(r.name)}${r.alive ? '' : ' 💀'}</div><div class="prole ${campClass(r.camp)}-role">${ROLE_EMOJI_TEXT[r.role] || ''} ${escapeHtml(r.role)}</div><div class="pdead"><span class="camp-tag ${campClass(r.camp)}">${escapeHtml(r.camp)}</span></div></div></div></div>`
   ).join('') + `</div>`;
   if (view.canRematch) html += `<div class="btn-row"><button class="primary" onclick="act('rematch')">再来一局</button></div>`;
   return html;
@@ -843,6 +864,20 @@ function init() {
       if (left > 0) { el.textContent = '⏱ ' + left + 's'; el.classList.toggle('urgent', left <= 10); }
       else el.textContent = '';
     } else el.textContent = '';
+    // 顶栏底部倒计时进度条（按服务端 PHASE_TIMEOUT 比例收缩）
+    const bar = document.getElementById('phase-bar-fill');
+    if (bar) {
+      if (view && view.phaseTimed && view.phaseDeadline && view.phaseTimeout) {
+        const leftMs = view.phaseDeadline - Date.now();
+        const pct = Math.max(0, Math.min(100, leftMs / (view.phaseTimeout * 1000) * 100));
+        bar.style.width = pct + '%';
+        bar.classList.toggle('urgent', leftMs <= 10000);
+        bar.parentElement.classList.remove('hidden');
+      } else {
+        bar.parentElement.classList.add('hidden');
+        bar.style.width = '0%';
+      }
+    }
   }, 1000);
   // file:// 协议检测：直接双击打开 index.html 无法联机
   if (location.protocol === 'file:') {

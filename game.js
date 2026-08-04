@@ -860,10 +860,11 @@ function checkWin(room) {
   const alive = room.players.filter(p => p.alive && !p.leftGame);
   if (!alive.length) return null;
   // 第三方：场上仅剩第三方成员（丘比特/情侣已死仍计入名单）→ 第三方胜
+  const endRoles = () => room.players.map(p => ({ id: p.id, name: p.name, role: roleText(room, p), camp: campText(room, p), alive: p.alive, seat: p.seat }));
   const third = thirdFaction(room);
   if (third.length && alive.every(p => third.includes(p.id))) {
     room.winner = 'third';
-    room.endInfo = { winner: 'third', text: '第三方阵营获胜（丘比特阵营）', roles: room.players.map(p => ({ id: p.id, name: p.name, role: roleText(room, p), camp: campText(room, p), alive: p.alive })) };
+    room.endInfo = { winner: 'third', text: '第三方阵营获胜（丘比特阵营）', roles: endRoles() };
     room.phase = 'ended';
     bump(room);
     return room.winner;
@@ -876,7 +877,7 @@ function checkWin(room) {
   if (room.settings.winMode === 'city') {
     if (goodCamp.length === 0) { // 屠城：好人阵营全灭即胜，无需消灭第三方
       room.winner = 'wolf';
-      room.endInfo = { winner: 'wolf', text: '狼人阵营获胜（屠城）', roles: room.players.map(p => ({ id: p.id, name: p.name, role: roleText(room, p), camp: campText(room, p), alive: p.alive })) };
+      room.endInfo = { winner: 'wolf', text: '狼人阵营获胜（屠城）', roles: endRoles() };
       room.phase = 'ended';
       bump(room);
       return room.winner;
@@ -895,7 +896,7 @@ function checkWin(room) {
     const civs = goodCamp.filter(p => typeOf(room, p) === 'civil');
     if ((gods.length === 0 && cfgGods > 0) || (civs.length === 0 && cfgCivs > 0)) {
       room.winner = 'wolf';
-      room.endInfo = { winner: 'wolf', text: '狼人阵营获胜（屠边）', roles: room.players.map(p => ({ id: p.id, name: p.name, role: roleText(room, p), camp: campText(room, p), alive: p.alive })) };
+      room.endInfo = { winner: 'wolf', text: '狼人阵营获胜（屠边）', roles: endRoles() };
       room.phase = 'ended';
       bump(room);
       return room.winner;
@@ -904,7 +905,7 @@ function checkWin(room) {
   // 好人胜：狼人阵营（剔除第三方）全灭即胜
   if (wolfCamp.length === 0) {
     room.winner = 'good';
-    room.endInfo = { winner: 'good', text: '好人阵营获胜', roles: room.players.map(p => ({ id: p.id, name: p.name, role: roleText(room, p), camp: campText(room, p), alive: p.alive })) };
+    room.endInfo = { winner: 'good', text: '好人阵营获胜', roles: endRoles() };
     room.phase = 'ended';
     bump(room);
     return room.winner;
@@ -1516,6 +1517,7 @@ function viewFor(room, pid, chatSince) {
     settings: room.settings,
     roleCounts: room.roleCounts,
     playerCap: room.playerCap,
+    phaseTimeout: PHASE_TIMEOUT,
     sheriff: room.sheriff,
     winner: room.winner,
     endInfo: room.endInfo,
