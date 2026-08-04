@@ -228,6 +228,8 @@ setInterval(() => {
     if (now - (r.lastActive || 0) > ROOM_TTL_MS) {
       if (r._phaseTimer) clearTimeout(r._phaseTimer);
       if (r._nightTimer) clearTimeout(r._nightTimer);
+      if (r._nightStepTimer) clearTimeout(r._nightStepTimer);
+      if (r._thiefTimer) clearTimeout(r._thiefTimer);
       Game.rooms.delete(id);
       removed++;
     }

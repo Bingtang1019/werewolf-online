@@ -471,7 +471,7 @@ function renderReveal() {
     ).join('') + `</div>`;
     html += `<div class="btn-row"><button class="primary" onclick="doThiefPick()" ${draft.thiefIdx === undefined ? 'disabled' : ''}>确认选择</button></div>`;
   } else if (rv.thiefPicking) {
-    html += `<div class="waiting">🃏 盗贼正在窃走......</div>`;
+    html += `<div class="waiting">🃏 盗贼正在窃走......（30 秒内自动选择）</div>`;
   } else if (!rv.dealt) {
     html += `<div class="waiting">正在准备身份牌，请稍候…</div>`;
   } else if (rv.myRole) {
@@ -896,21 +896,25 @@ function kick(id) { api('api/kick', { room: roomId, me, target: id }).then(r => 
 
 /* ---------------------------- 初始化 ---------------------------- */
 function init() {
-  // 白天阶段倒计时：每秒更新顶栏剩余秒数（数据来自服务端 phaseDeadline）
+  // 白天阶段/夜晚步骤/盗贼选牌倒计时：每秒更新顶栏剩余秒数（数据来自服务端 deadline）
   setInterval(() => {
     const el = document.getElementById('phase-countdown');
     if (!el) return;
-    if (view && view.phaseDeadline) {
-      const left = Math.ceil((view.phaseDeadline - Date.now()) / 1000);
+    // 优先级：白天阶段 > 夜晚步骤 > 盗贼选牌
+    const dl = view && (view.phaseDeadline || view.nightDeadline || view.revealDeadline);
+    if (view && dl) {
+      const left = Math.ceil((dl - Date.now()) / 1000);
       if (left > 0) { el.textContent = '⏱ ' + left + 's'; el.classList.toggle('urgent', left <= 10); }
       else el.textContent = '';
     } else el.textContent = '';
-    // 顶栏底部倒计时进度条（按服务端 PHASE_TIMEOUT 比例收缩）
+    // 顶栏底部倒计时进度条（白天用 PHASE_TIMEOUT，夜晚/盗贼用 NIGHT_TIMEOUT 比例收缩）
     const bar = document.getElementById('phase-bar-fill');
     if (bar) {
-      if (view && view.phaseTimed && view.phaseDeadline && view.phaseTimeout) {
-        const leftMs = view.phaseDeadline - Date.now();
-        const pct = Math.max(0, Math.min(100, leftMs / (view.phaseTimeout * 1000) * 100));
+      const dl2 = view && (view.phaseDeadline || view.nightDeadline || view.revealDeadline);
+      const totalSec = view && view.phaseDeadline ? (view.phaseTimeout || 30) : (view.nightTimeout || 30);
+      if (view && dl2 && totalSec) {
+        const leftMs = dl2 - Date.now();
+        const pct = Math.max(0, Math.min(100, leftMs / (totalSec * 1000) * 100));
         bar.style.width = pct + '%';
         bar.classList.toggle('urgent', leftMs <= 10000);
         bar.parentElement.classList.remove('hidden');

@@ -46,6 +46,8 @@ function bump(room) { room.version = (room.version || 0) + 1; }
 
 /* 白天发言/投票阶段超时（秒），可用环境变量 PHASE_TIMEOUT 覆盖（便于测试） */
 const PHASE_TIMEOUT = Math.max(2, parseInt(process.env.PHASE_TIMEOUT || '30', 10));
+/* 夜晚每个行动步骤/盗贼选牌的超时（秒），超时未完成视为跳过/随机（房主仍可强制继续） */
+const NIGHT_TIMEOUT = Math.max(2, parseInt(process.env.NIGHT_TIMEOUT || '30', 10));
 
 function clearPhaseTimer(room) {
   if (room._phaseTimer) { clearTimeout(room._phaseTimer); room._phaseTimer = null; }
@@ -316,7 +318,26 @@ function revealAction(room, p, action, data) {
         const candidates = room.players.filter(q => !q.role);
         rv.thiefId = candidates[randInt(candidates.length)].id;
       }
-      if (!rv.thiefPicked) { rv.stage = 'thiefPick'; bump(room); return { ok: true }; }
+      if (!rv.thiefPicked) {
+      rv.stage = 'thiefPick';
+      // 盗贼选牌 30 秒倒计时：超时自动选牌（有狼必选狼，否则随机）
+      if (room._thiefTimer) clearTimeout(room._thiefTimer);
+      room.revealDeadline = Date.now() + NIGHT_TIMEOUT * 1000;
+      room._thiefTimer = setTimeout(() => {
+        room._thiefTimer = null;
+        room.revealDeadline = null;
+        if (!rooms.has(room.id) || room.phase !== 'reveal' || room.reveal.dealt || room.reveal.thiefPicked || room.reveal.stage !== 'thiefPick') return;
+        const t = room.reveal.thiefId ? byId(room, room.reveal.thiefId) : null;
+        if (!t) return;
+        const wolfIdx = room.center.findIndex(k => WOLF_ROLES.includes(k)); // 有狼必选狼
+        t.role = room.center[wolfIdx >= 0 ? wolfIdx : randInt(2)];
+        room.reveal.thiefPicked = true;
+        tryDeal(room);
+        bump(room);
+      }, NIGHT_TIMEOUT * 1000);
+      bump(room);
+      return { ok: true };
+    }
     }
     tryDeal(room);
     bump(room);
@@ -325,6 +346,8 @@ function revealAction(room, p, action, data) {
   // 盗贼从两张身份牌中选择一张（若其中有狼人牌则必须选狼人）
   if (action === 'thief_pick') {
     if (rv.stage !== 'thiefPick' || p.id !== rv.thiefId) return { error: '操作不合法' };
+    if (room._thiefTimer) { clearTimeout(room._thiefTimer); room._thiefTimer = null; }
+    room.revealDeadline = null;
     const idx = data.idx;
     if (idx !== 0 && idx !== 1) return { error: '参数错误' };
     const card = room.center[idx];
@@ -355,6 +378,9 @@ function revealAction(room, p, action, data) {
  * 发放完毕后等待 5 秒自动进入夜晚（全员确认可提前） */
 function tryDeal(room) {
   const rv = room.reveal;
+  // 盗贼选牌倒计时已结束/已选牌 → 清理定时器与倒计时展示
+  if (room._thiefTimer) { clearTimeout(room._thiefTimer); room._thiefTimer = null; }
+  room.revealDeadline = null;
   if (rv.dealt) return;
   if (!rv.hostPicked) return; // 等房主确定期望身份
   if (room.settings.thief && (!rv.thiefId || !rv.thiefPicked)) return; // 等盗贼选择
@@ -378,7 +404,10 @@ function tryDeal(room) {
 
 /* ---------------------------- 夜晚 ---------------------------- */
 function beginNight(room) {
-  clearPhaseTimer(room); // 夜晚无倒计时（各角色行动由房主强制推进）
+  clearPhaseTimer(room); // 白天阶段倒计时清掉（夜晚步骤有自己的 30 秒倒计时）
+  if (room._thiefTimer) { clearTimeout(room._thiefTimer); room._thiefTimer = null; }
+  room.revealDeadline = null;
+  clearNightTimer(room);
   room.nightNum++;
   room.phase = 'night';
   room.nightStep = null;
@@ -445,12 +474,14 @@ function markActed(room, step, pid) {
   room.nightActed[step][pid] = true;
 }
 function setNightStep(room) {
+  clearNightTimer(room); // 旧步骤的 30 秒倒计时作废，重新按新步骤安排
   const steps = nightSteps(room);
   for (const s of steps) {
     if (s === 'lovers' && stepDone(room, s)) room.loversConfirm = false; // 情侣确认完毕
     if (!stepDone(room, s)) {
       room.nightStep = s;
       if (s === 'witch') room.night.witch.revealed = true;
+      scheduleNightStepTimer(room); // 本步骤 30 秒倒计时：超时全员视为跳过
       bump(room);
       return;
     }
@@ -459,6 +490,31 @@ function setNightStep(room) {
   // 狼步完成（含房主 advance 跳过）→ 统一锁定本晚魅惑目标
   if (room.night && stepDone(room, 'wolf')) room.charmTarget = room.night.wolf.charm;
   resolveNight(room);
+}
+/* 夜晚步骤 30 秒倒计时：超时未完成则跳过本步骤（与房主强制继续同语义） */
+function clearNightTimer(room) {
+  if (room._nightStepTimer) { clearTimeout(room._nightStepTimer); room._nightStepTimer = null; }
+  room.nightDeadline = null;
+}
+function scheduleNightStepTimer(room) {
+  clearNightTimer(room);
+  if (room.phase !== 'night' || !room.nightStep) return;
+  const actors = room.nightStep === 'hunter' ? (room.shooter ? [room.shooter] : []) : nightActors(room, room.nightStep);
+  if (!actors.length) return;
+  room.nightDeadline = Date.now() + NIGHT_TIMEOUT * 1000;
+  const step = room.nightStep;
+  room._nightStepTimer = setTimeout(() => {
+    room._nightStepTimer = null;
+    room.nightDeadline = null;
+    if (!rooms.has(room.id) || room.phase !== 'night' || room.nightStep !== step) return; // 已推进/已结束
+    if (step === 'hunter') { resolveShot(room, null); } // 猎人 30 秒未开枪 → 弃枪
+    else {
+      const as = nightActors(room, step);
+      as.forEach(id => markActed(room, step, id)); // 未操作者视为弃权
+      setNightStep(room);
+    }
+    autoAdvance(room);
+  }, NIGHT_TIMEOUT * 1000);
 }
 
 function nightAction(room, p, action, data) {
@@ -621,6 +677,7 @@ function resolveNight(room) {
     room.nightStep = 'hunter';
     room.shooter = hunter;
     room.shotContext = 'night';
+    scheduleNightStepTimer(room); // 猎人 30 秒未开枪 → 弃枪
     bump(room);
     maybeRunBots(room); // 被刀猎人若是人机 →自动决定是否开枪
     return;
@@ -1208,6 +1265,10 @@ function removePlayer(room, pid, isKick) {
 }
 function rematch(room) {
   clearPhaseTimer(room);
+  if (room._nightTimer) { clearTimeout(room._nightTimer); room._nightTimer = null; }
+  clearNightTimer(room);
+  if (room._thiefTimer) { clearTimeout(room._thiefTimer); room._thiefTimer = null; }
+  room.revealDeadline = null;
   room.phase = 'lobby';
   room.dayNum = 0; room.nightNum = 0; room.nightStep = null;
   room.winner = null; room.endInfo = null;
@@ -1527,6 +1588,9 @@ function viewFor(room, pid, chatSince) {
     roleCounts: room.roleCounts,
     playerCap: room.playerCap,
     phaseTimeout: PHASE_TIMEOUT,
+    nightDeadline: room.nightDeadline || null,
+    revealDeadline: room.revealDeadline || null,
+    nightTimeout: NIGHT_TIMEOUT,
     sheriff: room.sheriff,
     winner: room.winner,
     endInfo: room.endInfo,
