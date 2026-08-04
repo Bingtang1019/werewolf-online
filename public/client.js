@@ -260,6 +260,9 @@ function restoreEditing() {
 function render() {
   if (!view) return;
   snapshotEditing();
+  // 顶栏【强制继续】仅房主在非大厅/非结束阶段可见
+  const forceBtn = $('btn-force');
+  if (forceBtn) forceBtn.classList.toggle('hidden', !(view.my && view.my.isHost && view.phase !== 'lobby' && view.phase !== 'ended'));
   // 阶段或夜晚子步骤变化时，清空上次面板的草稿选择（防止残留目标误填充下一步骤）
   const phaseKey = view.phase + (view.nightStep ? ':' + view.nightStep : '') + (view.reveal ? ':' + view.reveal.stage : '');
   if (phaseKey !== lastPhaseKey) {
@@ -959,6 +962,7 @@ function init() {
     clearSession();
     location.reload();
   });
+  $('btn-force').addEventListener('click', () => { if (view && view.my && view.my.isHost) doAdvance(); });
   $('btn-chat').addEventListener('click', sendChat);
   $('chat-text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) sendChat(); });
   $('on-close').addEventListener('click', hideOverlay);

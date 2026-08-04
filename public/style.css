@@ -103,6 +103,9 @@ label { line-height: 1.5; cursor: pointer; }
 .tb-left, .tb-mid, .tb-right { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .tb-mid { flex-wrap: wrap; justify-content: center; }
 #my-role-chip { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 顶栏【强制继续】房主专用 */
+#btn-force { border-color: rgba(232,182,76,.45); color: var(--accent); }
+#btn-force:hover { border-color: var(--accent); box-shadow: 0 0 10px rgba(232,182,76,.25); }
 .room-code { font-size: 18px; font-weight: 700; letter-spacing: 3px; color: var(--accent); font-family: Consolas, monospace; }
 .phase-text { font-weight: 600; }
 #day-text { color: var(--muted); }
