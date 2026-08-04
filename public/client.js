@@ -60,6 +60,18 @@ const avatarOf = p => {
   const n = p.seat ? p.seat - 1 : (p.id ? p.id.charCodeAt(0) : 0);
   return SEAT_AVATARS[Math.abs(n) % SEAT_AVATARS.length];
 };
+// 心情表情（点击自己的表情按钮循环切换，再点到底即关闭）
+const MOODS = ['😀', '😨', '😤', '😭', '😏', '🤔', '😇', '🤡', '😴', '😱', '🥳', '🕶️'];
+function cycleMood() {
+  const cur = view.my.mood;
+  if (!cur) return act('mood', { mood: MOODS[0] });
+  const i = MOODS.indexOf(cur);
+  if (i < 0 || i === MOODS.length - 1) return act('mood', { mood: null });
+  return act('mood', { mood: MOODS[i + 1] });
+}
+// 玩家死亡红闪：首次发现死亡时记录结束时间，1.5s 内保留动画类
+const prevAlive = {};
+const deadFlash = {};
 const WOLF_KEYS = ['wolf', 'wolfBeauty'];
 
 /* ---------------------------- API ---------------------------- */
@@ -273,12 +285,18 @@ function renderPlayers() {
   const alive = view.players.filter(p => p.alive);
   const dead = view.players.filter(p => !p.alive);
   const cards = [...alive, ...dead].map(p => {
+    if (!p.alive && prevAlive[p.id] === true && !deadFlash[p.id]) deadFlash[p.id] = Date.now() + 1500; // 新死亡 → 红闪 1.5s
+    prevAlive[p.id] = p.alive;
+    const flashCls = !p.alive && deadFlash[p.id] > Date.now() ? ' death-flash' : '';
     const name = escapeHtml(p.name) + (p.isBot ? ' <span class="badge bot-badge" title="人机">🤖</span>' : '') + (p.isMe ? ' <span class="badge">我</span>' : '') + (p.sheriff ? ' <span class="sheriff-mark" title="警长">👮</span>' : '');
+    const moodHtml = p.isMe
+      ? `<button class="mood-btn ${p.mood ? 'has' : ''}" onclick="cycleMood()" title="心情表情，点击切换">${p.mood || '🎭'}</button>`
+      : (p.mood ? `<span class="mood-tag">${escapeHtml(p.mood)}</span>` : '');
     const role = p.role ? `<div class="prole ${ROLE_CAMP_TEXT[p.role] || ''}">${ROLE_EMOJI_TEXT[p.role] || ''} ${escapeHtml(p.role)}</div>` : '';
     const deadTxt = p.alive ? '' : `<div class="pdead">💀 ${DEATH_TEXT[p.deadBy] || p.deadBy}${p.deadNote ? '（' + escapeHtml(p.deadNote) + '）' : ''}</div>`;
-    return `<div class="player ${p.isMe ? 'me' : ''} ${p.alive ? '' : 'dead'} ${draft.target === p.id || draft.target2 === p.id ? 'selected' : ''}" data-id="${p.id}">
+    return `<div class="player ${p.isMe ? 'me' : ''} ${p.alive ? '' : 'dead'}${flashCls} ${draft.target === p.id || draft.target2 === p.id ? 'selected' : ''}" data-id="${p.id}">
       <div class="phead"><div class="avatar ${p.alive ? '' : 'dead'}">${avatarOf(p)}</div>
-      <div class="pmeta"><div class="pname">${name}<span class="pseat">#${p.seat}</span></div>${role}${deadTxt}</div></div>
+      <div class="pmeta"><div class="pname">${name}${moodHtml}<span class="pseat">#${p.seat}</span></div>${role}${deadTxt}</div></div>
     </div>`;
   }).join('');
   $('players').innerHTML = cards;
@@ -335,6 +353,8 @@ function nameOf(id) { const p = view.players.find(x => x.id === id); return p ? 
 function renderPanel() {
   const panel = $('panel');
   panel.classList.remove('night-panel');
+  // 轮到我行动 → 面板呼吸光圈（“睁眼”高亮）
+  panel.classList.toggle('my-turn', view.phase !== 'lobby' && view.phase !== 'reveal' && view.phase !== 'ended' && needsFastPoll());
   switch (view.phase) {
     case 'lobby': panel.innerHTML = renderLobby(); break;
     case 'reveal': panel.innerHTML = renderReveal(); break;
@@ -423,15 +443,15 @@ function renderReveal() {
   // 房主选择期望职业（或随机分配）
   if (rv.canPick) {
     html += `<div class="panel-desc">由你决定本局职业（可选一种身份牌，或随机分配；之后随机指定盗贼——若开启）。</div>`;
-    html += `<div class="role-cards">` + (rv.available || []).map(r =>
-      `<div class="role-card ${ROLE_CAMP[r.key] || ''}" onclick="hostPick('${r.key}')"><div class="rc-emoji">${ROLE_EMOJI[r.key] || ''}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
+    html += `<div class="role-cards">` + (rv.available || []).map((r, i) =>
+      `<div class="role-card ${ROLE_CAMP[r.key] || ''}" style="animation-delay:${i * 60}ms" onclick="hostPick('${r.key}')"><div class="rc-emoji">${ROLE_EMOJI[r.key] || ''}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
     ).join('') + `</div>`;
     html += `<div class="btn-row"><button onclick="hostPick('random')">🎲 随机分配</button></div>`;
   } else if (rv.stage === 'thiefPick' && rv.isThief) {
     // 盗贼选牌
     html += `<div class="panel-desc">🃏 你是<b>盗贼</b>！从以下两张身份牌中选择一张作为你的身份（若有狼人牌则必须选狼人），另一张作废：</div>`;
     html += `<div class="role-cards">` + (rv.thiefCards || []).map((r, i) =>
-      `<div class="role-card ${ROLE_CAMP[r.key] || ''} ${draft.thiefIdx === i ? 'chosen' : ''}" onclick="draft.thiefIdx = ${i}; render()"><div class="rc-emoji">${ROLE_EMOJI[r.key] || ''}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
+      `<div class="role-card ${ROLE_CAMP[r.key] || ''} ${draft.thiefIdx === i ? 'chosen' : ''}" style="animation-delay:${i * 80}ms" onclick="draft.thiefIdx = ${i}; render()"><div class="rc-emoji">${ROLE_EMOJI[r.key] || ''}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
     ).join('') + `</div>`;
     html += `<div class="btn-row"><button class="primary" onclick="doThiefPick()" ${draft.thiefIdx === undefined ? 'disabled' : ''}>确认选择</button></div>`;
   } else if (!rv.dealt && rv.stage === 'thiefPick') {
@@ -751,6 +771,7 @@ function playerOf(id) { return view.players.find(p => p.id === id); }
 
 // 玩家卡片点击 → 选择目标（各面板根据 phase/step 决定用途）
 document.addEventListener('click', e => {
+  if (e.target.closest('button')) return; // 按钮（如心情表情/投票）不触发玩家卡选中
   const card = e.target.closest('.player');
   if (!card) return;
   const id = card.dataset.id;

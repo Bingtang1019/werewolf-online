@@ -1226,7 +1226,7 @@ function rematch(room) {
   room.messages = [];
   room.reveal = null;
   if (room._nightTimer) { clearTimeout(room._nightTimer); room._nightTimer = null; }
-  room.players.forEach(p => { p.role = null; p.pickedRole = null; p.alive = true; p.deadBy = null; p.deadNote = null; p.leftGame = false; p.confirmed = false; p.lastWordUsed = false; });
+  room.players.forEach(p => { p.role = null; p.pickedRole = null; p.alive = true; p.deadBy = null; p.deadNote = null; p.leftGame = false; p.confirmed = false; p.lastWordUsed = false; p.mood = null; });
   bump(room);
 }
 
