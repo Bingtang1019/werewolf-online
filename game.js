@@ -1128,12 +1128,20 @@ function chatView(room, p, ch) {
   if (ch === 'lover') return !!p && room.lovers && room.lovers.includes(p.id);
   return false;
 }
+/* 聊天发送间隔（毫秒），防刷屏：同一玩家两条消息至少间隔该时长；可用 CHAT_INTERVAL 覆盖（0=关闭） */
+const CHAT_INTERVAL = Math.max(0, parseInt(process.env.CHAT_INTERVAL || '800', 10));
+
 function chatAction(room, p, data) {
   const ch = data.ch === 'lover' ? 'lover' : data.ch === 'wolf' ? 'wolf' : 'all';
   if (!chatAccess(room, p, ch)) return { error: '你没有该频道的发言权限' };
   const text = (data.text || '').trim();
   if (!text) return { error: '消息不能为空' };
   if (text.length > 200) return { error: '消息过长（≤200字）' };
+  if (CHAT_INTERVAL > 0) { // 防刷屏限流
+    const now = Date.now();
+    if (p.lastChatAt && now - p.lastChatAt < CHAT_INTERVAL) return { error: '发言太快了，请稍候再试' };
+    p.lastChatAt = now;
+  }
   addMessage(room, p, ch, text, null);
   bump(room);
   return { ok: true };
@@ -1170,6 +1178,8 @@ function advance(room, pid) {
       }
       room.players.forEach(q => { q.confirmed = true; });
       if (room._nightTimer) { clearTimeout(room._nightTimer); room._nightTimer = null; }
+      if (room._thiefTimer) { clearTimeout(room._thiefTimer); room._thiefTimer = null; } // 清理盗贼选牌倒计时
+      room.revealDeadline = null;
       bump(room);
       beginNight(room);
       return { ok: true };
@@ -1353,6 +1363,7 @@ function handleAction(roomId, pid, action, data, chatSince) {
   if (!room) return { error: '房间不存在或已解散' };
   const p = byId(room, pid);
   if (!p) return { error: '玩家不存在' };
+  if (p.leftGame) return { error: '你已离开房间' }; // 防已离开玩家刷操作（刷版本号）
   // 心情表情：任意阶段可切换（点击自己的表情按钮循环，null=关闭）
   if (action === 'mood') {
     const MOODS = ['😀', '😨', '😤', '😭', '😏', '🤔', '😇', '🤡', '😴', '😱', '🥳', '🕶️'];
@@ -1371,6 +1382,7 @@ function handleChat(roomId, pid, data, chatSince) {
   if (!room) return { error: '房间不存在或已解散' };
   const p = byId(room, pid);
   if (!p) return { error: '玩家不存在' };
+  if (p.leftGame) return { error: '你已离开房间' };
   const res = chatAction(room, p, data);
   if (res.ok) return { ok: true, view: viewFor(room, pid, chatSince || 0) };
   return { error: res.error };

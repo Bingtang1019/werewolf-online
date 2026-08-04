@@ -106,7 +106,7 @@ async function testThiefGodDiscard() {
 
 async function main() {
   const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, PORT: String(PORT), PHASE_TIMEOUT: '2' },
+    env: { ...process.env, PORT: String(PORT), PHASE_TIMEOUT: '2', CHAT_INTERVAL: '0' },
   });
   let ready = false;
   for (let i = 0; i < 50; i++) {
