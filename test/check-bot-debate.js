@@ -51,7 +51,7 @@ async function toDiscuss(room, host) {
 
 async function main() {
   const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, PORT: String(PORT), PHASE_TIMEOUT: '60', NIGHT_TIMEOUT: '45', BOT_DELAY_MS: '400', CHAT_INTERVAL: '0', BOT_DEBUG: '1' },
+    env: { ...process.env, SNAPSHOT_SEC: '0', PORT: String(PORT), PHASE_TIMEOUT: '60', NIGHT_TIMEOUT: '45', BOT_DELAY_MS: '400', CHAT_INTERVAL: '0', BOT_DEBUG: '1' },
   });
   let srvOut = '';
   srv.stdout.on('data', d => srvOut += d);
@@ -78,8 +78,7 @@ async function main() {
         await sleep(2500); // 等 bot 主发言 + 次发言（辩论）
         const vd = await st(s.room, s.host);
         const debate = (vd.chat || []).find(m => m.from === s.target && m.text && (m.text.includes('悍跳') || m.text.includes('乱带节奏') || m.text.includes('带偏') || m.text.includes('标狼')));
-        assert(!!debate, 'B1 对跳辩论：预言家 bot 反驳悍跳（' + (debate ? debate.text : '未反驳') + '）');
-        b1ok = !!debate;
+        b1ok = !!debate; // v1.5.6：循环内不 assert（失败尝试只 continue），循环外统一断言
         await api('/api/leave', { room: s.room, me: s.host }).catch(() => {});
       } catch (e) {
         try { await api('/api/leave', { room: s.room, me: s.host }); } catch (e2) {}

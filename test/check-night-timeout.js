@@ -73,7 +73,7 @@ async function testThiefTimeout() {
 
 async function main() {
   const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, PORT: String(PORT), NIGHT_TIMEOUT: '2' },
+    env: { ...process.env, SNAPSHOT_SEC: '0', PORT: String(PORT), NIGHT_TIMEOUT: '2' },
   });
   let ready = false;
   for (let i = 0; i < 50; i++) {

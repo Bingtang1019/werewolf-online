@@ -21,7 +21,7 @@ async function st(room, me) { return (await fetch(`${BASE}/api/state?room=${room
 async function adv(room, me) { const r = await api('/api/advance', { room, me }); if (r.error) throw new Error('advance失败: ' + r.error); return r.view; }
 
 async function main() {
-  const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT: String(PORT), PHASE_TIMEOUT: '5', NIGHT_TIMEOUT: '5' } });
+  const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, SNAPSHOT_SEC: '0', PORT: String(PORT), PHASE_TIMEOUT: '5', NIGHT_TIMEOUT: '5' } });
   let ready = false;
   for (let i = 0; i < 50; i++) { try { const r = await fetch(`${BASE}/healthz`); if (r.status === 200) { ready = true; break; } } catch (e) {} await sleep(200); }
   if (!ready) { console.error('服务器未就绪'); srv.kill(); process.exit(1); }

@@ -23,3 +23,7 @@ server.log.old
 # 本地运行文件（体积大，不入库）
 node.exe
 cloudflared.exe
+
+# 房间快照（含玩家 ID 与身份，隐私数据，绝不上库）
+rooms.json
+rooms.json.tmp

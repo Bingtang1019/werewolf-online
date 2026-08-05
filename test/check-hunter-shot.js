@@ -12,7 +12,7 @@ const st = async (room, me) => (await fetch(`${BASE}/api/state?room=${room}&me=$
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function main() {
-  const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT: String(PORT), NIGHT_TIMEOUT: '60' } });
+  const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, SNAPSHOT_SEC: '0', PORT: String(PORT), NIGHT_TIMEOUT: '60' } });
   let ready = false;
   for (let i = 0; i < 50; i++) { try { const r = await fetch(`${BASE}/healthz`); if (r.status === 200) { ready = true; break; } } catch (e) {} await sleep(200); }
   if (!ready) { console.error('服务器未就绪'); server.kill(); process.exit(1); }

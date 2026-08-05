@@ -23,7 +23,7 @@ async function st(room, me) { const res = await fetch(`${BASE}/api/state?room=${
 
 async function main() {
   const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, PORT: String(PORT), PHASE_TIMEOUT: '1', NIGHT_TIMEOUT: '2' },
+    env: { ...process.env, SNAPSHOT_SEC: '0', PORT: String(PORT), PHASE_TIMEOUT: '1', NIGHT_TIMEOUT: '2' },
   });
   try {
     let ready = false;

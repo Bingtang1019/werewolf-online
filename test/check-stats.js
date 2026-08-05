@@ -23,7 +23,7 @@ async function getStats() { return (await fetch(BASE + '/api/stats')).json(); }
 
 async function main() {
   // 用 2 秒活跃窗口：创建后立即计入，2.5 秒无轮询即被排除（测试不用等 30 秒）
-  const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT: String(PORT), STATS_ACTIVE_SEC: '2' } });
+  const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, SNAPSHOT_SEC: '0', PORT: String(PORT), STATS_ACTIVE_SEC: '2' } });
   let ready = false;
   for (let i = 0; i < 50; i++) { try { const r = await fetch(`${BASE}/healthz`); if (r.status === 200) { ready = true; break; } } catch (e) {} await sleep(200); }
   if (!ready) { console.error('服务器未就绪'); srv.kill(); process.exit(1); }

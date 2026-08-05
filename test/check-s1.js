@@ -27,7 +27,7 @@ async function chat(room, me, ch, text) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {
-  const srv = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, PORT: String(PORT), CHAT_INTERVAL: '0' }, stdio: 'ignore' });
+  const srv = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, SNAPSHOT_SEC: '0', PORT: String(PORT), CHAT_INTERVAL: '0' }, stdio: 'ignore' });
   await sleep(700);
   try {
     // 4 人房：房主 A（选狼人），B/C/D 平民（纯平民局，狼刀任意人不会立刻触发屠边结算）

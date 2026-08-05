@@ -101,7 +101,7 @@ async function scenario9() {
 }
 
 async function main() {
-  const server = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const server = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, SNAPSHOT_SEC: '0', PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'pipe'] });
   server.stdout.on('data', d => process.stdout.write('[server] ' + d));
   await sleep(900);
   await scenario9();

@@ -36,6 +36,76 @@ const MIME = {
 };
 
 function acceptsGzip(req) { return /\bgzip\b/.test(req.headers['accept-encoding'] || ''); }
+/* ============ v1.5.6 房间快照持久化：重启/崩溃恢复进行中对局（rooms.json，已 gitignore） ============ */
+const SNAPSHOT_FILE = path.join(__dirname, 'rooms.json');
+const SNAPSHOT_ENABLED = parseInt(process.env.SNAPSHOT_SEC || '60', 10) > 0; // 0 表示禁用（测试环境）
+const SNAPSHOT_SEC = SNAPSHOT_ENABLED ? Math.max(3, parseInt(process.env.SNAPSHOT_SEC, 10)) : 0;
+const SNAPSHOT_REPLACER = (k, v) => (v instanceof Set ? { __set: [...v] } : v);
+const SNAPSHOT_REVIVER = (k, v) => (v && v.__set ? new Set(v.__set) : v);
+function saveSnapshot() {
+  if (!SNAPSHOT_ENABLED) return; // v1.5.6：禁用（测试环境）
+  try {
+    const data = { version: 1, savedAt: Date.now(), rooms: [...Game.rooms.values()].map(r => {
+      const c = { ...r };
+      delete c._phaseTimer; delete c._nightTimer; delete c._nightStepTimer;
+      delete c._thiefTimer; delete c._hunterTimer; delete c._botTimer;
+      return c;
+    }) };
+    const tmp = SNAPSHOT_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(data, SNAPSHOT_REPLACER));
+    if (fs.existsSync(SNAPSHOT_FILE)) fs.copyFileSync(SNAPSHOT_FILE, SNAPSHOT_FILE + '.bak'); // C2：先备份上一次成功版本
+    fs.renameSync(tmp, SNAPSHOT_FILE);
+  } catch (e) { /* 快照失败不影响主流程 */ }
+}
+let dirtyTimer = null;
+function markDirty() { // 房间变更后防抖 1s 原子写
+  if (dirtyTimer) return;
+  dirtyTimer = setTimeout(() => { dirtyTimer = null; saveSnapshot(); }, 1000);
+}
+function loadSnapshot() {
+  if (!SNAPSHOT_ENABLED) return 0; // v1.5.6：禁用（测试环境）
+  try {
+    let raw = null, src = null;
+    if (fs.existsSync(SNAPSHOT_FILE)) { raw = fs.readFileSync(SNAPSHOT_FILE, 'utf8'); src = SNAPSHOT_FILE; }
+    let data = null;
+    try { if (raw) data = JSON.parse(raw, SNAPSHOT_REVIVER); } catch (e) { data = null; }
+    if (!data) { // C2：主文件损坏 → 回退 .bak
+      try {
+        if (fs.existsSync(SNAPSHOT_FILE + '.bak')) { data = JSON.parse(fs.readFileSync(SNAPSHOT_FILE + '.bak', 'utf8'), SNAPSHOT_REVIVER); src = SNAPSHOT_FILE + '.bak'; }
+      } catch (e2) { data = null; }
+    }
+    if (!data || data.version !== 1 || !Array.isArray(data.rooms)) return 0; // 格式不兼容 → 安全丢弃，绝不崩启动
+    let n = 0;
+    for (const r of data.rooms) {
+      if (!r || !r.id) continue;
+      r.lastActive = Date.now(); // 防 TTL 秒杀
+      Game.rooms.set(r.id, r);
+      try { Game.resumeRoom(r); } catch (e) { /* 单个房间恢复失败不影响其他 */ }
+      n++;
+    }
+    return n;
+  } catch (e) { return 0; }
+}
+
+/* v1.5.6：内存级令牌桶限流（防脚本刷房/刷号）；公网隧道下用 CF-Connecting-IP 取真实用户，避免全房间共享同一地址误伤 */
+const ipBuckets = new Map();
+function clientIp(req) {
+  return (req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+    || req.socket.remoteAddress || '';
+}
+const LOCAL_IPS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+function rateLimit(ip, key, limit, windowMs) {
+  if (!ip) return true;
+  if (LOCAL_IPS.has(ip)) return true; // 本机开发/测试/局域网直连不限流；公网（CF-Connecting-IP）照常限流
+  const k = ip + ':' + key;
+  const now = Date.now();
+  let b = ipBuckets.get(k);
+  if (!b || now - b.start > windowMs) { b = { start: now, n: 0 }; ipBuckets.set(k, b); }
+  if (++b.n > limit) return false;
+  return true;
+}
+setInterval(() => { const now = Date.now(); for (const [k, b] of ipBuckets) { if (now - b.start > 60000) ipBuckets.delete(k); } }, 60000);
+
 function sendJSON(res, obj) {
   const s = JSON.stringify(obj);
   const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Vary': 'Accept-Encoding' };
@@ -130,7 +200,13 @@ const server = http.createServer((req, res) => {
 
   /* ------------------------- API ------------------------- */
   if (pathname === '/healthz') {
-    return sendJSON(res, { ok: true, uptime: process.uptime() });
+    const rss = process.memoryUsage().rss / 1048576;
+    if (rss > MAX_RSS_MB) { // B1：sendJSON 固定 writeHead(200)，这里必须直接写响应，否则 ERR_HTTP_HEADERS_SENT
+      const hb = JSON.stringify({ ok: false, error: 'memory-limit', rss: Math.round(rss) });
+      res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(hb);
+    }
+    return sendJSON(res, { ok: true, uptime: process.uptime(), rss: Math.round(rss), rooms: Game.rooms.size });
   }
   if (pathname.startsWith('/api/')) {
     /* 在线统计：当前“活跃”房间数/玩家数（首页“🔥 正在开黑”）。
@@ -147,17 +223,23 @@ const server = http.createServer((req, res) => {
       return sendJSON(res, { rooms, players });
     }
     if (pathname === '/api/create' && req.method === 'POST') {
+      const cip = clientIp(req);
+      if (!rateLimit(cip, 'create', 10, 60000)) return sendJSON(res, { error: '创建房间过于频繁，请稍后再试' });
+      if (Game.rooms.size >= 300) return sendJSON(res, { error: '服务器房间已满，请稍后再试' });
       return readBody(req, res, body => {
         const r = Game.createRoom(String(body.name || '').slice(0, 12) || '玩家');
+        markDirty();
         sendJSON(res, { roomId: r.roomId, playerId: r.playerId, view: r.view });
       });
     }
     if (pathname === '/api/join' && req.method === 'POST') {
+      if (!rateLimit(clientIp(req), 'join', 30, 60000)) return sendJSON(res, { error: '加入房间过于频繁，请稍后再试' });
       return readBody(req, res, body => {
         const roomId = String(body.roomId || '').toUpperCase().trim();
         if (!/^[0-9A-Z]{6}$/.test(roomId)) return sendJSON(res, { error: '房间号格式错误（6 位数字或字母）' });
         const r = Game.joinRoom(roomId, String(body.name || '').slice(0, 12) || '玩家');
         if (r.error) return sendJSON(res, { error: r.error });
+        markDirty();
         sendJSON(res, { playerId: r.playerId, view: r.view });
       });
     }
@@ -213,6 +295,7 @@ const server = http.createServer((req, res) => {
       return readBody(req, res, body => {
         const r = Game.handleAction(body.room, body.me, body.action, body.data || {}, body.chatSince || 0);
         if (r.error) return sendJSON(res, { error: r.error });
+        markDirty();
         sendJSON(res, { ok: true, view: r.view, left: !!r.left });
       });
     }
@@ -220,6 +303,7 @@ const server = http.createServer((req, res) => {
       return readBody(req, res, body => {
         const r = Game.handleChat(body.room, body.me, body.data || {}, body.chatSince || 0);
         if (r.error) return sendJSON(res, { error: r.error });
+        markDirty();
         sendJSON(res, { ok: true, view: r.view });
       });
     }
@@ -227,16 +311,18 @@ const server = http.createServer((req, res) => {
       return readBody(req, res, body => {
         const r = Game.handleAdvance(body.room, body.me, body.chatSince || 0);
         if (r.error) return sendJSON(res, { error: r.error });
+        markDirty();
         sendJSON(res, { ok: true, view: r.view });
       });
     }
     if (pathname === '/api/leave' && req.method === 'POST') {
-      return readBody(req, res, body => { Game.handleLeave(body.room, body.me); sendJSON(res, { ok: true }); });
+      return readBody(req, res, body => { Game.handleLeave(body.room, body.me); markDirty(); sendJSON(res, { ok: true }); });
     }
     if (pathname === '/api/kick' && req.method === 'POST') {
       return readBody(req, res, body => {
         const r = Game.handleKick(body.room, body.me, body.target, body.chatSince || 0);
         if (r.error) return sendJSON(res, { error: r.error });
+        markDirty();
         sendJSON(res, { ok: true, view: r.view });
       });
     }
@@ -316,8 +402,27 @@ setInterval(() => {
 }, 600000);
 
 // v1.5.5：调大 keep-alive（node 默认 5s），减少与 cloudflared/代理层的连接重建；headersTimeout 必须更大
+/* v1.5.6：内存看门狗——RSS 持续超限（泄漏）则主动退出让平台/脚本重启；与 log-and-continue 崩溃容错互补 */
+const MAX_RSS_MB = Math.max(64, parseInt(process.env.MAX_RSS_MB || '400', 10));
+setInterval(() => {
+  const rss = process.memoryUsage().rss / 1048576;
+  if (rss > MAX_RSS_MB) {
+    console.error('[watchdog] RSS ' + rss.toFixed(1) + 'MB 超过 ' + MAX_RSS_MB + 'MB，主动退出让平台重启');
+    process.exit(1);
+  }
+}, 30000);
+
 server.keepAliveTimeout = 65000;
 server.headersTimeout = 70000;
+
+/* v1.5.6：启动时恢复快照（房间 + 进行中对局）；失败/格式不兼容则静默忽略 */
+const restoredRooms = loadSnapshot();
+if (restoredRooms > 0) console.log('[snapshot] 已恢复 ' + restoredRooms + ' 个房间（含进行中对局）');
+setInterval(saveSnapshot, SNAPSHOT_SEC * 1000); // 定期兜底保存
+Game.onChange = () => markDirty(); // B2：所有状态变更（含 timer/bot 行动）→ 防抖 1s 落盘
+process.on('SIGTERM', () => { try { saveSnapshot(); } catch (e) {} process.exit(0); });
+process.on('SIGINT', () => { try { saveSnapshot(); } catch (e) {} process.exit(0); });
+process.on('exit', () => { try { saveSnapshot(); } catch (e) {} });
 
 server.listen(PORT, () => {
   console.log('==============================================');

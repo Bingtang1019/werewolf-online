@@ -13,7 +13,7 @@ const chat = (room, me, ch, text) => api('/api/chat', { room, me, data: { ch, te
 
 async function main() {
   const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, PORT: String(PORT) }, // 默认 CHAT_INTERVAL=800
+    env: { ...process.env, SNAPSHOT_SEC: '0', PORT: String(PORT) }, // 默认 CHAT_INTERVAL=800
   });
   let ready = false;
   for (let i = 0; i < 50; i++) {

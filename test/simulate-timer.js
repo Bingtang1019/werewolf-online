@@ -116,7 +116,7 @@ async function scenario() {
 }
 
 async function main() {
-  const server = spawn(process.execPath, ['server.js'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), PHASE_TIMEOUT: '2' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const server = spawn(process.execPath, ['server.js'], { cwd: ROOT, env: { ...process.env, SNAPSHOT_SEC: '0', PORT: String(PORT), PHASE_TIMEOUT: '2' }, stdio: ['ignore', 'pipe', 'pipe'] });
   server.stdout.on('data', d => process.stdout.write('[server] ' + d));
   server.stderr.on('data', d => process.stderr.write('[server-err] ' + d));
   // 等待服务器就绪

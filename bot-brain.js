@@ -1151,4 +1151,26 @@ function createBotDecision(room, bot) {
   return decisionIdle(room, bot);
 }
 
-module.exports = { createBotDecision, botWolfChat, factionOf };
+/* =================================================================
+   v1.5.6：跨局记忆治理——"印象"保留（suspicion 恩怨），"事实"重置
+   rematch/startGame 共用；避免上一局的悍跳标记/魅惑目标/银水泄漏进新局
+================================================================= */
+function resetBotPerGame(bot) {
+  if (!bot || !bot.botMemory) return;
+  const m = bot.botMemory;
+  m.beliefs = undefined; m.seerClaims = undefined; m.claims = undefined; m.roleClaims = undefined;
+  m.silverWater = undefined; m.guarded = undefined; m.attitudes = undefined;
+  m.lastExiled = undefined; m.lastSheriffRound = undefined; m.lastProcessedExile = undefined;
+  m.silverReported = undefined; m.wolfChatNight = undefined;
+  m.seen = undefined; m.msgSeen = undefined; m.attMsgSeen = undefined; m.recordedDead = undefined;
+  m.attDead = undefined; m.roleMsgSeen = undefined;
+  // suspicion（关键词好恶）刻意保留：跨局"恩怨"的载体
+}
+/* 上一局是狼 → 本局初始 +15 嫌疑（显式建模"真人记得上局谁是狼"） */
+function injectGrudge(bot, wolfIds) {
+  if (!bot || !bot.botMemory || !Array.isArray(wolfIds)) return;
+  const g = bot.botMemory.suspicion = bot.botMemory.suspicion || {};
+  for (const wid of wolfIds) if (wid !== bot.id) g[wid] = (g[wid] || 0) + 15;
+}
+
+module.exports = { createBotDecision, botWolfChat, factionOf, resetBotPerGame, injectGrudge };

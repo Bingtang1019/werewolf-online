@@ -16,7 +16,7 @@ const assert = (c, m) => { if (c) console.log(' ✓ ' + m); else { failures++; c
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function main() {
-  const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT: String(PORT) } });
+  const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, SNAPSHOT_SEC: '0', PORT: String(PORT) } });
   let ready = false;
   for (let i = 0; i < 50; i++) { try { const r = await fetch(`${BASE}/healthz`); if (r.status === 200) { ready = true; break; } } catch (e) {} await sleep(200); }
   if (!ready) { console.error('服务器未就绪'); srv.kill(); process.exit(1); }

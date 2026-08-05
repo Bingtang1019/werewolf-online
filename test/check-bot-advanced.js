@@ -81,7 +81,7 @@ async function toDiscuss(room, host) {
 
 async function main() {
   const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, PORT: String(PORT), PHASE_TIMEOUT: '60', NIGHT_TIMEOUT: '45', BOT_DELAY_MS: '400', CHAT_INTERVAL: '0' },
+    env: { ...process.env, SNAPSHOT_SEC: '0', PORT: String(PORT), PHASE_TIMEOUT: '60', NIGHT_TIMEOUT: '45', BOT_DELAY_MS: '400', CHAT_INTERVAL: '0' },
   });
   let ready = false;
   for (let i = 0; i < 50; i++) { try { const r = await fetch(`${BASE}/healthz`); if (r.status === 200) { ready = true; break; } } catch (e) {} await sleep(200); }
@@ -164,7 +164,7 @@ async function main() {
       await toDiscuss(s.room, s.host);
       await sleep(1500); // 等 bot 发言（BOT_DELAY_MS=400 + 发言批次）
       const vd = await st(s.room, s.host);
-      const talk = (vd.chat || []).find(m => m.from === s.target && m.text && m.text.includes('我是预言家'));
+      const talk = (vd.chat || []).find(m => m.from === s.target && m.text && m.text.includes('预言家')); // v1.5.6：seer 报查验为随机变体（均含“预言家”）
       assert(!!talk, 'A4 发言模拟：smart 预言家白天报查验（' + (talk ? talk.text : '未发言') + '）');
       await api('/api/leave', { room: s.room, me: s.host }).catch(() => {});
       break;

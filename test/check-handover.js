@@ -130,7 +130,7 @@ async function testPoisonNoHandover() {
 }
 
 async function main() {
-  const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, PORT: String(PORT), PHASE_TIMEOUT: '2' } });
+  const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { env: { ...process.env, SNAPSHOT_SEC: '0', PORT: String(PORT), PHASE_TIMEOUT: '2' } });
   let ready = false;
   for (let i = 0; i < 50; i++) {
     try { const r = await fetch(`${BASE}/healthz`); if (r.status === 200) { ready = true; break; } } catch (e) {}

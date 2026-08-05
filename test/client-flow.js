@@ -92,7 +92,7 @@ function testClientLogic() {
 async function main() {
   testClientLogic();
   await testServerDown();
-  const server = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const server = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, SNAPSHOT_SEC: '0', PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'pipe'] });
   server.stdout.on('data', d => process.stdout.write('[server] ' + d));
   server.stderr.on('data', d => process.stderr.write('[server-err] ' + d));
   await sleep(900);
