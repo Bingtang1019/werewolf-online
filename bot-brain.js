@@ -2,6 +2,7 @@
 /* v1.6.4（A5-1/A2-5）：统一置信度入口 + 发言语料库（组合式生成）——C1 意图层未来只消费这两处 */
 const { confidenceOf } = require('./server/ai/confidence.js');
 const LEXICON = require('./server/ai/lexicon.json');
+const { decideVote, decideNightKill } = require('./server/ai/legacy/decide.js'); // 1.7.0（B1-1）：纯行动策略接口
 /* 1.7.0（B1-8）：显式可注入 RNG——决策随机全部走“当前 RNG”（createBotDecision 入口设置），杜绝 Math.random 隐性状态 */
 const { createRng } = require('./server/ai/rng.js');
 if (!global.rng) global.rng = createRng(parseInt(process.env.SEED || '0', 10) || 12345); // 独立 require（单测）时回退默认种子
@@ -196,7 +197,12 @@ function decisionEasy(room, bot) {
         if (!room.night.wolf.kill) {
           const claimedSeer = aliveOthers(room, bot).find(q => mem.claims[q.id] === 'seer' && (!lp || lp.isWolf || q.id !== lp.id));
           let target = claimedSeer;
-          if (!target) target = pick(aliveOthers(room, bot).filter(q => campOf(q) !== 'wolf' && (!lp || lp.isWolf || q.id !== lp.id))) || (lp && !lp.isWolf ? null : pick(aliveOthers(room, bot)));
+          if (!target) {
+            // 1.7.0（B1-1）：间接方案——decideNightKill 刀“最像好人”的非队友（argmin P(wolf)）；恋人保护在决策层之上
+            const nk = decideNightKill(buildVoteWorld(room, bot), aliveOthers(room, bot).map(p => p.id), rng());
+            target = nk.target ? byId(room, nk.target) : null;
+            if (target && lp && !lp.isWolf && target.id === lp.id) target = null;
+          }
           data.kill = target ? target.id : null;
           const beauty = alivePlayers(room).find(q => effRole(q) === 'wolfBeauty');
           if (beauty && !room.night.wolf.charm) {
@@ -230,23 +236,22 @@ function decisionEasy(room, bot) {
     }
   }
   if (room.phase === 'sheriff_vote') {
-    const lp = loverPartner(room, bot); // v1.6.3：狼恋人不投恋人
-    let target = null, best = -Infinity;
-    for (const c of room.candidates || []) {
-      if (lp && !lp.isWolf && c === lp.id) continue;
-      if ((mem.suspicion[c] || 0) > best) { best = mem.suspicion[c] || 0; target = c; }
-    }
+    const world = buildVoteWorld(room, bot); // 1.7.0（B1-1）：decideVote（阵营分流 + 跟票集中）
+    const res = decideVote(world, room.candidates || [], rng());
+    const lp = loverPartner(room, bot); // v1.6.3：狼恋人不投恋人（决策层之上）
+    const target = res.target && lp && !lp.isWolf && res.target === lp.id ? null : res.target;
     return { action: 'vote', data: { target } };
   }
   if (room.phase === 'vote') {
+    const world = buildVoteWorld(room, bot); // 1.7.0（B1-1）：纯策略 decideVote（含卖狼/跟票/阵营分流）
+    const res = decideVote(world, aliveOthers(room, bot).map(p => p.id), rng());
+    let t = res.target ? byId(room, res.target) : null;
     const lp = loverPartner(room, bot); // v1.6.3：狼恋人不投恋人
-    let t = suspicionTarget(room, bot);
     if (t && lp && !lp.isWolf && t.id === lp.id) t = null;
-    // v1.6.4（A2-4）：不确定性表达——置信度低时小概率偏离最优（随机/跟风），高置信才准（同时缓解“太傻”与“太准”）；被公开查杀的目标为强证据，不波动；卖狼（明确策略）不波动
+    // v1.6.4（A2-4）：不确定性表达——置信度低时小概率偏离最优（随机/跟风），高置信才准；被公开查杀/卖狼目标不波动
     if (t) {
-      const sellId = sellWolfBeauty(room, bot);
       const conf = confidenceOf(bot, t.id);
-      if (t.id !== sellId && !isCheckedTarget(room, t) && conf < 0.6 && rng().next() < (0.6 - conf)) {
+      if (t.id !== world.sellTarget && !isCheckedTarget(room, t) && conf < 0.6 && rng().next() < (0.6 - conf)) {
         const pool = aliveOthers(room, bot).filter(q => q.id !== t.id && !(lp && !lp.isWolf && q.id === lp.id));
         const other = pick(pool) || t;
         t = other;
@@ -255,12 +260,11 @@ function decisionEasy(room, bot) {
     return { action: 'vote', data: { target: t ? t.id : null } };
   }
   if (room.phase === 'pk_vote') {
-    const lp = loverPartner(room, bot); // v1.6.3：狼恋人不投恋人
-    const sorted = [...(room.pkTied || []).map(id => byId(room, id)).filter(Boolean)]
-      .filter(q => !(lp && !lp.isWolf && q.id === lp.id))
-      .sort((a, b) => (mem.suspicion[b.id] || 0) - (mem.suspicion[a.id] || 0));
-    const t = sorted[0];
-    return { action: 'vote', data: { target: t ? t.id : null } };
+    const world = buildVoteWorld(room, bot); // 1.7.0（B1-1）
+    const res = decideVote(world, [...(room.pkTied || [])], rng());
+    const lp = loverPartner(room, bot);
+    const target = res.target && lp && !lp.isWolf && res.target === lp.id ? null : res.target;
+    return { action: 'vote', data: { target } };
   }
   if (room.phase === 'hunter_shot') {
     // v1.6.2：easy 猎人按关键词嫌疑选枪（原为纯随机）
@@ -458,6 +462,24 @@ function sellWolfBeauty(room, bot) {
   if (wolfCount < 2) return null; // 狼少不卖
   return wb.id;
 }
+/* 1.7.0（B1-1）：构造纯策略 world——只含公开信息 + bot 自己信念（B1-7 纪律①②：绝不读真实身份）；三档共用，B1-5 rollout 同源 */
+function buildVoteWorld(room, bot) {
+  const b = bot.botMemory || {};
+  const beliefs = b.beliefs || {};
+  const suspicion = b.suspicion || {};
+  const scores = {};
+  for (const p of room.players) {
+    if (p.id === bot.id || !p.alive) continue;
+    scores[p.id] = beliefs[p.id] ? beliefs[p.id].wolf : Math.min(1, (suspicion[p.id] || 0) / 100); // smart/simulate 用信念，easy 用关键词嫌疑（归一化到 0..1）
+  }
+  return {
+    faction: factionOf(room, bot),
+    teammates: room.players.filter(p => p.alive && isWolfRole(p)).map(p => p.id),
+    scores,
+    votes: room.votes || {},
+    sellTarget: sellWolfBeauty(room, bot),
+  };
+}
 function smartVoteTarget(room, bot) {
   const myFaction = factionOf(room, bot);
   const sellId = sellWolfBeauty(room, bot); // v1.5.2：卖狼美人优先
@@ -552,8 +574,10 @@ function decisionSmart(room, bot) {
             }
           }
           if (!target) {
-            if (enemies.length) target = shuffle(enemies).sort((a, b) => wolfProb(room, bot, a.id) - wolfProb(room, bot, b.id))[0]; // 同分已打乱：无证据时随机刀
-            else target = lp && !lp.isWolf ? null : pick(aliveOthers(room, bot));
+            // 1.7.0（B1-1）：间接方案——decideNightKill 刀“最像好人”的非队友（enemies 已排除队友+恋人，走纯接口）；兜底保留恋人保护
+            const nk = decideNightKill(buildVoteWorld(room, bot), enemies.map(p => p.id), rng());
+            target = nk.target ? byId(room, nk.target) : null;
+            if (!target) target = lp && !lp.isWolf ? null : pick(aliveOthers(room, bot));
           }
           data.kill = target ? target.id : null;
           const beauty = alivePlayers(room).find(q => effRole(q) === 'wolfBeauty');
@@ -609,21 +633,21 @@ function decisionSmart(room, bot) {
     }
   }
   if (room.phase === 'sheriff_vote') {
-    // v1.6.2：竞选投票只能投竞选者——smartVoteTarget 从全体存活者中选，曾导致服务端拒绝 + 反复重试
-    const pool = (room.candidates || []).map(id => byId(room, id)).filter(Boolean);
-    if (!pool.length) return { action: 'vote', data: { target: null } };
-    // 好人与狼都投“狼概率最高”的竞选者：好人阻止其当选，狼帮队友/干扰（狼 bot 信念对队友同样偏高）
-    const t = concentratedPick(room, pool, p => wolfProb(room, bot, p.id));
-    return { action: 'vote', data: { target: t ? t.id : null } };
+    // 1.7.0（B1-1）：decideVote——竞选投票只能投竞选者（state=candidates），阵营分流（好人 argmax / 狼 argmin 排除队友）
+    const world = buildVoteWorld(room, bot);
+    const res = decideVote(world, room.candidates || [], rng());
+    return { action: 'vote', data: { target: res.target } };
   }
   if (room.phase === 'vote') {
-    let target = smartVoteTarget(room, bot);
+    // 1.7.0（B1-1）：纯策略 decideVote（卖狼/跟票/阵营分流）；恋人保护 + A2-4 波动在决策层之上
+    const world = buildVoteWorld(room, bot);
+    let target = decideVote(world, aliveOthers(room, bot).map(p => p.id), rng()).target;
+    const lp = loverPartner(room, bot);
+    if (target && lp && !lp.isWolf && target === lp.id) target = null;
     // v1.6.4（A2-4）：低置信波动（smart 信息多通常置信高，波动小；被公开查杀目标不波动；卖狼=明确策略不波动）
     if (target) {
-      const sellId = sellWolfBeauty(room, bot);
       const conf = confidenceOf(bot, target);
-      if (target !== sellId && !isCheckedTarget(room, byId(room, target)) && conf < 0.55 && rng().next() < (0.55 - conf)) {
-        const lp = loverPartner(room, bot);
+      if (target !== world.sellTarget && !isCheckedTarget(room, byId(room, target)) && conf < 0.55 && rng().next() < (0.55 - conf)) {
         const pool = aliveOthers(room, bot).filter(q => q.id !== target && !(lp && !lp.isWolf && q.id === lp.id));
         const other = pick(pool);
         if (other) target = other.id;
@@ -632,14 +656,11 @@ function decisionSmart(room, bot) {
     return { action: 'vote', data: { target } };
   }
   if (room.phase === 'pk_vote') {
-    const pool = [...(room.pkTied || []).map(id => byId(room, id)).filter(Boolean)];
-    if (!pool.length) return { action: 'vote', data: { target: null } };
-    const isWolf = campOf(bot) === 'wolf';
-    const sorted = [...pool].sort((a, b) => {
-      const pa = wolfProb(room, bot, a.id), pb = wolfProb(room, bot, b.id);
-      return isWolf ? pa - pb : pb - pa;
-    });
-    return { action: 'vote', data: { target: sorted[0].id } };
+    const world = buildVoteWorld(room, bot);
+    const res = decideVote(world, [...(room.pkTied || [])], rng());
+    const lp = loverPartner(room, bot);
+    const target = res.target && lp && !lp.isWolf && res.target === lp.id ? null : res.target;
+    return { action: 'vote', data: { target } };
   }
   if (room.phase === 'hunter_shot') return { action: 'hunter_shoot', data: { target: smartVoteTarget(room, bot) } };
   return null;
@@ -1178,41 +1199,26 @@ function decisionSimulateV2(room, bot) {
 
   processAdditionalEvidence(room, bot);
 
-  // 投票决策
+  // 投票决策（1.7.0 B1-1：纯策略 decideVote——阵营分流/跟票/卖狼；态度逻辑已排除（P0③），由 C1 混沌层在决策层之外叠加）
   if (room.phase === 'sheriff_vote') {
-    // v1.6.2：竞选投票只能投竞选者（此前从全体存活者中选，被服务端拒绝后反复重试）
-    const pool = (room.candidates || []).map(id => byId(room, id)).filter(Boolean);
-    if (!pool.length) return { action: 'vote', data: { target: null } };
-    const best = concentratedPick(room, pool, p => simulatedScoreV2(room, bot, p.id));
-    return { action: 'vote', data: { target: best ? best.id : null } };
+    const world = buildVoteWorld(room, bot);
+    const res = decideVote(world, room.candidates || [], rng());
+    return { action: 'vote', data: { target: res.target } };
   }
   if (room.phase === 'vote' || room.phase === 'pk_vote') {
-    let pool = room.phase === 'pk_vote'
-      ? [...(room.pkTied || []).map(id => byId(room, id)).filter(Boolean)]
-      : shuffle(aliveOthers(room, bot));
-    const myFaction = factionOf(room, bot);
-    const isWolf = myFaction === 'wolf'; // v1.6.1：第三方不再误判为狼队
-    if (myFaction === 'third') pool = pool.filter(p => factionOf(room, p) !== 'third'); // v1.6.2：仅第三方不投自己阵营（狼不知恋人）
-    const lp = loverPartner(room, bot); // v1.6.3：狼恋人不投恋人
-    if (isWolf && lp && !lp.isWolf) pool = pool.filter(p => p.id !== lp.id);
-    if (!pool.length) return { action: 'vote', data: { target: null } };
-    const sellId = sellWolfBeauty(room, bot); // v1.5.2：卖狼美人优先
-    if (sellId) return { action: 'vote', data: { target: sellId } };
-    const best = concentratedPick(room, pool, p => {
-      let score = simulatedScoreV2(room, bot, p.id);
-      if (isWolf) {
-        score = -score; // v1.6.1：狼投“最不像狼”的人
-        if (wolfStyle === 'shark' && isWolfRole(p)) score -= 0.3; // 避狼队友
-      }
-      return score;
-    }); // v1.5.2：投票集中
-    // v1.6.4（A2-4）：低置信波动（与 smart 同规则，simulate 证据更足通常更稳；被公开查杀目标不波动）
-    let vote = best;
+    const state = room.phase === 'pk_vote' ? [...(room.pkTied || [])] : aliveOthers(room, bot).map(p => p.id);
+    const world = buildVoteWorld(room, bot);
+    const res = decideVote(world, state, rng());
+    let vote = res.target ? byId(room, res.target) : null;
+    const lp = loverPartner(room, bot); // v1.6.3：狼恋人不投恋人（决策层之上）
+    if (vote && lp && !lp.isWolf && vote.id === lp.id) vote = null;
+    // 第三方（人狼恋狼恋人/丘比特）：不投自己阵营（恋人互知，规则内；v1.6.2）
+    if (vote && world.faction === 'third' && factionOf(room, vote) === 'third') vote = null;
+    // v1.6.4（A2-4）：低置信波动（simulate 证据更足通常更稳；被公开查杀目标不波动；卖狼不波动）
     if (vote) {
       const conf = confidenceOf(bot, vote.id);
-      if (!isCheckedTarget(room, vote) && conf < 0.55 && rng().next() < (0.55 - conf)) {
-        const lp2 = loverPartner(room, bot);
-        const pool2 = pool.filter(q => q.id !== vote.id && !(lp2 && !lp2.isWolf && q.id === lp2.id));
+      if (vote.id !== world.sellTarget && !isCheckedTarget(room, vote) && conf < 0.55 && rng().next() < (0.55 - conf)) {
+        const pool2 = state.map(id => byId(room, id)).filter(Boolean).filter(q => q.id !== vote.id && !(lp && !lp.isWolf && q.id === lp.id));
         const other = pick(pool2);
         if (other) vote = other;
       }

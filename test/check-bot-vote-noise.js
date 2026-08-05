@@ -32,8 +32,7 @@ function mkRoom(opts) {
 }
 function setSuspicion(bot, map) {
   bot.botMemory.suspicion = map;
-  bot.botMemory.beliefs = {};
-  for (const k of Object.keys(map)) bot.botMemory.beliefs[k] = { wolf: 0.2, good: 0.8 };
+  // v1.7.0（B1-1）：不造 belief——easy 档感知就是 suspicion（buildVoteWorld 对无 belief 的 bot 用 suspicion）
 }
 
 // ---- V1：低置信（嫌疑分散）→ 出现非最优 ----
