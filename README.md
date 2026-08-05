@@ -2,7 +2,7 @@
 
 和朋友一起玩的 Web 在线狼人杀。**零依赖**：只使用 Node.js 内置模块，无需 `npm install`。
 
-> 当前版本：**1.5.0**（simulate 态度模型档：5状态马尔可夫 + 贝叶斯双校准 + 狼队风格；更新公告见 `更新公告.md`）
+> 当前版本：**1.5.1**（第三方阵营适配：人狼恋/丘比特认知、狼不刀恋人、神职声称刀优先级；更新公告见 `更新公告.md`）
 
 ## 快速开始
 
@@ -90,7 +90,7 @@ werewolf/
 ├── 启动游戏.bat       # 局域网联机启动
 ├── server-loop.bat    # 服务器崩溃自动重启（供公网联机脚本调用）
 ├── public/            # 网页客户端（index.html / style.css / client.js）
-└── test/              # 自动化测试（27 个脚本）
+└── test/              # 自动化测试（28 个脚本）
 ```
 
 ## 技术说明
@@ -127,6 +127,7 @@ node test/check-votedby.js           # 房主投票明细（votedBy 仅房主可
 node test/check-pwa.js               # PWA 静态资源（manifest/sw/icon 200 + MIME + API 不缓存）
 node test/check-bot-smart.js         # 人机三档决策（level 参数校验/smart 狼刀预言家/smart+easy 投被查杀者）
 node test/check-bot-simulate.js      # simulate 态度模型（单元：情感累积/风格回退；黑盒：投被查杀者/狼夜正常行动）
+node test/check-bot-third.js         # 第三方阵营适配（factionOf 单元/狼不刀恋人/第三方不投恋人/神职声称刀/人狼恋黑盒）
 node test/check-bot-debate.js        # bot 辩论/穿衣服/狼夜频道/遗言（B1 对跳反驳/B2 狼夜发言/B3 遗言）
 ```
 

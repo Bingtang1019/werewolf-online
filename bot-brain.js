@@ -24,6 +24,33 @@ function effRole(p) { return (p.role === 'thief' && p.pickedRole) ? p.pickedRole
 function isWolfRole(p) { if (!p) return false; const r = effRole(p); return r === 'wolf' || r === 'wolfBeauty'; }
 /* 简化阵营：狼 / 其他（第三方按“非狼”处理，与原 bot 的 campOf!=='wolf' 一致） */
 function campOf(p) { return isWolfRole(p) ? 'wolf' : 'good'; }
+/* v1.5.1 阵营认知（对齐引擎 cupidCamp/thirdFaction）：人狼恋情侣 / 丘比特第三方识别。
+   引擎规则：情侣一狼一好 → 第三方；情侣全狼/全好 → 随情侣阵营；丘比特自连一律第三方 */
+function factionOf(room, p) {
+  if (!p || !room) return 'good';
+  const r = effRole(p);
+  const isW = r === 'wolf' || r === 'wolfBeauty';
+  const L = room.lovers;
+  if (r === 'cupid') {
+    if (!L || !L[0]) return 'third';
+    if (L.includes(p.id)) return 'third'; // 自连一律第三方
+    const a = byId(room, L[0]), b = byId(room, L[1]);
+    if (!a || !b) return 'third';
+    const wa = effRole(a) === 'wolf' || effRole(a) === 'wolfBeauty';
+    const wb = effRole(b) === 'wolf' || effRole(b) === 'wolfBeauty';
+    if (wa && wb) return 'wolf';
+    if (!wa && !wb) return 'good';
+    return 'third';
+  }
+  if (L && L.includes(p.id)) {
+    const partner = byId(room, L.find(id => id !== p.id));
+    const pw = partner && (effRole(partner) === 'wolf' || effRole(partner) === 'wolfBeauty');
+    if (isW !== !!pw) return 'third'; // 人狼恋 → 第三方
+    return isW ? 'wolf' : 'good';
+  }
+  return isW ? 'wolf' : 'good';
+}
+function isThirdMember(room, p) { return !!p && factionOf(room, p) === 'third'; }
 function randInt(n) { return Math.floor(Math.random() * n); }
 function pick(arr) { return arr && arr.length ? arr[randInt(arr.length)] : null; }
 function pickId(arr) { const q = pick(arr); return q ? q.id : null; }
@@ -48,6 +75,7 @@ function ensureMemory(bot) {
   if (!bot.botMemory) bot.botMemory = {};
   const mem = bot.botMemory;
   if (!mem.suspicion) mem.suspicion = {};
+  if (!mem.roleClaims) mem.roleClaims = {}; // v1.5.1：神职声称（守卫/女巫/猎人）
   if (!mem.claims) mem.claims = {};
   if (!mem.seen) mem.seen = new Set();
   return mem;
@@ -66,7 +94,7 @@ function decisionIdle(room, bot) {
         const humans = room.players.some(q => q.alive && isWolfRole(q) && !q.isBot);
         if (humans) return { action: 'wolf_set', data: { confirm: true } }; // 有人类狼：只确认，不覆盖
         const data = { confirm: true };
-        if (!room.night.wolf.kill) data.kill = pickId(aliveOthers(room, bot)); // 全员人机时补狼刀
+        if (!room.night.wolf.kill) data.kill = pickId(aliveOthers(room, bot).filter(q => factionOf(room, q) !== 'third')) || pickId(aliveOthers(room, bot)); // v1.5.1：不刀第三方（恋人）
         return { action: 'wolf_set', data };
       }
       case 'seer': { const t = pickId(aliveOthers(room, bot)); return t ? { action: 'seer_pick', data: { target: t } } : null; }
@@ -140,7 +168,7 @@ function decisionEasy(room, bot) {
         if (!room.night.wolf.kill) {
           const claimedSeer = aliveOthers(room, bot).find(q => mem.claims[q.id] === 'seer');
           let target = claimedSeer;
-          if (!target) target = pick(aliveOthers(room, bot).filter(q => campOf(q) !== 'wolf')) || pick(aliveOthers(room, bot));
+          if (!target) target = pick(aliveOthers(room, bot).filter(q => factionOf(room, q) !== 'third' && campOf(q) !== 'wolf')) || pick(aliveOthers(room, bot)); // v1.5.1：不刀第三方
           data.kill = target ? target.id : null;
           const beauty = alivePlayers(room).find(q => effRole(q) === 'wolfBeauty');
           if (beauty && !room.night.wolf.charm) {
@@ -261,6 +289,14 @@ function updateSmartMemory(room, bot) {
   ensureMemory(bot);
   initBeliefs(room, bot);
   updateSeerClaims(room, bot);
+  // v1.5.1：神职声称提取（守卫/女巫/猎人穿衣服 → 狼刀优先级）
+  if (!bot.botMemory.roleMsgSeen) bot.botMemory.roleMsgSeen = new Set(); // 独立去重（与 seerClaims 的 msgSeen 分开）
+  for (const msg of room.messages) {
+    if (!msg.text || msg.ch !== 'all' || !msg.from || bot.botMemory.roleMsgSeen.has(msg.id)) continue;
+    bot.botMemory.roleMsgSeen.add(msg.id);
+    const rm = msg.text.match(/我是(守卫|女巫|猎人)/);
+    if (rm) bot.botMemory.roleClaims[msg.from] = rm[1];
+  }
   const myRole = effRole(bot);
   const knowTruth = campOf(bot) === 'wolf';
   // 1. 自己亲眼查验
@@ -344,7 +380,10 @@ function wolfProb(room, bot, playerId) {
   return b ? b.wolf : 0.5;
 }
 function smartVoteTarget(room, bot) {
-  const pool = shuffle(aliveOthers(room, bot)); // 同分时随机，避免固定偏向某座位
+  const myFaction = factionOf(room, bot);
+  let pool = shuffle(aliveOthers(room, bot)); // 同分时随机，避免固定偏向某座位
+  // v1.5.1：狼不投第三方（保第三方耗好人）；第三方不投自己阵营（保恋人保自己）
+  if (myFaction === 'wolf' || myFaction === 'third') pool = pool.filter(p => factionOf(room, p) !== 'third');
   if (!pool.length) return null;
   const isWolf = campOf(bot) === 'wolf';
   let best = null, bestScore = -Infinity;
@@ -375,18 +414,27 @@ function decisionSmart(room, bot) {
         if (humans) return { action: 'wolf_set', data: { confirm: true } };
         const data = { confirm: true };
         if (!room.night.wolf.kill) {
+          // v1.5.1：狼不刀第三方成员（人狼恋第三方是狼的隐性盟友；刀恋人触发殉情连锁减员）
+          const enemies = aliveOthers(room, bot).filter(q => factionOf(room, q) !== 'third' && campOf(q) !== 'wolf');
           // 优先刀高可信预言家（狼视角真相校准过）
           const claims = mem.seerClaims || {};
           let target = null, bestCred = -Infinity;
           for (const pid of Object.keys(claims)) {
             const p = byId(room, pid);
-            if (!p || !p.alive || campOf(p) === 'wolf') continue;
+            if (!p || !p.alive || factionOf(room, p) === 'third' || campOf(p) === 'wolf') continue;
             const cred = claims[pid].credibility || 0;
             if (cred > bestCred) { bestCred = cred; target = p; }
           }
+          // v1.5.1：其次刀自称神职者（守卫/女巫/猎人穿衣服）
           if (!target) {
-            const goodPool = aliveOthers(room, bot).filter(q => campOf(q) !== 'wolf');
-            if (goodPool.length) target = shuffle(goodPool).sort((a, b) => wolfProb(room, bot, a.id) - wolfProb(room, bot, b.id))[0]; // 同分已打乱：无证据时随机刀
+            for (const pid of Object.keys(mem.roleClaims || {})) {
+              const p = byId(room, pid);
+              if (!p || !p.alive || factionOf(room, p) === 'third' || campOf(p) === 'wolf') continue;
+              target = p; break;
+            }
+          }
+          if (!target) {
+            if (enemies.length) target = shuffle(enemies).sort((a, b) => wolfProb(room, bot, a.id) - wolfProb(room, bot, b.id))[0]; // 同分已打乱：无证据时随机刀
             else target = pick(aliveOthers(room, bot));
           }
           data.kill = target ? target.id : null;
@@ -396,12 +444,12 @@ function decisionSmart(room, bot) {
             let charmTarget = null, bestCred = -Infinity;
             for (const pid of Object.keys(claims)) {
               const cp = byId(room, pid);
-              if (!cp || !cp.alive || campOf(cp) === 'wolf' || cp.id === (target && target.id)) continue;
+              if (!cp || !cp.alive || factionOf(room, cp) === 'third' || campOf(cp) === 'wolf' || cp.id === (target && target.id)) continue;
               const cred = claims[pid].credibility || 0;
               if (cred > bestCred) { bestCred = cred; charmTarget = cp; }
             }
             if (!charmTarget) {
-              const charmPool = shuffle(aliveOthers(room, bot).filter(q => campOf(q) !== 'wolf' && q.id !== (target && target.id)));
+              const charmPool = shuffle(aliveOthers(room, bot).filter(q => factionOf(room, q) !== 'third' && campOf(q) !== 'wolf' && q.id !== (target && target.id)));
               if (charmPool.length) charmTarget = charmPool.sort((a, b) => wolfProb(room, bot, a.id) - wolfProb(room, bot, b.id))[0];
             }
             if (charmTarget) data.charm = charmTarget.id;
@@ -432,13 +480,15 @@ function decisionSmart(room, bot) {
       }
       case 'witch': {
         const attacked = room.night.wolf.kill;
-        const save = !room.witchPots.saveUsed && !!attacked && wolfProb(room, bot, attacked) < 0.4; // 狼概率高不救
+        // v1.5.1：自己/恋人被刀必救（恋人死=自己殉情）；否则狼概率高不救
+        const isLover = (room.lovers || []).includes(bot.id) && (room.lovers || []).includes(attacked);
+        const save = !room.witchPots.saveUsed && !!attacked && (isLover || wolfProb(room, bot, attacked) < 0.4);
         if (save) bot.botMemory.silverWater = attacked; // v1.4.3：记住银水（后续作为好人证据）
         let poison = null;
         if (!save && !room.witchPots.poisonUsed && room.nightNum >= 2) {
           let best = null, bestProb = -Infinity;
           for (const p of shuffle(aliveOthers(room, bot))) {
-            if (p.id === bot.id) continue;
+            if (p.id === bot.id || factionOf(room, p) === 'third') continue; // v1.5.1：不毒恋人/第三方
             const prob = wolfProb(room, bot, p.id);
             if (prob > bestProb) { bestProb = prob; best = p; }
           }
@@ -908,6 +958,8 @@ function decisionSimulateV2(room, bot) {
     let pool = room.phase === 'pk_vote'
       ? [...(room.pkTied || []).map(id => byId(room, id)).filter(Boolean)]
       : shuffle(aliveOthers(room, bot));
+    const myFaction = factionOf(room, bot);
+    if (myFaction === 'wolf' || myFaction === 'third') pool = pool.filter(p => factionOf(room, p) !== 'third'); // v1.5.1：狼/第三方不投第三方
     if (!pool.length) return { action: 'vote', data: { target: null } };
     let best = null, bestScore = -Infinity;
     for (const p of pool) {
@@ -994,4 +1046,4 @@ function createBotDecision(room, bot) {
   return decisionIdle(room, bot);
 }
 
-module.exports = { createBotDecision, botWolfChat };
+module.exports = { createBotDecision, botWolfChat, factionOf };
