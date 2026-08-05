@@ -9,7 +9,9 @@
  * ========================================================================= */
 
 const crypto = require('crypto');
+const fs = require('fs'); // 1.7.0（B1-2）：样本采集钩子（lab 平台）
 const { createBotDecision, botWolfChat, resetBotPerGame, injectGrudge } = require('./bot-brain'); // v1.4.0：人机三档决策（idle/easy/smart）
+const { voteFeatures } = require('./server/ai/features.js'); // 1.7.0（B1-2）：vote 特征（训练/推理共用，只含公开信息）
 const { createRng } = require('./server/ai/rng.js'); // 1.7.0（B1-8）：显式可注入 RNG
 
 /* 1.7.0（B1-8）：全局 RNG——server.js 启动时用 SEED env 注入；独立 require（如测试直接调引擎）时回退默认种子 */
@@ -1464,9 +1466,27 @@ function applyAction(room, p, action, data) {
       room.actionLog.push({ n: room.actionLog.length + 1, phase: room.phase, step: room.nightStep || null, actor: p.seat, action, data: data === undefined ? null : data }); // actor 记座位号（玩家 id 随机，确定性对比需要）
       if (room.actionLog.length > 5000) room.actionLog.splice(0, room.actionLog.length - 5000);
     }
+    // 1.7.0（B1-2）：vote 样本采集钩子（lab 平台）——只采好人 bot 的投票决策时刻特征；label 用真实身份（训练侧）；
+    // 特征只含公开信息（features.js）；批量落盘防单条 append 开销；采集失败绝不影响对局
+    if (action === 'vote' && room.labSampleFile && p.isBot && !isWolfRole(p) && data && data.target) {
+      const f = voteFeatures(room, p.id, data.target);
+      if (f) {
+        const by = byId(room, data.target);
+        room.labSampleBuf = room.labSampleBuf || [];
+        room.labSampleBuf.push(JSON.stringify({ gameId: room.labGameId || 'x', day: room.dayNum || 0, botId: p.id, candId: data.target, features: f, label: by ? (isWolfRole(by) ? 1 : 0) : 0 }));
+        if (room.labSampleBuf.length >= 500) flushLabSamples(room);
+      }
+    }
     autoAdvance(room);
   }
   return res;
+}
+/* 1.7.0（B1-2）：批量落盘 vote 样本（房间结束时由 lab 平台 flush 剩余） */
+function flushLabSamples(room) {
+  if (room.labSampleBuf && room.labSampleBuf.length) {
+    try { fs.appendFileSync(room.labSampleFile, room.labSampleBuf.join('\n') + '\n'); } catch (e) { /* 忽略采集错误，不影响对局 */ }
+    room.labSampleBuf = [];
+  }
 }
 function handleAction(roomId, pid, action, data, chatSince) {
   const room = rooms.get(roomId);
@@ -1885,4 +1905,6 @@ module.exports = {
   setOnChange(fn) { onChange = fn; },
   setOnBroken(fn) { onBroken = fn; },
   addMessage,
+  // 1.7.0（B1-2）：lab 平台——批量落盘 vote 样本（房间结束时 flush 剩余）
+  flushLabSamples,
 };

@@ -1,3 +1,4 @@
+process.env.LAB_NO_MODEL = '1'; // 1.7.0（B1-4）：单元测试隔离运行时 vote 模型（模型是集成层增强，核心逻辑验证不受其干扰）
 'use strict';
 /* 人机狼作为情侣之一（v1.6.3）：恋人互知身份（规则内）——狼恋人不刀/不魅惑/不投恋人，
  * 狼频道引导狼队不刀恋人，白天发言为恋人辩护（减少怀疑）。
@@ -94,11 +95,12 @@ const LOVERS = ['W', 'P']; // 人狼恋：狼恋人 W + 好人恋人 P
   assert(!bad, 'U5b 狼频道引导刀人建议不指向恋人');
 }
 
-// U6 白天发言为恋人辩护（easy 档：恋人嫌疑最高时）
+// U6 白天发言为恋人辩护（新 easy 档=现 smart：恋人嫌疑最高时；跳过狼悍跳——悍跳在主发言优先于辩护）
 {
   const r6 = mkRoom([], 'discuss', null, LOVERS);
   const bot = r6.players[0];
   bot.botLevel = 'easy';
+  r6.wolfPackMemory = { talkedClaim: true }; // 1.7.0（B1-1②）：阶梯后 easy←现smart——狼悍跳优先于辩护，测试跳过悍跳直达辩护
   const mem = bot.botMemory;
   mem.suspicion = { A: 10, B: 10, C: 10, P: 80 };
   let defended = 0, attacked = 0;

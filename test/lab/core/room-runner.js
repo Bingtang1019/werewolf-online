@@ -54,6 +54,7 @@ async function runRoom(config, gameId) {
     safeAction(room, host, 'settings', { sheriff: false, thief: false, winMode: config.winMode, tieRule: 'pk', botMode: 'auto' });
     safeAction(room, host, 'setCounts', { counts: config.counts });
     safeAction(room, host, 'setCap', { cap: config.cap });
+    if (config.sampleFile) { room.labGameId = gameId; room.labSampleFile = config.sampleFile; } // 1.7.0（B1-2）：vote 样本采集（game.js 钩子）
     for (const level of config.botLine) safeAction(room, host, 'add_bot', { level });
     safeAction(room, host, 'start');
     if (room.players.length !== config.cap) throw { kind: 'config', message: `start 后人数 ${room.players.length} != ${config.cap}` };
@@ -114,6 +115,7 @@ async function runRoom(config, gameId) {
       players: [], events: [], firstKill: null,
     });
   } finally {
+    if (room.labSampleFile && room.labSampleBuf && room.labSampleBuf.length) Game.flushLabSamples(room); // 1.7.0（B1-2）：房间结束 flush 剩余样本
     clearTimers(room);
     Game.rooms.delete(room.id);
   }

@@ -1,6 +1,9 @@
 'use strict';
 /* v1.6.4（A5-1/A2-5）：统一置信度入口 + 发言语料库（组合式生成）——C1 意图层未来只消费这两处 */
 const { confidenceOf } = require('./server/ai/confidence.js');
+const { getVoteModel, modelProb } = require('./server/ai/model-loader.js'); // 1.7.0（B1-4）：vote 模型（fail-open）
+const { voteFeatures } = require('./server/ai/features.js'); // 1.7.0（B1-2）：vote 特征（训练/推理共用）
+const { rolloutVote } = require('./server/ai/rollout.js'); // 1.7.0（B1-5）：rollout 规划层（新 simulate 档）
 const LEXICON = require('./server/ai/lexicon.json');
 const { decideVote, decideNightKill } = require('./server/ai/legacy/decide.js'); // 1.7.0（B1-1）：纯行动策略接口
 /* 1.7.0（B1-8）：显式可注入 RNG——决策随机全部走“当前 RNG”（createBotDecision 入口设置），杜绝 Math.random 隐性状态 */
@@ -304,6 +307,7 @@ function calibrateBeliefs(room, bot) {
   const factor = wolfCount / sum;
   for (const p of alive) {
     const b = bot.botMemory.beliefs[p.id];
+    if (!b) continue; // 防御：beliefs 可能缺该玩家（手动构造的测试记忆/异常路径）
     b.wolf = Math.min(0.99, Math.max(0.01, b.wolf * factor));
     b.good = 1 - b.wolf;
   }
@@ -419,6 +423,7 @@ function updateSmartMemory(room, bot) {
         if (!wb.botMemory) wb.botMemory = {};
         if (!wb.botMemory.beliefs) initBeliefs(room, wb);
         for (const pid of Object.keys(shared)) {
+          wb.botMemory.beliefs[pid] = wb.botMemory.beliefs[pid] || { wolf: 0, good: 1 }; // 防御：beliefs 可能缺该玩家（如手动构造的测试记忆）
           wb.botMemory.beliefs[pid].wolf = shared[pid];
           wb.botMemory.beliefs[pid].good = 1 - shared[pid];
         }
@@ -467,10 +472,21 @@ function buildVoteWorld(room, bot) {
   const b = bot.botMemory || {};
   const beliefs = b.beliefs || {};
   const suspicion = b.suspicion || {};
+  const model = getVoteModel(); // 1.7.0（B1-4）：fail-open——模型缺失/损坏回退纯信念；仅好人侧注入（狼侧用模型会反向增强）
+  const useModel = !!model && factionOf(room, bot) === 'good';
   const scores = {};
   for (const p of room.players) {
     if (p.id === bot.id || !p.alive) continue;
-    scores[p.id] = beliefs[p.id] ? beliefs[p.id].wolf : Math.min(1, (suspicion[p.id] || 0) / 100); // smart/simulate 用信念，easy 用关键词嫌疑（归一化到 0..1）
+    let s = beliefs[p.id] ? beliefs[p.id].wolf : Math.min(1, (suspicion[p.id] || 0) / 100); // smart/simulate 用信念，easy 用关键词嫌疑（归一化到 0..1）
+    // 1.7.0（B1-4）：每轮投票前动态似然——模型 P(wolf) 混合（0.6 信念 + 0.4 模型；不改 beliefs 防累积饱和）
+    if (useModel) {
+      const f = voteFeatures(room, bot.id, p.id);
+      if (f) {
+        const mp = modelProb(model, f);
+        if (mp != null) s = 0.6 * s + 0.4 * mp;
+      }
+    }
+    scores[p.id] = s;
   }
   return {
     faction: factionOf(room, bot),
@@ -478,6 +494,8 @@ function buildVoteWorld(room, bot) {
     scores,
     votes: room.votes || {},
     sellTarget: sellWolfBeauty(room, bot),
+    allVoters: room.players.filter(p => p.alive && !p.leftGame).map(p => p.id), // 1.7.0（B1-5）：rollout 模拟投票者
+    me: bot.id,
   };
 }
 function smartVoteTarget(room, bot) {
@@ -791,6 +809,24 @@ function botTalk(room, bot, level) {
         ]));
       }
       return null;
+    }
+    // v1.6.3：狼恋人为恋人辩护（恋人互知，规则内）——减少全场的怀疑；1.7.0（B1-1②）阶梯后移至悍跳之前：
+    // 狼 smart 主发言的悍跳块末尾 return null，辩护块原在悍跳后不可达（v1.6.3 easy 档无悍跳能走到）
+    if (isWolf && lp && !lp.isWolf) {
+      const loverChecked = Object.keys(mem.seerClaims || {}).some(pid => pid !== bot.id && (mem.seerClaims[pid].claims || []).some(c => c.result === 'wolf' && c.target === lp.id));
+      const loverSusp = (mem.suspicion || {})[lp.id] > 30 || Object.keys(mem.seerClaims || {}).some(pid => pid !== bot.id && (mem.seerClaims[pid].claims || []).some(c => c.target === lp.id));
+      if (loverChecked && level === 'smart') {
+        return chat(pick([
+          '别信查杀' + nameById(room, lp.id) + '的话，我了解' + nameById(room, lp.id) + '，不是狼',
+          nameById(room, lp.id) + '是好人，查杀他的人才是狼，你们品品',
+        ]));
+      }
+      if (loverSusp && rng().next() < 0.6) {
+        return chat(pick([
+          '先别怀疑' + nameById(room, lp.id) + '，他今天的发言没什么问题',
+          '我保' + nameById(room, lp.id) + '，不是狼，出他浪费轮次',
+        ]));
+      }
     }
     // 狼：悍跳预言家（每队只跳一次），查杀最可信好人施压
     if (level === 'smart' && isWolf) {
@@ -1166,7 +1202,7 @@ function processAdditionalEvidence(room, bot) {
   }
 }
 
-function decisionSimulateV2(room, bot) {
+function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRollout=true → 叠加 rollout 规划层（新 simulate 档）
   updateSmartMemory(room, bot);
   initAttitudes5(room, bot);
   const mem = bot.botMemory;
@@ -1200,6 +1236,7 @@ function decisionSimulateV2(room, bot) {
   processAdditionalEvidence(room, bot);
 
   // 投票决策（1.7.0 B1-1：纯策略 decideVote——阵营分流/跟票/卖狼；态度逻辑已排除（P0③），由 C1 混沌层在决策层之外叠加）
+  // 1.7.0（B1-5）：useRollout → rollout 前瞻（信念采样+模拟本轮投票结算，预算内降 worlds）
   if (room.phase === 'sheriff_vote') {
     const world = buildVoteWorld(room, bot);
     const res = decideVote(world, room.candidates || [], rng());
@@ -1208,8 +1245,15 @@ function decisionSimulateV2(room, bot) {
   if (room.phase === 'vote' || room.phase === 'pk_vote') {
     const state = room.phase === 'pk_vote' ? [...(room.pkTied || [])] : aliveOthers(room, bot).map(p => p.id);
     const world = buildVoteWorld(room, bot);
-    const res = decideVote(world, state, rng());
-    let vote = res.target ? byId(room, res.target) : null;
+    let resTarget = null;
+    if (useRollout) {
+      const rv = rolloutVote(world, state, rng());
+      if (process.env.LAB_DEBUG_ROLLOUT === '1') console.log('[rollout-dbg] scores=' + JSON.stringify(Object.fromEntries(Object.entries(world.scores).map(([k, v]) => [k, +v.toFixed(2)]))) + ' rv=' + rv);
+      resTarget = rv || decideVote(world, state, rng()).target;
+    } else {
+      resTarget = decideVote(world, state, rng()).target;
+    }
+    let vote = resTarget ? byId(room, resTarget) : null;
     const lp = loverPartner(room, bot); // v1.6.3：狼恋人不投恋人（决策层之上）
     if (vote && lp && !lp.isWolf && vote.id === lp.id) vote = null;
     // 第三方（人狼恋狼恋人/丘比特）：不投自己阵营（恋人互知，规则内；v1.6.2）
@@ -1262,9 +1306,12 @@ function decisionSimulateV2(room, bot) {
 }
 
 
+/* 1.7.0（B1-1②）：阶梯平移映射——easy←现smart、smart←现simulate、simulate←新simulate(+rollout) */
+const LEVEL_MAP = { easy: 'smart', smart: 'simulate', simulate: 'simulate_v2' };
 function createBotDecision(room, bot) {
   CUR_RNG = (room && room.rng) || global.rng; // 1.7.0（B1-8）：本决策随机流 = 房间 RNG（同步决策，无需恢复）
   const level = bot.botLevel || (room.settings.botMode === 'passive' ? 'idle' : 'easy');
+  const eff = LEVEL_MAP[level] || level; // 1.7.0（B1-1②）：阶梯平移——easy←现smart、smart←现simulate、simulate←新simulate(+rollout)
   if (room.phase === 'reveal') {
     const rv = room.reveal;
     if (room.settings.thief && rv.stage === 'thiefPick' && rv.thiefId === bot.id && !rv.thiefPicked) {
@@ -1276,10 +1323,10 @@ function createBotDecision(room, bot) {
     }
     return { action: 'confirm', data: {} };
   }
-  if (room.phase === 'lastword') return level === 'simulate' ? botLastWord(room, bot, 'smart') : botLastWord(room, bot, level); // v1.4.4：遗言（smart 有信息量）
+  if (room.phase === 'lastword') return botLastWord(room, bot, level === 'idle' ? 'idle' : 'smart'); // 1.7.0：阶梯后 easy/smart/simulate 均按智能遗言
   if (room.phase === 'handover') return { action: 'handover', data: { target: null } }; // 人机警长默认撕毁警徽
   if (room.phase === 'sheriff_campaign') return { action: 'campaign', data: { run: level === 'idle' ? false : rng().next() < 0.5 } };
-  if (room.phase === 'discuss') return level === 'simulate' ? decisionSimulateV2(room, bot) : botTalk(room, bot, level); // v1.4.3：白天发言模拟（simulate 走态度模型）
+  if (room.phase === 'discuss') return eff === 'simulate_v2' || eff === 'simulate' ? decisionSimulateV2(room, bot, eff === 'simulate_v2') : botTalk(room, bot, level === 'idle' ? 'idle' : 'smart'); // 1.7.0：阶梯后发言——新simulate 走态度+rollout，其余走组合式发言（含新easy=现smart）
   if (room.phase === 'night') {
     switch (room.nightStep) {
       case 'cupid': {
@@ -1294,13 +1341,13 @@ function createBotDecision(room, bot) {
       default: break;
     }
   }
-  if (level === 'simulate') return decisionSimulateV2(room, bot); // v1.5.0：态度模型档位
-  if (level === 'smart') return decisionSmart(room, bot);
-  if (level === 'easy') return decisionEasy(room, bot);
+  // 1.7.0（B1-1②）：阶梯分发——easy←现smart、smart←现simulate、simulate←新simulate(+rollout)
+  if (eff === 'simulate_v2') return decisionSimulateV2(room, bot, true); // 新 simulate：态度模型 + rollout 规划层
+  if (eff === 'simulate') return decisionSimulateV2(room, bot, false); // 新 smart：旧 simulate（态度模型）
+  if (eff === 'smart') return decisionSmart(room, bot); // 新 easy：旧 smart（贝叶斯）
+  if (eff === 'easy') return decisionEasy(room, bot); // 防御（映射后不达）
   return decisionIdle(room, bot);
-}
-
-/* =================================================================
+}/* =================================================================
    v1.5.6：跨局记忆治理——"印象"保留（suspicion 恩怨），"事实"重置
    rematch/startGame 共用；避免上一局的悍跳标记/魅惑目标/银水泄漏进新局
 ================================================================= */

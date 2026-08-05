@@ -6,8 +6,8 @@ const { mcnemar } = require('../stats/mcnemar');
 
 async function run(cfg) {
   const seedBase = cfg.seed || 'pair';
-  const A = cfg['strategy-a'] || 'smart';
-  const B = cfg['strategy-b'] || 'simulate';
+  const A = cfg.strategyA || cfg['strategy-a'] || 'smart'; // --strategy-a=<level>（config 已转驼峰，兼容旧写法）
+  const B = cfg.strategyB || cfg['strategy-b'] || 'simulate';
   let a = 0, b = 0, both = 0; // a = A 好胜 B 狼胜；b = 反过来；both = 两边同胜
   for (let i = 0; i < cfg.games; i++) {
     const seed = `${seedBase}-${i}`;

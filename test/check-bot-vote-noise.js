@@ -1,3 +1,4 @@
+process.env.LAB_NO_MODEL = '1'; // 1.7.0（B1-4）：单元测试隔离运行时 vote 模型（模型是集成层增强，核心逻辑验证不受其干扰）
 'use strict';
 /* 投票不确定性表达（v1.6.4，A2-4 + A5-1 confidence.js）：
  * V1 低置信（信息少/嫌疑分散）→ 多次投票出现非最优目标（不再“票得太准”）
@@ -30,45 +31,49 @@ function mkRoom(opts) {
     messages: [],
   };
 }
-function setSuspicion(bot, map) {
-  bot.botMemory.suspicion = map;
-  // v1.7.0（B1-1）：不造 belief——easy 档感知就是 suspicion（buildVoteWorld 对无 belief 的 bot 用 suspicion）
+function setBeliefs(bot, map) { // 1.7.0（B1-1②）：阶梯后 easy←现smart——感知体系为 beliefs（buildVoteWorld 优先 beliefs）；suspicion 同步供 confidenceOf 使用
+  bot.botMemory.beliefs = {};
+  bot.botMemory.suspicion = {};
+  for (const k of Object.keys(map)) {
+    bot.botMemory.beliefs[k] = { wolf: map[k], good: 1 - map[k] };
+    bot.botMemory.suspicion[k] = Math.round(map[k] * 100);
+  }
 }
 
-// ---- V1：低置信（嫌疑分散）→ 出现非最优 ----
+// ---- V1：低置信（信念分散）→ 出现非最优 ----
 {
   const r = mkRoom();
-  const a = r.players[1]; // A：easy 好人（投票直接基于 suspicion，与 confidenceOf 同源）
+  const a = r.players[1]; // A：新 easy（现 smart）好人（投票基于 beliefs）
   a.botLevel = 'easy';
-  setSuspicion(a, { B: 10, C: 12, D: 11, W: 9 }); // 方差小（都很接近）→ 置信低
+  setBeliefs(a, { B: 0.42, C: 0.44, D: 0.43, W: 0.41 }); // 全接近 → 分不清 → 置信低
   let targets = new Set();
   for (let i = 0; i < 40; i++) {
     const d = botBrain.createBotDecision(r, a);
     if (d && d.action === 'vote' && d.data.target) targets.add(d.data.target);
   }
-  assert(targets.size >= 2, 'V1 低置信（嫌疑分散）→ 40 次决策出现 ≥2 个不同目标（不再“票得太准”，实际 ' + targets.size + ' 个）');
+  assert(targets.size >= 2, 'V1 低置信（信念分散）→ 40 次决策出现 ≥2 个不同目标（不再“票得太准”，实际 ' + targets.size + ' 个）');
 }
 
-// ---- V2：高置信（嫌疑集中）→ 决策稳定 ----
+// ---- V2：高置信（信念集中）→ 决策稳定 ----
 {
   const r = mkRoom();
   const a = r.players[1];
   a.botLevel = 'easy';
-  setSuspicion(a, { B: 5, C: 90, D: 8, W: 6 }); // C 极度突出 → 高置信
+  setBeliefs(a, { B: 0.1, C: 0.9, D: 0.12, W: 0.08 }); // C 极度突出 → 高置信
   let targets = new Set();
   for (let i = 0; i < 40; i++) {
     const d = botBrain.createBotDecision(r, a);
     if (d && d.action === 'vote' && d.data.target) targets.add(d.data.target);
   }
-  assert(targets.size === 1 && targets.has('C'), 'V2 高置信（嫌疑集中）→ 决策稳定投 C（实际 ' + [...targets].join(',') + '）');
+  assert(targets.size === 1 && targets.has('C'), 'V2 高置信（信念集中）→ 决策稳定投 C（实际 ' + [...targets].join(',') + '）');
 }
 
 // ---- V3：波动不投恋人（狼恋人保护） ----
 {
   const r = mkRoom({ lovers: ['W', 'A'] }); // 狼 W 与好人 A 人狼恋
-  const w = r.players[0]; // easy 狼恋人
+  const w = r.players[0]; // 新 easy 狼恋人
   w.botLevel = 'easy';
-  setSuspicion(w, { A: 0, B: 50, C: 40, D: 30 }); // 低置信（分散）
+  setBeliefs(w, { A: 0.1, B: 0.5, C: 0.4, D: 0.3 }); // 低置信（分散）
   for (let i = 0; i < 60; i++) {
     const d = botBrain.createBotDecision(r, w);
     if (d && d.action === 'vote' && d.data.target) {

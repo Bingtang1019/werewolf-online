@@ -8,6 +8,7 @@ const { createRecorder } = require('../core/recorder');
 async function run(cfg) {
   const ROOT = path.resolve(__dirname, '..', '..', '..'); // test/lab/scenarios → 项目根
   const out = path.isAbsolute(cfg.out || '') ? cfg.out : path.join(ROOT, cfg.out || 'data/lab-records.jsonl');
+  if (cfg.sampleFile) cfg.sampleFile = path.isAbsolute(cfg.sampleFile) ? cfg.sampleFile : path.join(ROOT, cfg.sampleFile); // vote 样本采集路径（game.js 钩子写）
   const rec = createRecorder(out);
   const fn = async (i, seed) => {
     const r = await runRoom(Object.assign({}, cfg, { seed }), `smp-${i}`);

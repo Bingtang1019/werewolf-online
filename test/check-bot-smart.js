@@ -1,3 +1,4 @@
+process.env.LAB_NO_MODEL = '1'; // 1.7.0（B1-4）：单元测试隔离运行时 vote 模型（模型是集成层增强，核心逻辑验证不受其干扰）
 'use strict';
 /* 人机三档决策（v1.4.0）专项测试
  * 运行：node test/check-bot-smart.js

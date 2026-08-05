@@ -1,4 +1,5 @@
 'use strict';
+process.env.LAB_NO_MODEL = '1'; // 1.7.0（B1-4）：单元/黑盒验证 simulate 核心逻辑，隔离运行时 vote 模型（集成层增强另行对比验证）
 /* simulate 态度模型档（v1.5.0）：
  * U1 单元：simulate 投票决策合法
  * U2 单元：查杀一次 → 投被查杀者

@@ -2,7 +2,7 @@
 
 和朋友一起玩的 Web 在线狼人杀。**零依赖**：只使用 Node.js 内置模块，无需 `npm install`。
 
-> 当前版本：**1.6.4**（A 系列：公网稳定性三件套 + 可观测性；真实反馈修复：全灭终局兜底 / 好人 bot 发言 / 投票不确定性；快照迁移 data/；动态发言；confidence 置信度接口；更新公告见 `更新公告.md`）（人机狼恋人逻辑：护恋人/引导狼队/白天辩护；声音设置面板分项开关+上帝配音并入；起始页精简；更新公告见 `更新公告.md`）（系统性代码审查修复：stepText 作用域回归 / 人机公平化 / 竞选投票修复 / 事件流补齐 / 版本串同步检查；更新公告见 `更新公告.md`）（审查修复：狼投票方向/狼总数取配置/第三方阵营判定 + 引擎不变式自检快照回滚；更新公告见 `更新公告.md`）（后台通知 + 上帝配音 + 游戏事件流 + 蒙特卡洛平衡实验室；更新公告见 `更新公告.md`）（快照恢复修复：hunter_shot 弃枪定时器 + .gitignore 隐私补漏；更新公告见 `更新公告.md`）（跨局记忆治理 + 房间快照恢复 + 内存看门狗 + 防滥用限流；更新公告见 `更新公告.md`）（快速隧道代码侧加固：SW 非 2xx 回退缓存页 + 进行中房间长 TTL + keep-alive 65s；更新公告见 `更新公告.md`）
+> 当前版本：**1.7.0**（A 系列：公网稳定性三件套 + 可观测性；真实反馈修复：全灭终局兜底 / 好人 bot 发言 / 投票不确定性；快照迁移 data/；动态发言；confidence 置信度接口；更新公告见 `更新公告.md`）（人机狼恋人逻辑：护恋人/引导狼队/白天辩护；声音设置面板分项开关+上帝配音并入；起始页精简；更新公告见 `更新公告.md`）（系统性代码审查修复：stepText 作用域回归 / 人机公平化 / 竞选投票修复 / 事件流补齐 / 版本串同步检查；更新公告见 `更新公告.md`）（审查修复：狼投票方向/狼总数取配置/第三方阵营判定 + 引擎不变式自检快照回滚；更新公告见 `更新公告.md`）（后台通知 + 上帝配音 + 游戏事件流 + 蒙特卡洛平衡实验室；更新公告见 `更新公告.md`）（快照恢复修复：hunter_shot 弃枪定时器 + .gitignore 隐私补漏；更新公告见 `更新公告.md`）（跨局记忆治理 + 房间快照恢复 + 内存看门狗 + 防滥用限流；更新公告见 `更新公告.md`）（快速隧道代码侧加固：SW 非 2xx 回退缓存页 + 进行中房间长 TTL + keep-alive 65s；更新公告见 `更新公告.md`）
 
 ## 快速开始
 
@@ -151,6 +151,15 @@ node test/check-lab-stats.js        # 实验室 stats 纯函数（Wilson CI/McNe
 node tools/selfcheck.js             # 代码自检工具：语法+版本串+死代码+重复case+遗留标记+文档一致（--quick 快速；--tests 带全量回归）
 node tools/ai/determinism-check.js  # 对局确定性验证（1.7.0 B1-8：同种子跑两遍，actionLog 逐字节一致）
 ```
+
+
+### 🤖 1.7.0（B1）人机强度系统：感知层 AdaBoost + 规划层 Rollout
+- **B1-8 显式 RNG**：`server/ai/rng.js`（xorshift128+）全局+房间级；快照续流；`tools/ai/determinism-check.js` 同种子逐字节验证
+- **B1-1 纯行动接口**：`server/ai/legacy/decide.js`（decideVote/decideNightKill）；阶梯重排 easy←现smart、smart←现simulate、simulate←新simulate(+rollout)
+- **B1-2/B1-3 训练管线**：`server/ai/features.js`（训练/推理同构）+ `tools/ai/train-vote-adaboost.js`（AdaBoost+Platt，三件套验收）；模型 `models/adaboost-vote-v1.json`（fail-open 加载）
+- **B1-4 感知注入**：`server/ai/model-loader.js`——好人侧投票前模型 P(wolf) 混合（好人胜率 3%→40% 验证）
+- **B1-5 Rollout**：`server/ai/rollout.js`——信念采样+模拟本轮投票（64 世界，预算内）
+- **B1-6/B1-9 验收**：lab paired 400 局 p=0.0274 显著；13 人局狼 63-84%（较 96.2% 基线改善，未均衡）
 
 ### 🧪 蒙特卡洛实验室平台（test/lab/）——数据生产/消费分离
 

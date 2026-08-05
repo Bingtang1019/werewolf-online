@@ -23,6 +23,7 @@ function parseCounts(str) {
   }
   return counts;
 }
+function toCamel(k) { return k.replace(/-([a-z])/g, (m, c) => c.toUpperCase()); }
 function buildConfig(scenario, argv) {
   const cfg = Object.assign({}, PRESETS[scenario] || PRESETS.smoke, { scenario });
   for (let i = 0; i < argv.length; i++) {
@@ -30,13 +31,14 @@ function buildConfig(scenario, argv) {
     if (!m) continue;
     const k = m[1], v = m[2];
     if (k === 'counts') cfg.counts = parseCounts(v);
-    else if (/^\d+$/.test(v)) cfg[k] = parseInt(v, 10);
-    else if (v === 'true') cfg[k] = true;
-    else if (v === 'false') cfg[k] = false;
-    else cfg[k] = v;
+    else if (/^\d+$/.test(v)) cfg[toCamel(k)] = parseInt(v, 10);
+    else if (v === 'true') cfg[toCamel(k)] = true;
+    else if (v === 'false') cfg[toCamel(k)] = false;
+    else cfg[toCamel(k)] = v;
   }
   if (!cfg.counts) cfg.counts = defaultCounts(cfg.cap);
   if (!cfg.botLine) cfg.botLine = Array(Math.max(1, cfg.cap - 1)).fill('smart'); // 默认全 smart（paired 等 scenario 自行覆盖）
+  if (cfg.bots) cfg.botLine = Array(Math.max(1, cfg.cap - 1)).fill(cfg.bots); // --bots=<level> 快捷：全 bot 用同一档（baseline/sample/deterministic）
   // 校验
   if (cfg.cap < 4 || cfg.cap > 18) throw new Error(`cap 越界: ${cfg.cap}`);
   if (cfg.parallel > 16) throw new Error('parallel 上限 16');
