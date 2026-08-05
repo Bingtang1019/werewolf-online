@@ -1777,13 +1777,15 @@ function resumeRoom(room) {
     if (room.reveal.stage === 'thiefPick' && !room.reveal.thiefPicked && !room.reveal.dealt) {
       const t = remain(room.revealDeadline) === undefined ? NIGHT_TIMEOUT * 1000 : remain(room.revealDeadline);
       room.revealDeadline = now + t;
-      room._thiefTimer = setTimeout(autoThiefPick, t);
+      room._thiefTimer = setTimeout(() => autoThiefPick(room), t); // v1.5.7：补闭包传参
     } else if (room.reveal.dealt) {
-      room._nightTimer = setTimeout(autoBeginNight, 5000);
+      room._nightTimer = setTimeout(() => autoBeginNight(room), 5000); // v1.5.7：补闭包传参
     }
   } else if (room.phase === 'night') {
     scheduleNightStepTimer(room, remain(room.nightDeadline));
     scheduleHunterShotTimer(room, remain(room.hunterDeadline));
+  } else if (room.phase === 'hunter_shot') {
+    scheduleHunterShotTimer(room, remain(room.hunterDeadline)); // v1.5.7：P1 白天被放逐的猎人弃枪定时器（此前漏挂会永久卡死）
   } else if (room.phase !== 'lobby' && room.phase !== 'ended') {
     const fn = PHASE_TIMEOUT_FN[room.phase];
     if (fn) schedulePhase(room, room.phase, fn, remain(room.phaseDeadline));

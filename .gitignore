@@ -26,4 +26,5 @@ cloudflared.exe
 
 # 房间快照（含玩家 ID 与身份，隐私数据，绝不上库）
 rooms.json
+rooms.json.bak
 rooms.json.tmp
