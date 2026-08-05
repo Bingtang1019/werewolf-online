@@ -287,12 +287,15 @@ const STATS_ACTIVE_MS = Math.max(1, parseInt(process.env.STATS_ACTIVE_SEC || '30
 // 房间 TTL：轮询架构没有断线事件，超过 ROOM_TTL_MIN 分钟无任何轮询（lastActive 在 /api/state 中刷新）的房间直接回收
 // 可用环境变量调整：ROOM_TTL_MIN（默认 120 分钟）、ROOM_SWEEP_SEC（默认 300 秒扫一次）
 const ROOM_TTL_MS = Math.max(1, parseInt(process.env.ROOM_TTL_MIN || '120', 10)) * 60 * 1000;
+// v1.5.5：lobby/已结束房间用短 TTL（默认 30 分钟及时回收挂机房），已开局的房间用长 TTL（默认 120 分钟，给隧道断线恢复留足时间）
+const ROOM_LOBBY_TTL_MS = Math.max(1, parseInt(process.env.ROOM_LOBBY_TTL_MIN || '30', 10)) * 60 * 1000;
 const ROOM_SWEEP_MS = Math.max(5, parseInt(process.env.ROOM_SWEEP_SEC || '300', 10)) * 1000;
 setInterval(() => {
   const now = Date.now();
   let removed = 0;
   for (const [id, r] of Game.rooms) {
-    if (now - (r.lastActive || 0) > ROOM_TTL_MS) {
+    const ttl = (r.phase === 'lobby' || r.phase === 'ended') ? ROOM_LOBBY_TTL_MS : ROOM_TTL_MS; // v1.5.5
+    if (now - (r.lastActive || 0) > ttl) {
       if (r._phaseTimer) clearTimeout(r._phaseTimer);
       if (r._nightTimer) clearTimeout(r._nightTimer);
       if (r._nightStepTimer) clearTimeout(r._nightStepTimer);
@@ -311,6 +314,10 @@ setInterval(() => {
   for (const r of Game.rooms.values()) players += r.players.length;
   console.log(`[stats] rooms=${Game.rooms.size} players=${players} mem=${(process.memoryUsage().rss / 1048576).toFixed(1)}MB`);
 }, 600000);
+
+// v1.5.5：调大 keep-alive（node 默认 5s），减少与 cloudflared/代理层的连接重建；headersTimeout 必须更大
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 70000;
 
 server.listen(PORT, () => {
   console.log('==============================================');

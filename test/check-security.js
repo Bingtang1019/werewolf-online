@@ -66,7 +66,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   }
   // ---- 6. TTL 验证（独立实例，TTL=1 分钟，5 秒扫一次） ----
   if (failures === 0) {
-    const srv2 = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, PORT: String(8347), ROOM_TTL_MIN: '1', ROOM_SWEEP_SEC: '5' }, stdio: 'ignore' });
+    const srv2 = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env: { ...process.env, PORT: String(8347), ROOM_TTL_MIN: '1', ROOM_LOBBY_TTL_MIN: '1', ROOM_SWEEP_SEC: '5' }, stdio: 'ignore' }); // v1.5.5：lobby TTL 也缩短
     await sleep(700);
     try {
       const B2 = 'http://127.0.0.1:8347';
