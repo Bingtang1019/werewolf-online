@@ -44,6 +44,13 @@ function uid() { return crypto.randomBytes(8).toString('hex'); }
 function randInt(n) { return Math.floor(Math.random() * n); }
 function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = randInt(i + 1); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
 let onChange = null; // v1.5.6：状态变更钩子（server.js 注册 → 快照防抖落盘；覆盖 timer/bot 等非 API 路径变更）
+/* v1.6.0：游戏事件流（环形缓冲 200 条）——运维勘查 + 上帝视角回放的数据源 */
+function pushEvent(room, type, data) {
+  if (!room || !room.id) return;
+  if (!room.events) room.events = [];
+  room.events.push({ t: Date.now(), night: room.nightNum || 0, phase: room.phase || '', type, data });
+  if (room.events.length > 200) room.events.splice(0, room.events.length - 200);
+}
 function bump(room) { room.version = (room.version || 0) + 1; if (onChange) { try { onChange(room); } catch (e) {} } }
 
 /* 白天发言/投票阶段超时（秒），可用环境变量 PHASE_TIMEOUT 覆盖（便于测试）；默认 60s */
@@ -434,6 +441,7 @@ function tryDeal(room) {
 
 /* ---------------------------- 夜晚 ---------------------------- */
 function beginNight(room) {
+  pushEvent(room, 'night_start', { night: room.nightNum + 1 }); // v1.6.0
   clearPhaseTimer(room); // 白天阶段倒计时清掉（夜晚步骤有自己的 30 秒倒计时）
   if (room._thiefTimer) { clearTimeout(room._thiefTimer); room._thiefTimer = null; }
   room.revealDeadline = null;
@@ -510,6 +518,7 @@ function setNightStep(room) {
     if (s === 'lovers' && stepDone(room, s)) room.loversConfirm = false; // 情侣确认完毕
     if (!stepDone(room, s)) {
       room.nightStep = s;
+      pushEvent(room, 'night_step', { step: s }); // v1.6.0
       if (s === 'witch') room.night.witch.revealed = true;
       scheduleNightStepTimer(room); // 本步骤 30 秒倒计时：超时全员视为跳过
       bump(room);
@@ -729,6 +738,8 @@ function resolveNight(room) {
     maybeRunBots(room); // 被刀猎人若是人机 →自动决定是否开枪
     return;
   }
+  if (room.night && room.night.wolf && room.night.wolf.kill) pushEvent(room, 'wolf_kill', { kill: room.night.wolf.kill, saved: !deaths.includes(room.night.wolf.kill) }); // v1.6.0：首刀目标（无论是否被救）
+  pushEvent(room, 'deaths', { deaths: deaths.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '', by: q ? q.deadBy : '' }; }) }); // v1.6.0
   if (checkWin(room)) { bump(room); return; }
   finishNight(room);
 }
@@ -738,6 +749,7 @@ function finishNight(room) {
   beginMorning(room);
 }
 function resolveShot(room, target) {
+  pushEvent(room, 'shot', { shooter: room.shooter, target: target || null }); // v1.6.0
   clearTimeout(room._hunterTimer); room._hunterTimer = null; room.hunterDeadline = null;
   const deaths = [];
   const die = (pid, by) => {
@@ -868,6 +880,7 @@ function resolveExileVote(room) {
     result: res.tie ? 'tie' : (res.winner ? 'exile' : 'none'),
     exiled: res.winner, tied: res.tied || null,
   };
+  pushEvent(room, 'exile', { exiled: res.winner, result: res.tie ? 'tie' : (res.winner ? 'exile' : 'none'), tied: res.tied || null }); // v1.6.0
   if (res.tie) {
     if (room.settings.tieRule === 'pk') {
       room.pkTied = res.tied.filter(id => byId(room, id).alive);

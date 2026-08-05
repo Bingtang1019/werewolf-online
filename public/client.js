@@ -117,6 +117,8 @@ let prevSheriff = null;    // 上次渲染的警长（变化时触发警徽飞�
 let prevFocusPhase = null; // 上次触发过“选人自动滚动”的阶段键（每阶段仅滚动一次）
 let pollFail = 0;          // 连续轮询失败计数（>=2 显示弱网横幅）
 let prevMyTurn = false;    // 上次是否轮到我行动（变化时短震，v1.3.0）
+let ttsOn = false;          // 上帝配音开关（v1.6.0，localStorage ww_tts）
+let notifyAsked = false;    // 通知权限是否已请求过（v1.6.0）
 let AC = null;             // Web Audio 上下文（首次用户交互后创建）
 let sfxOn = true;          // 音效开关（localStorage ww_sfx）
 
@@ -161,6 +163,11 @@ function lastChatTs() {
 function applyView(v) {
   if (!v || v.error) return;
   if (view && v.v < view.v) return;
+  // 上帝配音（v1.6.0）：夜晚开始 / 夜晚步骤切换时播报
+  if (ttsOn && view) {
+    if (v.phase === 'night' && view.phase !== 'night') speak('天黑请闭眼，请各位准备');
+    if (v.phase === 'night' && v.nightStep && v.nightStep !== view.nightStep) speak((stepText[v.nightStep] || '请睁眼'));
+  }
   collectStats(v); // v1.3.0：赛后趣味统计本地累积（增量聊天按 id 去重）
   // 新一局（rematch / 重新开局）→ 清空本局统计
   if (view && view.phase === 'ended' && v.phase !== 'ended' && stat.deaths.length) resetStats();
@@ -566,7 +573,7 @@ function renderPanel() {
   panel.classList.remove('night-panel', 'wolf-panel');
   // 轮到我行动 → 面板呼吸光圈（“睁眼”高亮）+ 首次轮到我时短震（v1.3.0）
   const myTurn = view.phase !== 'lobby' && view.phase !== 'reveal' && view.phase !== 'ended' && needsFastPoll();
-  if (myTurn && !prevMyTurn) vibrate(60);
+  if (myTurn && !prevMyTurn) { vibrate(60); notifyTurn(stepText[view.nightStep] || '请查看你的回合'); } // v1.6.0：后台通知
   prevMyTurn = myTurn;
   panel.classList.toggle('my-turn', myTurn);
   let html;
@@ -1618,6 +1625,29 @@ document.addEventListener('click', e => {
 }, true);
 /* 音效（33）：Web Audio 零依赖合成，localStorage ww_sfx 静音开关 */
 function ensureAudio() { try { if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); if (AC && AC.state === 'suspended') AC.resume(); } catch (e) {} }
+/* 上帝配音（v1.6.0）：Web Speech 零依赖，夜晚阶段/步骤播报（开关控制，localStorage ww_tts） */
+function setTTS(on) {
+  ttsOn = !!on;
+  try { localStorage.ww_tts = ttsOn ? '1' : '0'; } catch (e) {}
+  if (!ttsOn && 'speechSynthesis' in window) { try { window.speechSynthesis.cancel(); } catch (e) {} }
+}
+function speak(text) {
+  if (!ttsOn || !text || !('speechSynthesis' in window)) return;
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'zh-CN'; u.rate = 0.95; u.pitch = 0.9;
+    window.speechSynthesis.speak(u);
+  } catch (e) {}
+}
+/* 后台行动通知（v1.6.0）：页面隐藏且轮到我行动时弹系统通知 */
+function askNotify() {
+  if (notifyAsked) return;
+  notifyAsked = true;
+  try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch (e) {}
+}
+function notifyTurn(body) {
+  try { if (document.hidden && 'Notification' in window && Notification.permission === 'granted') new Notification('🐺 轮到你行动了', { body: body || '请查看你的回合' }); } catch (e) {}
+}
 function sfxOk() { return sfxOn && AC && AC.state === 'running'; }
 function tone(freq, dur, type, vol, when, slideTo) {
   if (!sfxOk()) return;
@@ -1823,6 +1853,13 @@ $('btn-leave').addEventListener('click', async () => {
     document.body.classList.toggle('less-motion', lm.checked);
     lm.addEventListener('change', () => toggleLessMotion(lm.checked));
   }
+  // 上帝配音开关（v1.6.0）
+  const tts = $('in-tts');
+  if (tts) {
+    tts.checked = localStorage.ww_tts === '1';
+    ttsOn = tts.checked;
+    tts.addEventListener('change', () => setTTS(tts.checked));
+  }
 
   // 在线统计（v1.2.0）：首页“🔥 正在开黑”，30 秒刷新，失败静默
   refreshStats();
@@ -1866,6 +1903,7 @@ function enterRoom(room, playerId, v) {
   resetPollTimer();
   poll();
   sseFails = 0; sseDisabled = false; // v1.5.4：进房重置 SSE 降级状态
+  askNotify(); // v1.6.0：进房时请求系统通知权限
   connectSSE(); // SSE 推送唤醒（失败自动回退轮询）
 }
 init();

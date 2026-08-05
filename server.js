@@ -222,6 +222,13 @@ const server = http.createServer((req, res) => {
       }
       return sendJSON(res, { rooms, players });
     }
+    if (pathname === '/api/debug' && req.method === 'GET') { // v1.6.0：事件流勘查/上帝视角回放数据源
+      const url = new URL(req.url, 'http://x');
+      const roomId = (url.searchParams.get('room') || '').toUpperCase();
+      const room = Game.rooms.get(roomId);
+      if (!room) return sendJSON(res, { error: 'room-not-found' });
+      return sendJSON(res, { phase: room.phase, nightStep: room.nightStep || null, dayNum: room.dayNum, nightNum: room.nightNum, players: room.players.length, events: (room.events || []).slice(-200) });
+    }
     if (pathname === '/api/create' && req.method === 'POST') {
       const cip = clientIp(req);
       if (!rateLimit(cip, 'create', 10, 60000)) return sendJSON(res, { error: '创建房间过于频繁，请稍后再试' });
