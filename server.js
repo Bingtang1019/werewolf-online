@@ -13,6 +13,18 @@ const Game = require('./game.js');
 
 const PORT = process.env.PORT || 3000;
 
+/* ---------- 运行时环境常量（v1.6.2：统一上移，此前声明在使用之后易误判 TDZ） ---------- */
+/* /api/stats 的“活跃”判定窗口：超过该时长无轮询/SSE/操作视为非活动房间，不计入在线统计（默认 30 秒） */
+const STATS_ACTIVE_MS = Math.max(1, parseInt(process.env.STATS_ACTIVE_SEC || '30', 10)) * 1000;
+// 房间 TTL：轮询架构没有断线事件，超过 ROOM_TTL_MIN 分钟无任何轮询（lastActive 在 /api/state 中刷新）的房间直接回收
+// 可用环境变量调整：ROOM_TTL_MIN（默认 120 分钟）、ROOM_SWEEP_SEC（默认 300 秒扫一次）
+const ROOM_TTL_MS = Math.max(1, parseInt(process.env.ROOM_TTL_MIN || '120', 10)) * 60 * 1000;
+// v1.5.5：lobby/已结束房间用短 TTL（默认 30 分钟及时回收挂机房），已开局的房间用长 TTL（默认 120 分钟，给隧道断线恢复留足时间）
+const ROOM_LOBBY_TTL_MS = Math.max(1, parseInt(process.env.ROOM_LOBBY_TTL_MIN || '30', 10)) * 60 * 1000;
+const ROOM_SWEEP_MS = Math.max(5, parseInt(process.env.ROOM_SWEEP_SEC || '300', 10)) * 1000;
+/* v1.5.6：内存看门狗——RSS 持续超限（泄漏）则主动退出让平台/脚本重启；与 log-and-continue 崩溃容错互补 */
+const MAX_RSS_MB = Math.max(64, parseInt(process.env.MAX_RSS_MB || '400', 10));
+
 function lanIPs() {
   const ips = [];
   try {
@@ -124,9 +136,13 @@ function clientIp(req) {
   return remote;
 }
 const LOCAL_IPS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+/* v1.6.2：POST 会话参数格式校验（与 /api/state 的 GET 校验同规则，防垃圾请求打到引擎） */
+function validSession(body) {
+  return /^[0-9A-Z]{6}$/.test(String(body && body.room || '')) && /^[0-9a-f]{16}$/.test(String(body && body.me || ''));
+}
 function rateLimit(ip, key, limit, windowMs) {
   if (!ip) return true;
-  if (LOCAL_IPS.has(ip)) return true; // 本机开发/测试/局域网直连不限流；公网（CF-Connecting-IP）照常限流
+  if (LOCAL_IPS.has(ip)) return true; // v1.6.2：仅回环（本机开发/测试）不限流；局域网直连与公网照常限流——公网部署时 socket 对端可能是反代内网地址，私有段豁免会导致限流失效
   const k = ip + ':' + key;
   const now = Date.now();
   let b = ipBuckets.get(k);
@@ -331,6 +347,7 @@ const server = http.createServer((req, res) => {
     }
     if (pathname === '/api/action' && req.method === 'POST') {
       return readBody(req, res, body => {
+        if (!validSession(body)) return sendJSON(res, { error: '参数格式错误' });
         const r = Game.handleAction(body.room, body.me, body.action, body.data || {}, body.chatSince || 0);
         if (r.error) return sendJSON(res, { error: r.error });
         markDirty();
@@ -339,6 +356,7 @@ const server = http.createServer((req, res) => {
     }
     if (pathname === '/api/chat' && req.method === 'POST') {
       return readBody(req, res, body => {
+        if (!validSession(body)) return sendJSON(res, { error: '参数格式错误' });
         const r = Game.handleChat(body.room, body.me, body.data || {}, body.chatSince || 0);
         if (r.error) return sendJSON(res, { error: r.error });
         markDirty();
@@ -347,6 +365,7 @@ const server = http.createServer((req, res) => {
     }
     if (pathname === '/api/advance' && req.method === 'POST') {
       return readBody(req, res, body => {
+        if (!validSession(body)) return sendJSON(res, { error: '参数格式错误' });
         const r = Game.handleAdvance(body.room, body.me, body.chatSince || 0);
         if (r.error) return sendJSON(res, { error: r.error });
         markDirty();
@@ -354,10 +373,14 @@ const server = http.createServer((req, res) => {
       });
     }
     if (pathname === '/api/leave' && req.method === 'POST') {
-      return readBody(req, res, body => { Game.handleLeave(body.room, body.me); markDirty(); sendJSON(res, { ok: true }); });
+      return readBody(req, res, body => {
+        if (!validSession(body)) return sendJSON(res, { error: '参数格式错误' });
+        Game.handleLeave(body.room, body.me); markDirty(); sendJSON(res, { ok: true });
+      });
     }
     if (pathname === '/api/kick' && req.method === 'POST') {
       return readBody(req, res, body => {
+        if (!validSession(body) || (body.target && !/^[0-9a-f]{16}$/.test(String(body.target)))) return sendJSON(res, { error: '参数格式错误' });
         const r = Game.handleKick(body.room, body.me, body.target, body.chatSince || 0);
         if (r.error) return sendJSON(res, { error: r.error });
         markDirty();
@@ -405,15 +428,6 @@ server.on('error', err => {
   process.exit(1);
 });
 
-/* /api/stats 的“活跃”判定窗口：超过该时长无轮询/SSE/操作视为非活动房间，不计入在线统计（默认 30 秒） */
-const STATS_ACTIVE_MS = Math.max(1, parseInt(process.env.STATS_ACTIVE_SEC || '30', 10)) * 1000;
-
-// 房间 TTL：轮询架构没有断线事件，超过 ROOM_TTL_MIN 分钟无任何轮询（lastActive 在 /api/state 中刷新）的房间直接回收
-// 可用环境变量调整：ROOM_TTL_MIN（默认 120 分钟）、ROOM_SWEEP_SEC（默认 300 秒扫一次）
-const ROOM_TTL_MS = Math.max(1, parseInt(process.env.ROOM_TTL_MIN || '120', 10)) * 60 * 1000;
-// v1.5.5：lobby/已结束房间用短 TTL（默认 30 分钟及时回收挂机房），已开局的房间用长 TTL（默认 120 分钟，给隧道断线恢复留足时间）
-const ROOM_LOBBY_TTL_MS = Math.max(1, parseInt(process.env.ROOM_LOBBY_TTL_MIN || '30', 10)) * 60 * 1000;
-const ROOM_SWEEP_MS = Math.max(5, parseInt(process.env.ROOM_SWEEP_SEC || '300', 10)) * 1000;
 setInterval(() => {
   const now = Date.now();
   let removed = 0;
@@ -425,6 +439,7 @@ setInterval(() => {
       if (r._nightStepTimer) clearTimeout(r._nightStepTimer);
       if (r._thiefTimer) clearTimeout(r._thiefTimer);
       if (r._hunterTimer) clearTimeout(r._hunterTimer);
+      if (r._botTimer) clearTimeout(r._botTimer); // v1.6.2：此前清扫漏清 bot 调度定时器（与 restoreRoom/onBroken 两处保持一致）
       Game.rooms.delete(id);
       removed++;
     }
@@ -440,8 +455,7 @@ setInterval(() => {
 }, 600000);
 
 // v1.5.5：调大 keep-alive（node 默认 5s），减少与 cloudflared/代理层的连接重建；headersTimeout 必须更大
-/* v1.5.6：内存看门狗——RSS 持续超限（泄漏）则主动退出让平台/脚本重启；与 log-and-continue 崩溃容错互补 */
-const MAX_RSS_MB = Math.max(64, parseInt(process.env.MAX_RSS_MB || '400', 10));
+/* v1.5.6：内存看门狗——RSS 持续超限（泄漏）则主动退出让平台/脚本重启；与 log-and-continue 崩溃容错互补（MAX_RSS_MB 见文件顶部） */
 setInterval(() => {
   const rss = process.memoryUsage().rss / 1048576;
   if (rss > MAX_RSS_MB) {

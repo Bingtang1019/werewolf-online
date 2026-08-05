@@ -27,16 +27,6 @@ const ROLE_INFO = {
 
 const WOLF_ROLES = ['wolf', 'wolfBeauty'];
 const ROOM_CODE_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-const DEATH_TEXT = {
-  wolf:   '被狼人杀害',
-  poison: '被女巫毒杀',
-  exile:  '被投票放逐',
-  shoot:  '被猎人枪杀',
-  charm:  '被狼美人魅惑带走',
-  lover:  '殉情',
-  dream:  '随摄梦人出局',
-  left:   '离开游戏',
-};
 
 /* ---------------------------- 工具函数 ---------------------------- */
 const rooms = new Map();
@@ -113,8 +103,7 @@ function autoThiefPick(room) {
   const wolfIdx = room.center.findIndex(k => WOLF_ROLES.includes(k)); // 有狼必选狼
   t.role = room.center[wolfIdx >= 0 ? wolfIdx : randInt(2)];
   room.reveal.thiefPicked = true;
-  tryDeal(room);
-  bump(room);
+  tryDeal(room); // tryDeal 内部已 bump
 }
 function handoverTimeout(room) {
   room.sheriff = null;
@@ -135,10 +124,10 @@ function lastwordTimeout(room) {
 function byId(room, id) { return room.players.find(p => p.id === id) || null; }
 function rolePlayer(room, key) { return room.players.find(p => effRole(p) === key) || null; }
 function expandCounts(c) { const arr = []; for (const k in c) { for (let i = 0; i < (c[k] || 0); i++) arr.push(k); } return arr; }
-function effRole(p) { return (p.role === 'thief' && p.pickedRole) ? p.pickedRole : p.role; }
+function effRole(p) { return p.role; } // v1.6.2：pickedRole 从未被赋值（盗贼选牌即替换 role），简化
 // 丘比特阵营：开局默认为第三方；情侣指定/重选时按情侣整体阵营计算并记忆；
 // 情侣死亡后、重新指认前保持当前阵营不变。
-function cupidCamp(room, cupidId) {
+function cupidCamp(room) {
   return room.cupidCamp || 'third';
 }
 // 根据当前情侣计算丘比特阵营（情侣=双好→good，双狼→wolf，一好一狼→third）
@@ -158,13 +147,13 @@ function computeCupidCamp(room) {
 function campOf(room, p) {
   if (!p || !p.role) return 'dyn';
   const r = effRole(p);
-  if (r === 'cupid') return cupidCamp(room, p.id);
+  if (r === 'cupid') return cupidCamp(room);
   return ROLE_INFO[r].camp;
 }
 function typeOf(room, p) {
   if (!p || !p.role) return 'dyn';
   const r = effRole(p);
-  if (r === 'cupid') { const c = cupidCamp(room, p.id); return c === 'good' ? 'god' : (c === 'wolf' ? 'wolf' : 'third'); }
+  if (r === 'cupid') { const c = cupidCamp(room); return c === 'good' ? 'god' : (c === 'wolf' ? 'wolf' : 'third'); }
   return ROLE_INFO[r].type;
 }
 function isWolfRole(p) { return effRole(p) === 'wolf' || effRole(p) === 'wolfBeauty'; }
@@ -240,7 +229,7 @@ function createRoom(hostName) {
   return { roomId: id, playerId: host.id, view: viewFor(room, host.id) };
 }
 function addPlayer(room, name) {
-  const p = { id: uid(), name: name || '玩家', seat: room.players.length + 1, role: null, pickedRole: null, alive: true, deadBy: null, deadNote: null, leftGame: false, confirmed: false, lastWordUsed: false };
+  const p = { id: uid(), name: name || '玩家', seat: room.players.length + 1, role: null, alive: true, deadBy: null, deadNote: null, leftGame: false, confirmed: false, lastWordUsed: false };
   room.players.push(p);
   return p;
 }
@@ -355,7 +344,7 @@ function startGame(room) {
   room.lastWorders = []; room.lastWordDone = {}; room.lastWordContext = null;
   room.handoverFrom = null; room.shooter = null; room.shotContext = null;
   room.messages = [];
-  room.players.forEach(p => { p.role = null; p.pickedRole = null; p.alive = true; p.deadBy = null; p.deadNote = null; p.leftGame = false; p.confirmed = false; p.lastWordUsed = false; if (p.isBot) resetBotPerGame(p); }); // v1.5.6：新局重置 bot 本局事实记忆（保留 suspicion）
+  room.players.forEach(p => { p.role = null; p.alive = true; p.deadBy = null; p.deadNote = null; p.leftGame = false; p.confirmed = false; p.lastWordUsed = false; if (p.isBot) resetBotPerGame(p); }); // v1.5.6：新局重置 bot 本局事实记忆（保留 suspicion）
   room.wolfPackMemory = undefined; room.botTalked = undefined; // v1.5.6：跨局共享战术/发言标记重置
   // 身份牌堆（盗贼玩法开启时总数 = 玩家人数 + 1）；center 两张在房主确定身份后再抽取
   const deck = shuffle(expandCounts(room.roleCounts));
@@ -391,18 +380,16 @@ function revealAction(room, p, action, data) {
         const candidates = room.players.filter(q => !q.role);
         rv.thiefId = candidates[randInt(candidates.length)].id;
       }
-      if (!rv.thiefPicked) {
-      rv.stage = 'thiefPick';
       // 盗贼选牌 30 秒倒计时：超时自动选牌（有狼必选狼，否则随机）
+      // v1.6.2：hostPick 受 hostPicked 守卫仅执行一次，此处 thiefPicked 恒为 false，去除恒真分支并修正缩进
+      rv.stage = 'thiefPick';
       if (room._thiefTimer) clearTimeout(room._thiefTimer);
       room.revealDeadline = Date.now() + NIGHT_TIMEOUT * 1000;
       room._thiefTimer = setTimeout(() => autoThiefPick(room), NIGHT_TIMEOUT * 1000); // 有狼必选狼
       bump(room);
       return { ok: true };
     }
-    }
-    tryDeal(room);
-    bump(room);
+    tryDeal(room); // tryDeal 内部已 bump
     return { ok: true };
   }
   // 盗贼从两张身份牌中选择一张（若其中有狼人牌则必须选狼人）
@@ -418,8 +405,7 @@ function revealAction(room, p, action, data) {
     }
     p.role = card; // 选定后即丧失盗贼身份
     rv.thiefPicked = true;
-    tryDeal(room);
-    bump(room);
+    tryDeal(room); // tryDeal 内部已 bump
     return { ok: true };
   }
   // 确认身份（全员确认可提前开始；盗贼局强制等待 5 秒展示盗贼结果，否则发牌后等待 5 秒自动开始）
@@ -653,11 +639,12 @@ function nightAction(room, p, action, data) {
     }
     case 'wolf_set': {
       if (step !== 'wolf' || !isWolfRole(p)) return { error: '操作不合法' };
-      if (data.hasOwnProperty('kill')) {
+      // v1.6.2：用 !== undefined 替代 hasOwnProperty——直接传 undefined（如测试 harness）不再误入校验分支报“玩家不存在”
+      if (data.kill !== undefined) {
         if (data.kill === null || data.kill === '') { n.wolf.kill = null; n.wolf.sel[p.id] = null; }
         else { const t = byId(room, data.kill); if (!t || !t.alive) return { error: '玩家不存在或已出局' }; n.wolf.kill = t.id; n.wolf.sel[p.id] = t.id; }
       }
-      if (data.hasOwnProperty('charm')) {
+      if (data.charm !== undefined) {
         const beauty = room.players.find(q => q.alive && effRole(q) === 'wolfBeauty');
         if (data.charm === null || data.charm === '') { if (beauty) n.wolf.charm = null; }
         else { const t = byId(room, data.charm); if (!t || !t.alive) return { error: '玩家不存在或已出局' }; if (t.id === p.id) return { error: '不能魅惑自己' }; if (!beauty) return { error: '本局没有狼美人' }; n.wolf.charm = t.id; }
@@ -749,6 +736,9 @@ function resolveNight(room) {
   if (dreamT && dreamer && !dreamer.alive && dreamer.deadBy !== 'left') die(dreamT, 'dream'); // 摄梦人离开≠死亡，不带走梦游者
   applyLoverChain(room, deaths, die);
   room.nightDeaths = deaths;
+  // v1.6.2：wolf_kill/deaths 事件提前到猎人判断之前推送（猎人开枪分支提前 return 曾导致这两条事件丢失）
+  if (room.night && room.night.wolf && room.night.wolf.kill) pushEvent(room, 'wolf_kill', { kill: room.night.wolf.kill, saved: !deaths.includes(room.night.wolf.kill) });
+  pushEvent(room, 'deaths', { deaths: deaths.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '', by: q ? q.deadBy : '' }; }) });
   // 猎人被狼刀杀死 → 先结算猎人开枪，再判胜负（否则最后的神职猎人被刀会直接判狼胜而无法开枪；枪杀可能改变战局）
   const hunter = deaths.find(id => { const q = byId(room, id); return effRole(q) === 'hunter' && q.deadBy === 'wolf'; });
   if (hunter) {
@@ -760,8 +750,6 @@ function resolveNight(room) {
     maybeRunBots(room); // 被刀猎人若是人机 →自动决定是否开枪
     return;
   }
-  if (room.night && room.night.wolf && room.night.wolf.kill) pushEvent(room, 'wolf_kill', { kill: room.night.wolf.kill, saved: !deaths.includes(room.night.wolf.kill) }); // v1.6.0：首刀目标（无论是否被救）
-  pushEvent(room, 'deaths', { deaths: deaths.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '', by: q ? q.deadBy : '' }; }) }); // v1.6.0
   if (checkWin(room)) { bump(room); return; }
   finishNight(room);
 }
@@ -783,6 +771,8 @@ function resolveShot(room, target) {
     applyLoverChain(room, deaths, die);
     // 狼美人被猎人枪杀不能带走被魅惑者（仅被放逐时才触发魅惑）
   }
+  // v1.6.2：枪杀/殉情死亡批次入事件流（night 分支与此前 deaths 事件分两批；day 分支与放逐批次分离）
+  if (deaths.length) pushEvent(room, 'deaths', { deaths: deaths.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '', by: q ? q.deadBy : '' }; }) });
   room.shooter = null;
   if (room.shotContext === 'night') {
     room.nightDeaths = (room.nightDeaths || []).concat(deaths);
@@ -939,6 +929,9 @@ function afterExile(room) {
   }
   applyLoverChain(room, exileAndCharm, die);
   room.dayDeaths = room.dayDeaths.concat(deaths);
+  // v1.6.2：放逐死亡批次入事件流（放逐者 + 魅惑带走 + 殉情；猎人枪杀批次由 resolveShot 推送）
+  const exileDead = [...new Set(exileAndCharm.concat(deaths))];
+  if (exileDead.length) pushEvent(room, 'deaths', { deaths: exileDead.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '', by: q ? q.deadBy : '' }; }) });
   // 猎人被放逐 → 先结算开枪，再判胜负（枪杀可能改变战局，与夜晚猎人同规则）
   const hunter = room.exileDeaths.find(id => { const q = byId(room, id); return effRole(q) === 'hunter'; });
   if (hunter) {
@@ -972,7 +965,7 @@ function thirdFaction(room) {
   const cupid = rolePlayer(room, 'cupid');
   // 第三方阵营 = 情侣两人 + 丘比特（若丘比特不在情侣中）
   // 情侣 = [丘比特, 狼] 时，丘比特阵营为第三方，成员即情侣两人
-  if (cupid && cupidCamp(room, cupid.id) === 'third') {
+  if (cupid && cupidCamp(room) === 'third') {
     if (room.lovers && room.lovers[0]) ids.push(room.lovers[0], room.lovers[1]);
     if (!room.lovers || !room.lovers.includes(cupid.id)) ids.push(cupid.id);
   }
@@ -1240,8 +1233,7 @@ function advance(room, pid) {
           thief.role = card;
           room.reveal.thiefPicked = true;
         }
-        tryDeal(room);
-        bump(room);
+        tryDeal(room); // tryDeal 内部已 bump
         return { ok: true };
       }
       room.players.forEach(q => { q.confirmed = true; });
@@ -1369,7 +1361,7 @@ function rematch(room) {
   room.messages = [];
   room.reveal = null;
   if (room._nightTimer) { clearTimeout(room._nightTimer); room._nightTimer = null; }
-  room.players.forEach(p => { p.role = null; p.pickedRole = null; p.alive = true; p.deadBy = null; p.deadNote = null; p.leftGame = false; p.confirmed = false; p.lastWordUsed = false; p.mood = null; if (p.isBot) resetBotPerGame(p); }); // v1.5.6：同 startGame（reset 保留 suspicion）
+  room.players.forEach(p => { p.role = null; p.alive = true; p.deadBy = null; p.deadNote = null; p.leftGame = false; p.confirmed = false; p.lastWordUsed = false; p.mood = null; if (p.isBot) resetBotPerGame(p); }); // v1.5.6：同 startGame（reset 保留 suspicion）
   room.wolfPackMemory = undefined; room.botTalked = undefined; // v1.5.6
   // v1.5.6：先 reset 再注入——上一局狼名单写成轻量"恩怨"（跨局印象，显式建模而非概率泄漏）
   if (grudgeWolfIds.length) for (const p of room.players) { if (p.isBot) injectGrudge(p, grudgeWolfIds); }
@@ -1639,7 +1631,7 @@ function viewFor(room, pid, chatSince) {
       isBot: !!q.isBot, isMe: q.id === pid, sheriff: q.id === room.sheriff, confirmed: q.confirmed,
       mood: q.mood || null,
     })),
-    my: { id: pid, name: me ? me.name : '', alive: me ? me.alive : false, isHost: room.host === pid, role: me ? roleText(room, me) : null, roleKey: me ? effRole(me) : null, camp: me ? ((effRole(me) === 'cupid' || (me.role === 'thief' && !me.pickedRole)) ? null : campText(room, me)) : null, mood: me ? (me.mood || null) : null },
+    my: { id: pid, name: me ? me.name : '', alive: me ? me.alive : false, isHost: room.host === pid, role: me ? roleText(room, me) : null, roleKey: me ? effRole(me) : null, camp: me ? ((effRole(me) === 'cupid' || me.role === 'thief') ? null : campText(room, me)) : null, mood: me ? (me.mood || null) : null },
     myChannels: me ? (['all'].filter(() => room.phase !== 'night').concat(isWolfRole(me) && room.phase === 'night' ? ['wolf'] : []).concat(room.lovers && room.lovers.includes(me.id) ? ['lover'] : [])) : ['all'],
     phaseTimed: !!room.phaseDeadline,
     phaseDeadline: room.phaseDeadline,
@@ -1733,7 +1725,7 @@ function viewFor(room, pid, chatSince) {
       if (effRole(me) === 'cupid' && room.lovers) night.couple = room.lovers;
       if (room.lovers && room.lovers.includes(me.id)) night.myLover = room.lovers.find(id => id !== me.id);
     }
-    if (room.nightStep === 'hunter') night.hunter = { shooter: room.shooter, shooterName: room.shooter ? (byId(room, room.shooter) || {}).name : '' };
+    if (room.nightStep === 'hunter') night.hunter = { shooter: room.shooter, shooterName: room.shooter ? (byId(room, room.shooter) || {}).name : '', context: room.shotContext };
     view.night = night;
   }
   // ---- 白天各阶段 ----
@@ -1783,7 +1775,7 @@ function viewFor(room, pid, chatSince) {
     };
   }
   if (room.phase === 'pk_speech') view.pkSpeech = { tied: room.pkTied.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '' }; }), canStartVote: room.host === pid };
-  if (room.phase === 'hunter_shot') view.hunterShot = { shooter: room.shooter, shooterName: room.shooter ? (byId(room, room.shooter) || {}).name : '' };
+  if (room.phase === 'hunter_shot') view.hunterShot = { shooter: room.shooter, shooterName: room.shooter ? (byId(room, room.shooter) || {}).name : '', context: room.shotContext };
   if (room.phase === 'ended') view.canRematch = room.host === pid;
   return view;
 }

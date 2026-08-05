@@ -44,32 +44,38 @@ async function main() {
   const idOf = role => Object.keys(roles).find(id => roles[id] === role);
 
   // ---- 夜晚：每个步骤按"该步 actor 视角"渲染 ----
+  const stepsRendered = new Set();
+  let wolfTabOk = false; // v1.6.2：狼标签仅在夜晚可见，须在循环内 wolf 步检查（循环结束可能已到 morning）
+  const wolfId = idOf('wolf') || idOf('wolfBeauty');
   for (let i = 0; i < 24 && g.phase === 'night'; i++) {
     const step = g.nightStep;
+    stepsRendered.add(step);
     const actor = g.players.find(p => (step === 'lovers' ? (g.lovers || []).includes(p.id) : p.role === step) && p.alive);
     if (actor) {
       h.applyView(Game.viewFor(g, actor.id, 0));
       renderSafe('night:' + step + '（' + (roles[actor.id] || '?') + '视角）');
       if (step === 'lovers' || step === 'wolf') chatSafe('night:' + step);
     }
+    if (step === 'wolf' && wolfId) { // 狼频道标签：夜晚 wolf 步渲染狼视角检查
+      h.applyView(Game.viewFor(g, wolfId, 0));
+      if (tabsHtml().includes('狼人')) wolfTabOk = true;
+    }
     // 推进（真人 actor 行动后引擎自动 setNightStep）
     if (step === 'cupid') { const c = idOf('cupid'); if (c) Game.handleAction(room, c, 'cupid_pick', { ids: [ids[1], ids[2]] }); }
     else if (step === 'lovers') { for (const l of (g.lovers || [])) Game.handleAction(room, l, 'lovers_ok', {}); }
     else if (step === 'guard') { const c = idOf('guard'); if (c) Game.handleAction(room, c, 'guard_pick', { target: ids[0] }); }
     else if (step === 'dreamer') { const c = idOf('dreamer'); if (c) Game.handleAction(room, c, 'dreamer_pick', { target: ids[0] }); }
-    else if (step === 'wolf') { for (const w of g.players.filter(p => p.alive && (p.role === 'wolf' || p.role === 'wolfBeauty'))) Game.handleAction(room, w.id, 'wolf_set', { kill: ids[3], charm: w.role === 'wolfBeauty' ? ids[4] : undefined, confirm: true }); }
+    else if (step === 'wolf') { for (const w of g.players.filter(p => p.alive && (p.role === 'wolf' || p.role === 'wolfBeauty'))) { const d = { kill: ids[3], confirm: true }; if (w.role === 'wolfBeauty') d.charm = ids[4]; Game.handleAction(room, w.id, 'wolf_set', d); } }
     else if (step === 'seer') { const c = idOf('seer'); if (c) Game.handleAction(room, c, 'seer_pick', { target: ids[1] }); }
     else if (step === 'witch') { const c = idOf('witch'); if (c) Game.handleAction(room, c, 'witch_act', { save: false, poison: null }); }
     await sleep(5);
     if (g.phase !== 'night' || g.nightStep === step) break;
   }
-  assert(g.phase !== 'night' || true, '夜晚各步骤渲染通过（无异常）');
+  // v1.6.2：原断言恒真（`|| true`），改为验证实际覆盖的夜晚步骤数（全职业局应有 cupid/lovers/guard/dreamer/wolf/seer/witch）
+  assert(stepsRendered.size >= 6, '夜晚各步骤渲染通过，覆盖 ' + stepsRendered.size + ' 步（' + [...stepsRendered].join(',') + '）');
 
-  // ---- 频道 tabs：夜晚狼人视角 ----
-  const wolfId = idOf('wolf') || idOf('wolfBeauty');
-  h.applyView(Game.viewFor(g, wolfId, 0));
-  chatSafe('狼人视角');
-  assert(tabsHtml().includes('狼人'), '夜晚狼人频道 tabs 含狼标签');
+  // ---- 频道 tabs：狼标签在夜晚 wolf 步已检查（循环内）；情侣频道全天开放，循环后检查 ----
+  assert(wolfTabOk, '夜晚狼人频道 tabs 含狼标签');
   const loverId = (g.lovers || [])[0];
   if (loverId) {
     h.applyView(Game.viewFor(g, loverId, 0));

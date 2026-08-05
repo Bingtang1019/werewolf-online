@@ -1,10 +1,12 @@
 'use strict';
 /* 所有职业获胜逻辑适配（v1.5.1）：第三方阵营认知（人狼恋/丘比特）
+ * v1.6.2 公平化：人机定位为公平玩家——狼不再避让恋人（恋人关系对狼是不可见信息），仅避狼队友；
+ *   第三方 bot（恋人成员，互知身份）仍不投自己阵营。
  * U1 单元：factionOf 阵营判定（全好/全狼/人狼恋/丘比特自连/普通）
- * U2 单元：狼 bot 夜晚不刀狼恋人（第三方是狼的隐性盟友，刀恋人触发殉情减员）
+ * U2 单元：狼 bot 夜晚不刀狼队友（公平化后允许刀恋人）
  * U3 单元：第三方 bot（好人恋人）投票不投自己阵营（保恋人保自己）
  * U4 单元：狼 bot 优先刀"自称神职者"（守卫/女巫/猎人穿衣服）
- * S1 黑盒：人狼恋局（房主=丘比特真人）完整推进两夜，狼 bot（simulate+idle）不刀恋人
+ * S1 黑盒：人狼恋局（房主=丘比特真人）完整推进两夜，狼 bot 不刀狼队友
  * 运行：node test/check-bot-third.js
  */
 const { spawn } = require('child_process');
@@ -51,11 +53,11 @@ function unitTests() {
   const cupidRoom = mkRoom([], ['C1', 'L']); // 丘比特在情侣中（自连）
   cupidRoom.players.push({ id: 'C1', name: '丘比特', role: 'cupid', alive: true, isBot: false });
   assert(factionOf(cupidRoom, cupidRoom.players[5]) === 'third', 'U1 丘比特自连 → third');
-  // U2 狼 bot 夜晚不刀狼恋人
+  // U2 狼 bot 夜晚不刀狼队友（v1.6.2 公平化：狼不避让恋人——恋人关系对狼不可见，可刀好人恋人）
   const r2 = mkRoom([], 'night', ['L', 'G']);
   const d2 = createBotDecision(r2, r2.players[0]);
-  assert(d2 && d2.action === 'wolf_set' && d2.data.kill !== 'L' && d2.data.kill !== 'G',
-    'U2 狼 bot 夜晚不刀第三方成员' + (d2 ? '（刀:' + d2.data.kill + '）' : '（null）'));
+  assert(d2 && d2.action === 'wolf_set' && d2.data.kill !== 'L',
+    'U2 狼 bot 夜晚不刀狼队友' + (d2 ? '（刀:' + d2.data.kill + '）' : '（null）'));
   // U3 第三方 bot 投票不投恋人
   const r3 = mkRoom([], 'vote', ['L', 'G']);
   r3.nightStep = null;
@@ -100,19 +102,21 @@ async function s1ThirdPartyLovers() {
       const roles = {};
       for (const p of (v.players || [])) { const pv = await st(room, p.id); roles[p.id] = pv.my ? pv.my.roleKey : null; }
       const simWolf = (v.players || []).find(p => p.isBot && roles[p.id] === 'wolf');
-      if (!simWolf) { await api('/api/leave', { room, me: host }).catch(() => {}); continue; }
+      const partnerWolf = (v.players || []).find(p => p.isBot && p.id !== (simWolf && simWolf.id) && roles[p.id] === 'wolf');
+      if (!simWolf || !partnerWolf) { await api('/api/leave', { room, me: host }).catch(() => {}); continue; }
       // 夜晚：cupid step 连 [simulate狼, 好人bot]
       v = await st(room, host);
       for (let i = 0; i < 12 && !(v.phase === 'night' && v.nightStep === 'cupid'); i++) { v = await st(room, host); await sleep(400); }
       const goodBot = (v.players || []).find(p => p.isBot && p.id !== simWolf.id && roles[p.id] !== 'wolf');
       await act(room, host, 'cupid_pick', { ids: [simWolf.id, goodBot.id] });
       // 推进两夜：等夜晚结束 → morning → advance 到下一夜（vote 强推）
+      // v1.6.2 公平化：狼可能刀恋人（不知情侣关系），断言改为“狼不刀狼队友”
       let loversSafe = true;
       for (let night = 1; night <= 2 && loversSafe; night++) {
         let vv = await st(room, host);
         for (let i = 0; i < 30 && vv.phase === 'night'; i++) { vv = await st(room, host); await sleep(400); }
-        const deaths = (vv.morningDeaths || []).map(d => d.id);
-        if (deaths.includes(goodBot.id) || deaths.includes(simWolf.id)) loversSafe = false; // 恋人被刀（第三方被杀）
+        const wolfKilled = (vv.morningDeaths || []).find(d => d.deadBy === 'wolf');
+        if (wolfKilled && (wolfKilled.id === simWolf.id || wolfKilled.id === partnerWolf.id)) loversSafe = false; // 狼被狼刀（狼不刀狼）
         // 白天：强推 vote → 下一夜
         for (let i = 0; i < 12; i++) {
           vv = await st(room, host);
@@ -121,7 +125,7 @@ async function s1ThirdPartyLovers() {
           await sleep(400);
         }
       }
-      assert(loversSafe, 'S1 人狼恋局：两夜内狼 bot 不刀恋人（第三方存活）');
+      assert(loversSafe, 'S1 人狼恋局：两夜内狼 bot 不刀狼队友');
       await api('/api/leave', { room, me: host }).catch(() => {});
       return;
     } catch (e) {

@@ -21,8 +21,8 @@ let botLevelChoice = 'easy'; // v1.4.0：添加人机时的级别选择（idle/e
 let lastPhaseKey = null; // 上次渲染的阶段标识（变化时清空草稿）
 let chatTab = 'all';
 let lastChatCount = -1;
-let lastChatTab = null; // 上次渲染的频道，防
-const lastTabTs = {}; // 各频道最后已读消息时间戳（红点）止两频道消息数恰好相同时切 tab 不重绘
+let lastChatTab = null; // 上次渲染的频道（防两频道消息数恰好相同时切 tab 不重绘）
+const lastTabTs = {}; // 各频道最后已读消息时间戳（红点）
 let toastTimer = null;
 
 /* ---------------------------- 工具 ---------------------------- */
@@ -74,6 +74,12 @@ const PHASE_TEXT = {
   sheriff_campaign: '🗳️ 警长竞选（报名）', sheriff_vote: '🗳️ 警长竞选（投票）',
   discuss: '☀️ 白天发言', vote: '🗳️ 放逐投票', pk_speech: '⚔️ PK 发言', pk_vote: '🗳️ PK 投票',
   hunter_shot: '🔫 猎人开枪', ended: '🏁 游戏结束',
+};
+/* 夜晚步骤文案（v1.6.2：从 renderNight 局部提升为模块级，TTS 播报 / 后台通知 / 面板标题共用同一套，避免散落三处不一致） */
+const stepText = {
+  thief: '盗贼请睁眼', cupid: '丘比特请睁眼', lovers: '情侣请睁眼确认彼此',
+  guard: '守卫请睁眼', dreamer: '摄梦人请睁眼', wolf: '狼人请睁眼', seer: '预言家请睁眼',
+  witch: '女巫请睁眼', hunter: '猎人请睁眼',
 };
 const DEATH_TEXT = {
   wolf: '被狼人杀害', poison: '被女巫毒杀', exile: '被投票放逐', shoot: '被猎人枪杀',
@@ -281,7 +287,6 @@ function connectSSE() {
       try {
         const j = JSON.parse(e.data);
         if (!j) return;
-        if (j.gone) { toast('房间已解散'); clearSession(); setTimeout(() => location.reload(), 1200); return; }
         if (j.v && view && j.v > view.v) pollNow(); // 版本变化 → 立即拉取最新状态
       } catch (e) { /* 忽略非 JSON 数据 */ }
     };
@@ -738,11 +743,6 @@ function renderReveal() {
 function renderNight() {
   const n = view.night || {};
   const step = n.step;
-  const stepText = {
-    thief: '盗贼请睁眼', cupid: '丘比特请睁眼', lovers: '情侣请睁眼确认彼此',
-    guard: '守卫请睁眼', dreamer: '摄梦人请睁眼', wolf: '狼人请睁眼', seer: '预言家请睁眼',
-    witch: '女巫请睁眼', hunter: '猎人请睁眼',
-  };
   let html = `<div class="panel-title night-title">🌙 第 ${view.nightNum} 夜 · ${stepText[step] || '夜晚'}</div>`;
   if (step !== 'hunter') {
     const actors = n.actors || [];
@@ -867,7 +867,8 @@ function renderNight() {
 }
 function hunterShotHtml(h) {
   if (h && h.shooter === view.my.id) {
-    return `<div class="panel-title" style="color:var(--accent)">🔫 你被狼人杀害 / 放逐，可以开枪</div>
+    const reason = h.context === 'exile' ? '你被投票放逐' : '你被狼人杀害'; // v1.6.2：区分夜晚/白天开枪场景
+    return `<div class="panel-title" style="color:var(--accent)">🔫 ${reason}，可以开枪</div>
       <div class="panel-desc">选择一名玩家枪杀（不能开枪自杀），或选择放弃。</div>
       <div class="tip-text">已选：${draft.target ? escapeHtml(nameOf(draft.target)) : '—'}</div>
       <div class="btn-row">${alivePlayers().filter(p => p.id !== view.my.id).map(p => `<button class="mini" onpointerdown="draft.target='${p.id}'; renderPanel()">${escapeHtml(p.name)}</button>`).join('')}</div>
