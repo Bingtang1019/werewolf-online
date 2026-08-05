@@ -144,8 +144,11 @@ function updateEasyMemory(room, bot) {
   }
 }
 function suspicionTarget(room, bot) {
-  const sorted = shuffle(aliveOthers(room, bot)).sort((a, b) => (bot.botMemory.suspicion[b.id] || 0) - (bot.botMemory.suspicion[a.id] || 0)); // 同分时已随机打乱，避免固定偏向
-  return sorted[0] || null;
+  const sellId = sellWolfBeauty(room, bot); // v1.5.2：卖狼美人优先
+  if (sellId) return sellId;
+  const pool = shuffle(aliveOthers(room, bot));
+  const score = p => (bot.botMemory.suspicion[p.id] || 0);
+  return concentratedPick(room, pool, score); // v1.5.2：投票集中
 }
 function decisionEasy(room, bot) {
   updateEasyMemory(room, bot);
@@ -172,9 +175,10 @@ function decisionEasy(room, bot) {
           data.kill = target ? target.id : null;
           const beauty = alivePlayers(room).find(q => effRole(q) === 'wolfBeauty');
           if (beauty && !room.night.wolf.charm) {
-            const charmPool = aliveOthers(room, bot).filter(q => campOf(q) !== 'wolf' && q.id !== data.kill);
+            const charmPool = aliveOthers(room, bot).filter(q => factionOf(room, q) !== 'third' && campOf(q) !== 'wolf' && q.id !== data.kill); // v1.5.1：不魅惑第三方
             const charm = pick(charmPool);
             if (charm) data.charm = charm.id;
+            if (data.charm) { if (!room.wolfPackMemory) room.wolfPackMemory = {}; room.wolfPackMemory.charmTarget = data.charm; } // v1.5.2：狼队共享魅惑目标（卖狼美人）
           }
         }
         return { action: 'wolf_set', data };
@@ -294,7 +298,7 @@ function updateSmartMemory(room, bot) {
   for (const msg of room.messages) {
     if (!msg.text || msg.ch !== 'all' || !msg.from || bot.botMemory.roleMsgSeen.has(msg.id)) continue;
     bot.botMemory.roleMsgSeen.add(msg.id);
-    const rm = msg.text.match(/我是(守卫|女巫|猎人)/);
+    const rm = msg.text.match(/我是(守卫|女巫|猎人|摄梦人)/);
     if (rm) bot.botMemory.roleClaims[msg.from] = rm[1];
   }
   const myRole = effRole(bot);
@@ -379,32 +383,92 @@ function wolfProb(room, bot, playerId) {
   const b = bot.botMemory.beliefs[playerId];
   return b ? b.wolf : 0.5;
 }
+/* v1.5.2：投票集中——优先投"嫌疑排名前二且已有人投"的目标，防分票 */
+function concentratedPick(room, pool, score) {
+  if (!pool.length) return null;
+  const votes = room.votes || {};
+  const counts = {};
+  for (const k of Object.keys(votes)) { const t = votes[k]; if (t) counts[t] = (counts[t] || 0) + 1; }
+  const sorted = pool.slice().sort((a, b) => score(b) - score(a));
+  const top = sorted.slice(0, 2);
+  for (const p of top) if (counts[p.id]) return p; // 有人投它 → 跟票集中
+  return sorted[0] || null;
+}
+/* v1.5.2：卖狼美人——狼美人魅惑高价值目标（可信预言家/自称神职）且狼数充足时，狼队投狼美人放逐带走目标 */
+function sellWolfBeauty(room, bot) {
+  if (campOf(bot) !== 'wolf') return null;
+  const pack = room.wolfPackMemory || {};
+  if (!pack.charmTarget) return null;
+  const wb = room.players.find(p => p.alive && p.isBot && effRole(p) === 'wolfBeauty' && campOf(p) === 'wolf');
+  if (!wb || wb.id === bot.id) return null;
+  const target = byId(room, pack.charmTarget);
+  if (!target || !target.alive) return null;
+  const claims = bot.botMemory.seerClaims || {};
+  const cred = claims[target.id] ? (claims[target.id].credibility || 0) : 0;
+  if (cred < 0.6 && !((bot.botMemory.roleClaims || {})[target.id])) return null; // 魅惑目标非高价值不卖
+  const wolfCount = room.players.filter(p => p.alive && campOf(p) === 'wolf').length;
+  if (wolfCount < 2) return null; // 狼少不卖
+  return wb.id;
+}
 function smartVoteTarget(room, bot) {
   const myFaction = factionOf(room, bot);
+  const sellId = sellWolfBeauty(room, bot); // v1.5.2：卖狼美人优先
+  if (sellId) return sellId;
   let pool = shuffle(aliveOthers(room, bot)); // 同分时随机，避免固定偏向某座位
   // v1.5.1：狼不投第三方（保第三方耗好人）；第三方不投自己阵营（保恋人保自己）
   if (myFaction === 'wolf' || myFaction === 'third') pool = pool.filter(p => factionOf(room, p) !== 'third');
   if (!pool.length) return null;
   const isWolf = campOf(bot) === 'wolf';
-  let best = null, bestScore = -Infinity;
-  for (const p of pool) {
-    const score = isWolf ? -wolfProb(room, bot, p.id) : wolfProb(room, bot, p.id);
-    if (score > bestScore) { bestScore = score; best = p; }
-  }
-  return best ? best.id : null;
+  const t = concentratedPick(room, pool, p => (isWolf ? -wolfProb(room, bot, p.id) : wolfProb(room, bot, p.id)));
+  return t ? t.id : null;
 }
 function decisionSmart(room, bot) {
   updateSmartMemory(room, bot);
   const mem = bot.botMemory;
   if (room.phase === 'night') {
     switch (room.nightStep) {
+      case 'dreamer': {
+        // v1.5.2：摄梦人保命策略——若认为下一夜会被刀（自己可信预言家/自称神职），梦狼概率最高者（试图带走一个狼）
+        const pool = aliveOthers(room, bot);
+        if (!pool.length) return null;
+        const dClaims = mem.seerClaims || {};
+        const myCred = (dClaims[bot.id] || {}).credibility || 0;
+        const atRisk = myCred >= 0.6 || !!((mem.roleClaims || {})[bot.id]);
+        if (atRisk) {
+          let best = null, bestP = -Infinity;
+          for (const p of pool) { const prob = wolfProb(room, bot, p.id); if (prob > bestP) { bestP = prob; best = p; } }
+          return best ? { action: 'dreamer_pick', data: { target: best.id } } : null;
+        }
+        let lowest = null, lowP = Infinity;
+        for (const p of pool) { const prob = wolfProb(room, bot, p.id); if (prob < lowP) { lowP = prob; lowest = p; } }
+        return lowest ? { action: 'dreamer_pick', data: { target: lowest.id } } : null;
+      }
       case 'guard': {
         const valid = shuffle(alivePlayers(room).filter(q => q.id !== room.guardLast && campOf(q) !== 'wolf'));
         if (!valid.length) return { action: 'guard_pick', data: { target: bot.id } };
-        let target = null, lowest = Infinity;
-        for (const p of valid) {
-          const prob = wolfProb(room, bot, p.id);
-          if (prob < lowest) { lowest = prob; target = p; }
+        // v1.5.2：优先守可信预言家/自称神职者（屠边保护神职），其次守狼概率最低者
+        let target = null;
+        const claims = mem.seerClaims || {};
+        let bestCred = -Infinity;
+        for (const pid of Object.keys(claims)) {
+          const p = byId(room, pid);
+          if (!p || !p.alive || p.id === bot.id || p.id === room.guardLast || campOf(p) === 'wolf') continue;
+          const cred = claims[pid].credibility || 0;
+          if (cred > bestCred) { bestCred = cred; target = p; }
+        }
+        if (!target) {
+          for (const pid of Object.keys(mem.roleClaims || {})) {
+            const p = byId(room, pid);
+            if (!p || !p.alive || p.id === bot.id || p.id === room.guardLast || campOf(p) === 'wolf') continue;
+            target = p; break;
+          }
+        }
+        if (!target) {
+          let lowest = Infinity;
+          for (const p of valid) {
+            const prob = wolfProb(room, bot, p.id);
+            if (prob < lowest) { lowest = prob; target = p; }
+          }
         }
         if (target) { if (!bot.botMemory.guarded) bot.botMemory.guarded = {}; bot.botMemory.guarded[target.id] = true; } // v1.4.3：记住守人
         return { action: 'guard_pick', data: { target: target.id } };
@@ -453,6 +517,7 @@ function decisionSmart(room, bot) {
               if (charmPool.length) charmTarget = charmPool.sort((a, b) => wolfProb(room, bot, a.id) - wolfProb(room, bot, b.id))[0];
             }
             if (charmTarget) data.charm = charmTarget.id;
+            if (data.charm) { if (!room.wolfPackMemory) room.wolfPackMemory = {}; room.wolfPackMemory.charmTarget = data.charm; } // v1.5.2：狼队共享魅惑目标（卖狼美人）
           }
         }
         return { action: 'wolf_set', data };
@@ -620,7 +685,11 @@ function botTalk(room, bot, level) {
       if (h.length) {
         const last = h[h.length - 1];
         const nm = nameById(room, last.target);
-        if (nm !== '未知') return chat('我是预言家，昨晚查验了' + nm + '：' + (last.result === 'wolf' ? '查杀' : '金水'));
+        if (nm !== '未知') return chat(pick([
+          '我是预言家，昨晚查验了' + nm + '：' + (last.result === 'wolf' ? '查杀' : '金水'),
+          '我跳预言家，昨夜看的是' + nm + '：' + (last.result === 'wolf' ? '查杀' : '金水'),
+          '真预言家在这，' + nm + '是我昨晚的查验：' + (last.result === 'wolf' ? '查杀' : '金水'),
+        ]));
       }
       return null;
     }
@@ -635,17 +704,50 @@ function botTalk(room, bot, level) {
           return chat('我是预言家，昨晚查验了' + t.name + '：查杀');
         }
       }
+      // v1.5.2：狼美人魅惑高价值目标时威胁自曝（配合卖狼美人）
+      if (myRole === 'wolfBeauty') {
+        const pack = room.wolfPackMemory || {};
+        const ct = pack.charmTarget ? byId(room, pack.charmTarget) : null;
+        if (ct && ct.alive && Math.random() < 0.6) return chat('我是狼美人，魅惑了' + ct.name + '，投我他就得死 💘');
+      }
       return null;
     }
     // 女巫：报银水（只报一次）
     if (level === 'smart' && myRole === 'witch' && mem.silverWater && !mem.silverReported) {
       mem.silverReported = true;
       const nm = nameById(room, mem.silverWater);
-      return nm === '未知' ? null : chat('我是女巫，昨晚用解药救下' + nm + '，他是我银水');
+      return nm === '未知' ? null : chat(pick([
+        '我是女巫，昨晚用解药救下' + nm + '，他是我银水',
+        '银水是' + nm + '，大家别动他，我女巫',
+        '我女巫，昨晚救了' + nm + '，解药已经没了',
+      ]));
     }
     // 守卫：报守人（模糊不暴露细节）
     if (level === 'smart' && myRole === 'guard' && mem.guarded) {
-      return chat('我是守卫，昨晚守了人，具体是谁不说，免得狼来刀');
+      return chat(pick([
+        '我是守卫，昨晚守了人，具体是谁不说，免得狼来刀',
+        '我守卫，昨晚守的自己，狼今晚可以试试',
+        '守卫在此，我守人不说细节，狼别来刀神职',
+      ]));
+    }
+    // v1.5.2：猎人/摄梦人/丘比特亮身份（概率）
+    if (level === 'smart' && myRole === 'hunter') {
+      if (Math.random() < 0.7) return chat(pick([
+        '我是猎人，枪已上膛，谁跳得最凶我带走谁 🔫',
+        '猎人牌，别逼我带人',
+      ]));
+    }
+    if (level === 'smart' && myRole === 'dreamer') {
+      if (Math.random() < 0.6) return chat(pick([
+        '我是摄梦人，梦里的狼别想跑 😴',
+        '摄梦人在此，今夜梦谁看表现',
+      ]));
+    }
+    if (level === 'smart' && myRole === 'cupid') {
+      if (Math.random() < 0.5) return chat(pick([
+        '我是丘比特，情侣是谁我就不说了 💘',
+        '丘比特在此，别乱投我，情侣是好人组合',
+      ]));
     }
     // 施压：有高嫌疑对象时表态
     const pt = pressureTarget(room, bot, level, level === 'smart' ? 0.5 : 0);
@@ -666,6 +768,8 @@ function botTalk(room, bot, level) {
     if (myRole === 'guard') return chat('我是守卫，你查杀我就是在自爆，投我你们亏一个神职');
     if (myRole === 'witch') return chat('我是女巫，解药还在，投我等于帮狼赢');
     if (isWolf) return chat('我是守卫，你查杀我说明你就是狼，狼队急了乱咬人');
+    if (myRole === 'hunter') return chat('我是猎人，枪已上膛，投我你们亏一个神职 🔫'); // v1.5.2
+    if (myRole === 'dreamer') return chat('我是摄梦人，投我我就带走一个，你们想清楚'); // v1.5.2
     const cc = claimers.length ? claimers[0].name : '查杀我的人';
     return chat('我是平民，投我不亏但浪费轮次，建议先出' + cc);
   }
@@ -961,18 +1065,16 @@ function decisionSimulateV2(room, bot) {
     const myFaction = factionOf(room, bot);
     if (myFaction === 'wolf' || myFaction === 'third') pool = pool.filter(p => factionOf(room, p) !== 'third'); // v1.5.1：狼/第三方不投第三方
     if (!pool.length) return { action: 'vote', data: { target: null } };
-    let best = null, bestScore = -Infinity;
-    for (const p of pool) {
+    const sellId = sellWolfBeauty(room, bot); // v1.5.2：卖狼美人优先
+    if (sellId) return { action: 'vote', data: { target: sellId } };
+    const best = concentratedPick(room, pool, p => {
       let score = simulatedScoreV2(room, bot, p.id);
       if (isWolf) {
-        if (wolfStyle === 'charge') {
-          score = -score;
-        } else if (wolfStyle === 'shark') {
-          if (isWolfRole(p)) score -= 0.3;
-        }
+        if (wolfStyle === 'charge') score = -score;
+        else if (wolfStyle === 'shark' && isWolfRole(p)) score -= 0.3;
       }
-      if (score > bestScore) { bestScore = score; best = p; }
-    }
+      return score;
+    }); // v1.5.2：投票集中
     return { action: 'vote', data: { target: best ? best.id : null } };
   }
 
@@ -1018,7 +1120,10 @@ function createBotDecision(room, bot) {
     const rv = room.reveal;
     if (room.settings.thief && rv.stage === 'thiefPick' && rv.thiefId === bot.id && !rv.thiefPicked) {
       const wolfIdx = room.center.findIndex(k => k === 'wolf' || k === 'wolfBeauty'); // 有狼必选狼
-      return { action: 'thief_pick', data: { idx: wolfIdx >= 0 ? wolfIdx : randInt(2) } };
+      if (wolfIdx >= 0) return { action: 'thief_pick', data: { idx: wolfIdx } };
+      // v1.5.2：无狼时偏向选神职（神职卡 > 平民）
+      const GOD_IDX = ['seer', 'witch', 'guard', 'dreamer', 'hunter'].map(k => room.center.findIndex(c => c === k)).filter(i => i >= 0);
+      return { action: 'thief_pick', data: { idx: GOD_IDX.length ? GOD_IDX[0] : randInt(2) } };
     }
     return { action: 'confirm', data: {} };
   }
