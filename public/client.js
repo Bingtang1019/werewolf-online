@@ -15,7 +15,7 @@ let sse = null;            // EventSource（SSE 推送唤醒）
 let sseConnected = false;  // SSE 当前是否可用
 const SSE_HEARTBEAT_MS = 30000; // SSE 可用时的心跳轮询间隔（30 秒）
 let draft = {};       // 当前面板的草稿选择 { target, target2, kill, charm }
-let botLevelChoice = 'easy'; // v1.4.0：添加人机时的级别选择（idle/easy/smart）
+let botLevelChoice = 'easy'; // v1.4.0：添加人机时的级别选择（idle/easy/smart/simulate）
 let lastPhaseKey = null; // 上次渲染的阶段标识（变化时清空草稿）
 let chatTab = 'all';
 let lastChatCount = -1;
@@ -641,7 +641,7 @@ function renderLobby() {
         <button class="mini bot-level${botLevelChoice === 'idle' ? ' active' : ''}" onclick="setBotLevel('idle')">挂机</button>
         <button class="mini bot-level${botLevelChoice === 'easy' ? ' active' : ''}" onclick="setBotLevel('easy')">简单</button>
         <button class="mini bot-level${botLevelChoice === 'smart' ? ' active' : ''}" onclick="setBotLevel('smart')">智能</button>
- <button class="mini bot-level ${botLevelChoice === 'simulate' ? 'active' : ''}" onclick="setBotLevel('simulate')">模拟</button>
+ <button class="mini bot-level${botLevelChoice === 'simulate' ? ' active' : ''}" onclick="setBotLevel('simulate')">模拟</button>
       </div>
       <div class="btn-row">
         <button onclick="act('add_bot',{level:botLevelChoice})">＋ 添加人机</button>
@@ -1516,7 +1516,7 @@ function setFontScale(k) {
 }
 /* 人机级别选择（v1.4.0）：lobby 人机区三选，添加时固化到 bot.botLevel */
 function setBotLevel(lv) {
-  if (lv !== 'idle' && lv !== 'easy' && lv !== 'smart') return;
+  if (lv !== 'idle' && lv !== 'easy' && lv !== 'smart' && lv !== 'simulate') return;
   botLevelChoice = lv;
   renderPanel();
 }
