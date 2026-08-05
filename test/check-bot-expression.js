@@ -36,11 +36,15 @@ function mkRoom(msgs, opts) {
   assert(d && d.action === 'chat' && d.data.text.includes('预言家') && d.data.text.includes('查杀'), 'E1 easy 预言家主发言报查验（' + (d ? d.data.text : 'null') + '）');
 }
 
-// ---- E2：被投票 → 次发言辩解 ----
+// ---- E2：被投票 → 次发言辩解（80% 概率，多次调用容忍随机） ----
 {
-  const r = mkRoom([], { lastVoteResult: { kind: 'vote', totals: { S: 2, P: 1 }, max: 2, result: 'none', exiled: null, tied: null }, botTalked: { day: 1, ids: { S: 1 } } }); // S 已发过主发言（count=1）
-  const d = botBrain.createBotDecision(r, r.players[0]);
-  assert(d && d.action === 'chat' && (d.data.text.includes('别投') || d.data.text.includes('好人')), 'E2 被投票 → 次发言辩解（' + (d ? d.data.text : 'null') + '）');
+  let defended = false;
+  for (let i = 0; i < 12 && !defended; i++) {
+    const r = mkRoom([], { lastVoteResult: { kind: 'vote', totals: { S: 2, P: 1 }, max: 2, result: 'none', exiled: null, tied: null }, botTalked: { day: 1, ids: { S: 1 } } }); // S 已发过主发言（count=1）
+    const d = botBrain.createBotDecision(r, r.players[0]);
+    if (d && d.action === 'chat' && (d.data.text.includes('别投') || d.data.text.includes('好人'))) { defended = true; break; }
+  }
+  assert(defended, 'E2 被投票 → 次发言辩解（80% 概率，12 次内出现）');
 }
 
 // ---- E3：平民表态（easy 与 smart） ----

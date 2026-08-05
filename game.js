@@ -10,6 +10,10 @@
 
 const crypto = require('crypto');
 const { createBotDecision, botWolfChat, resetBotPerGame, injectGrudge } = require('./bot-brain'); // v1.4.0：人机三档决策（idle/easy/smart）
+const { createRng } = require('./server/ai/rng.js'); // 1.7.0（B1-8）：显式可注入 RNG
+
+/* 1.7.0（B1-8）：全局 RNG——server.js 启动时用 SEED env 注入；独立 require（如测试直接调引擎）时回退默认种子 */
+if (!global.rng) global.rng = createRng(parseInt(process.env.SEED || '0', 10) || 12345);
 
 /* ---------------------------- 角色定义 ---------------------------- */
 const ROLE_INFO = {
@@ -31,8 +35,10 @@ const ROOM_CODE_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 /* ---------------------------- 工具函数 ---------------------------- */
 const rooms = new Map();
 function uid() { return crypto.randomBytes(8).toString('hex'); }
-function randInt(n) { return Math.floor(Math.random() * n); }
-function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = randInt(i + 1); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
+/* 1.7.0（B1-8）：随机统一走显式 RNG——房间级 rng（从全局派生），保证同种子对局确定性 */
+function roomRng(room) { return (room && room.rng) || global.rng; }
+function randInt(room, n) { return roomRng(room).int(n); }
+function shuffle(room, arr) { for (let i = arr.length - 1; i > 0; i--) { const j = randInt(room, i + 1); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
 let onChange = null; // v1.5.6：状态变更钩子（server.js 注册 → 快照防抖落盘；覆盖 timer/bot 等非 API 路径变更）
 let onBroken = null; // v1.6.1：房间不变式校验失败回调（server.js 注册 → 快照回滚）
 /* v1.6.1：引擎不变式自检（O(房间) 轻量，bump 时运行；失败 → 标记 broken → 快照回滚该房间，不污染全局） */
@@ -101,7 +107,7 @@ function autoThiefPick(room) {
   const t = room.reveal.thiefId ? byId(room, room.reveal.thiefId) : null;
   if (!t) return;
   const wolfIdx = room.center.findIndex(k => WOLF_ROLES.includes(k)); // 有狼必选狼
-  t.role = room.center[wolfIdx >= 0 ? wolfIdx : randInt(2)];
+  t.role = room.center[wolfIdx >= 0 ? wolfIdx : randInt(room, 2)];
   room.reveal.thiefPicked = true;
   tryDeal(room); // tryDeal 内部已 bump
 }
@@ -188,7 +194,7 @@ function validateConfig(room) {
   return null;
 }
 function newRoomCode() {
-  for (;;) { let s = ''; for (let i = 0; i < 6; i++) s += ROOM_CODE_CHARS[randInt(36)]; if (!rooms.has(s)) return s; }
+  for (;;) { let s = ''; for (let i = 0; i < 6; i++) s += ROOM_CODE_CHARS[global.rng.int(36)]; if (!rooms.has(s)) return s; } // 房间号不参与对局确定性 → 全局 RNG
 }
 
 /* ---------------------------- 房间创建 / 加入 ---------------------------- */
@@ -220,6 +226,8 @@ function createRoom(hostName) {
     handoverFrom: null, shooter: null, shotContext: null,
     dealt: false,
     phaseDeadline: null,
+    rng: createRng(global.rng.int(0x7fffffff)), // 1.7.0（B1-8）：房间级显式 RNG（从全局派生；快照记录 state 可续流）
+    actionLog: [], // 1.7.0（B1-8）：决策动作日志（L2-lite 基础，确定性验证/回放数据源；不进 view）
     lastActive: Date.now(), // 最近一次被轮询的时间（供服务端 TTL 清理无活动房间）
   };
   rooms.set(id, room);
@@ -344,10 +352,11 @@ function startGame(room) {
   room.lastWorders = []; room.lastWordDone = {}; room.lastWordContext = null;
   room.handoverFrom = null; room.shooter = null; room.shotContext = null;
   room.messages = [];
+  room.actionLog = []; // 1.7.0（B1-8）：新局清空动作日志
   room.players.forEach(p => { p.role = null; p.alive = true; p.deadBy = null; p.deadNote = null; p.leftGame = false; p.confirmed = false; p.lastWordUsed = false; if (p.isBot) resetBotPerGame(p); }); // v1.5.6：新局重置 bot 本局事实记忆（保留 suspicion）
   room.wolfPackMemory = undefined; room.botTalked = undefined; // v1.5.6：跨局共享战术/发言标记重置
   // 身份牌堆（盗贼玩法开启时总数 = 玩家人数 + 1）；center 两张在房主确定身份后再抽取
-  const deck = shuffle(expandCounts(room.roleCounts));
+  const deck = shuffle(room, expandCounts(room.roleCounts));
   room.center = null;
   room.reveal = { stage: 'hostChoice', hostPicked: false, thiefId: null, thiefPicked: false, dealt: false, deck };
   room.phase = 'reveal';
@@ -378,7 +387,7 @@ function revealAction(room, p, action, data) {
       if (!room.center) room.center = [rv.deck.pop(), rv.deck.pop()];
       if (!rv.thiefId) {
         const candidates = room.players.filter(q => !q.role);
-        rv.thiefId = candidates[randInt(candidates.length)].id;
+        rv.thiefId = candidates[randInt(room, candidates.length)].id;
       }
       // 盗贼选牌 30 秒倒计时：超时自动选牌（有狼必选狼，否则随机）
       // v1.6.2：hostPick 受 hostPicked 守卫仅执行一次，此处 thiefPicked 恒为 false，去除恒真分支并修正缩进
@@ -1246,7 +1255,7 @@ function advance(room, pid) {
             if (!room.center) room.center = [room.reveal.deck.pop(), room.reveal.deck.pop()];
             if (!room.reveal.thiefId) {
               const candidates = room.players.filter(q => !q.role);
-              room.reveal.thiefId = candidates[randInt(candidates.length)].id;
+              room.reveal.thiefId = candidates[randInt(room, candidates.length)].id;
             }
           }
         }
@@ -1326,7 +1335,7 @@ function removePlayer(room, pid) {
     if (room.settings.thief && room.reveal.thiefId === pid) {
       room.reveal.thiefId = null;
       const candidates = room.players.filter(q => !q.role && !q.leftGame);
-      if (candidates.length) room.reveal.thiefId = candidates[randInt(candidates.length)].id;
+      if (candidates.length) room.reveal.thiefId = candidates[randInt(room, candidates.length)].id;
     }
     if (room.players.length === 0) { rooms.delete(room.id); return; }
     bump(room);
@@ -1384,6 +1393,7 @@ function rematch(room) {
   room.lastWorders = []; room.lastWordDone = {}; room.lastWordContext = null;
   room.handoverFrom = null; room.shooter = null; room.shotContext = null;
   room.messages = [];
+  room.actionLog = []; // 1.7.0（B1-8）：新局清空动作日志
   room.reveal = null;
   if (room._nightTimer) { clearTimeout(room._nightTimer); room._nightTimer = null; }
   room.players.forEach(p => { p.role = null; p.alive = true; p.deadBy = null; p.deadNote = null; p.leftGame = false; p.confirmed = false; p.lastWordUsed = false; p.mood = null; if (p.isBot) resetBotPerGame(p); }); // v1.5.6：同 startGame（reset 保留 suspicion）
@@ -1447,7 +1457,15 @@ function applyAction(room, p, action, data) {
     case 'night': res = nightAction(room, p, action, data); break;
     default: res = dayAction(room, p, action, data); break;
   }
-  if (res && res.ok) autoAdvance(room);
+  if (res && res.ok) {
+    // 1.7.0（B1-8）：决策动作日志（L2-lite）——确定性验证/回放数据源；mood 等纯展示动作不记
+    if (action !== 'mood') {
+      if (!room.actionLog) room.actionLog = [];
+      room.actionLog.push({ n: room.actionLog.length + 1, phase: room.phase, step: room.nightStep || null, actor: p.seat, action, data: data === undefined ? null : data }); // actor 记座位号（玩家 id 随机，确定性对比需要）
+      if (room.actionLog.length > 5000) room.actionLog.splice(0, room.actionLog.length - 5000);
+    }
+    autoAdvance(room);
+  }
   return res;
 }
 function handleAction(roomId, pid, action, data, chatSince) {
@@ -1520,7 +1538,7 @@ function autoBotName(room) {
 /* 人机行动前等待：默认 10s±25%（7500~12500ms）模拟真人思考节奏（可 BOT_DELAY_MS 覆盖，测试用）
  * 注意：抖动必须是相对值——绝对 ±2500 在 BOT_DELAY_MS 调小时会出现负延时（setTimeout 立即执行 → bot 行动风暴/竞态） */
 const BOT_DELAY_BASE = Math.max(100, parseInt(process.env.BOT_DELAY_MS || '10000', 10));
-function botDelay() { return Math.max(100, Math.round(BOT_DELAY_BASE * (0.75 + Math.random() * 0.5))); } // ±25%
+function botDelay() { return Math.max(100, Math.round(BOT_DELAY_BASE * (0.75 + global.rng.next() * 0.5))); } // ±25%（调度时序不参与对局确定性 → 全局 RNG）
 
 /* 当前阶段需要人机行动的玩家列表 */
 function pendingBotActors(room) {

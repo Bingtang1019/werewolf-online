@@ -10,6 +10,10 @@ const path = require('path');
 const os = require('os');
 const zlib = require('zlib');
 const Game = require('./game.js');
+const { createRng } = require('./server/ai/rng.js'); // 1.7.0（B1-8）
+
+/* 1.7.0（B1-8）：全局 RNG——SEED env 可注入（确定性回放/配对验收）；房间创建时从全局派生房间种子 */
+global.rng = createRng(parseInt(process.env.SEED || '0', 10) || (Date.now() >>> 0));
 
 const PORT = process.env.PORT || 3000;
 
@@ -146,6 +150,7 @@ function saveSnapshot() {
       const c = { ...r };
       delete c._phaseTimer; delete c._nightTimer; delete c._nightStepTimer;
       delete c._thiefTimer; delete c._hunterTimer; delete c._botTimer;
+      c.rngState = r.rng ? r.rng.state() : null; delete c.rng; // 1.7.0（B1-8）：快照记录 RNG 状态（s 数组），恢复后随机序列连续不重演
       return c;
     }) };
     const tmp = SNAPSHOT_FILE + '.tmp';
@@ -167,6 +172,8 @@ function restoreRoomFromSnapshot(roomId) {
     if (!data || data.version !== 1 || !Array.isArray(data.rooms)) return false;
     const src = data.rooms.find(r => r && r.id === roomId);
     if (!src) return false;
+    if (Array.isArray(src.rngState)) src.rng = createRng(0, src.rngState); // 1.7.0（B1-8）：恢复房间 RNG 续流
+    else src.rng = createRng(Date.now() >>> 0);
     const room = Game.rooms.get(roomId);
     if (room) { // 清理旧定时器
       if (room._phaseTimer) clearTimeout(room._phaseTimer);
@@ -198,6 +205,8 @@ function loadSnapshot() {
     for (const r of data.rooms) {
       if (!r || !r.id) continue;
       r.lastActive = Date.now(); // 防 TTL 秒杀
+      if (Array.isArray(r.rngState)) r.rng = createRng(0, r.rngState); // 1.7.0（B1-8）：恢复房间 RNG 续流
+      else r.rng = createRng(Date.now() >>> 0);
       Game.rooms.set(r.id, r);
       try { Game.resumeRoom(r); } catch (e) { /* 单个房间恢复失败不影响其他 */ }
       n++;

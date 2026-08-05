@@ -2,6 +2,11 @@
 /* v1.6.4（A5-1/A2-5）：统一置信度入口 + 发言语料库（组合式生成）——C1 意图层未来只消费这两处 */
 const { confidenceOf } = require('./server/ai/confidence.js');
 const LEXICON = require('./server/ai/lexicon.json');
+/* 1.7.0（B1-8）：显式可注入 RNG——决策随机全部走“当前 RNG”（createBotDecision 入口设置），杜绝 Math.random 隐性状态 */
+const { createRng } = require('./server/ai/rng.js');
+if (!global.rng) global.rng = createRng(parseInt(process.env.SEED || '0', 10) || 12345); // 独立 require（单测）时回退默认种子
+let CUR_RNG = null; // 当前决策的显式 RNG（同步执行安全：Node 单线程，决策函数同步，房间间不会交错）
+function rng() { return CUR_RNG || global.rng; }
 /* ================================================================
    bot-brain.js - 人机决策模块（v1.4.0，适配自开源补丁）
    级别（每个 bot 独立，bot.botLevel；未设置时按房间 botMode 映射：
@@ -66,7 +71,7 @@ function isCheckedTarget(room, t) {
   if (!room || !t) return false;
   return (room.messages || []).some(m => m.ch === 'all' && m.text && m.text.includes('查杀') && m.text.includes(t.name));
 }
-function randInt(n) { return Math.floor(Math.random() * n); }
+function randInt(n) { return rng().int(n); }
 function pick(arr) { return arr && arr.length ? arr[randInt(arr.length)] : null; }
 function pickId(arr) { const q = pick(arr); return q ? q.id : null; }
 function nameById(room, id) { const p = byId(room, id); return p ? p.name : '未知'; }
@@ -237,10 +242,11 @@ function decisionEasy(room, bot) {
     const lp = loverPartner(room, bot); // v1.6.3：狼恋人不投恋人
     let t = suspicionTarget(room, bot);
     if (t && lp && !lp.isWolf && t.id === lp.id) t = null;
-    // v1.6.4（A2-4）：不确定性表达——置信度低时小概率偏离最优（随机/跟风），高置信才准（同时缓解“太傻”与“太准”）；被公开查杀的目标为强证据，不波动
+    // v1.6.4（A2-4）：不确定性表达——置信度低时小概率偏离最优（随机/跟风），高置信才准（同时缓解“太傻”与“太准”）；被公开查杀的目标为强证据，不波动；卖狼（明确策略）不波动
     if (t) {
+      const sellId = sellWolfBeauty(room, bot);
       const conf = confidenceOf(bot, t.id);
-      if (!isCheckedTarget(room, t) && conf < 0.6 && Math.random() < (0.6 - conf)) {
+      if (t.id !== sellId && !isCheckedTarget(room, t) && conf < 0.6 && rng().next() < (0.6 - conf)) {
         const pool = aliveOthers(room, bot).filter(q => q.id !== t.id && !(lp && !lp.isWolf && q.id === lp.id));
         const other = pick(pool) || t;
         t = other;
@@ -612,10 +618,11 @@ function decisionSmart(room, bot) {
   }
   if (room.phase === 'vote') {
     let target = smartVoteTarget(room, bot);
-    // v1.6.4（A2-4）：低置信波动（smart 信息多通常置信高，波动小；被公开查杀目标不波动）
+    // v1.6.4（A2-4）：低置信波动（smart 信息多通常置信高，波动小；被公开查杀目标不波动；卖狼=明确策略不波动）
     if (target) {
+      const sellId = sellWolfBeauty(room, bot);
       const conf = confidenceOf(bot, target);
-      if (!isCheckedTarget(room, byId(room, target)) && conf < 0.55 && Math.random() < (0.55 - conf)) {
+      if (target !== sellId && !isCheckedTarget(room, byId(room, target)) && conf < 0.55 && rng().next() < (0.55 - conf)) {
         const lp = loverPartner(room, bot);
         const pool = aliveOthers(room, bot).filter(q => q.id !== target && !(lp && !lp.isWolf && q.id === lp.id));
         const other = pick(pool);
@@ -779,7 +786,7 @@ function botTalk(room, bot, level) {
       if (myRole === 'wolfBeauty') {
         const pack = room.wolfPackMemory || {};
         const ct = pack.charmTarget ? byId(room, pack.charmTarget) : null;
-        if (ct && ct.alive && Math.random() < 0.6) return chat('我是狼美人，魅惑了' + ct.name + '，投我他就得死 💘');
+        if (ct && ct.alive && rng().next() < 0.6) return chat('我是狼美人，魅惑了' + ct.name + '，投我他就得死 💘');
       }
       return null;
     }
@@ -803,19 +810,19 @@ function botTalk(room, bot, level) {
     }
     // v1.5.2：猎人/摄梦人/丘比特亮身份（概率）
     if (level === 'smart' && myRole === 'hunter') {
-      if (Math.random() < 0.7) return chat(pick([
+      if (rng().next() < 0.7) return chat(pick([
         '我是猎人，枪已上膛，谁跳得最凶我带走谁 🔫',
         '猎人牌，别逼我带人',
       ]));
     }
     if (level === 'smart' && myRole === 'dreamer') {
-      if (Math.random() < 0.6) return chat(pick([
+      if (rng().next() < 0.6) return chat(pick([
         '我是摄梦人，梦里的狼别想跑 😴',
         '摄梦人在此，今夜梦谁看表现',
       ]));
     }
     if (level === 'smart' && myRole === 'cupid') {
-      if (Math.random() < 0.5) return chat(pick([
+      if (rng().next() < 0.5) return chat(pick([
         '我是丘比特，情侣是谁我就不说了 💘',
         '丘比特在此，别乱投我，情侣是好人组合',
       ]));
@@ -830,7 +837,7 @@ function botTalk(room, bot, level) {
           nameById(room, lp.id) + '是好人，查杀他的人才是狼，你们品品',
         ]));
       }
-      if (loverSusp && Math.random() < 0.6) {
+      if (loverSusp && rng().next() < 0.6) {
         return chat(pick([
           '先别怀疑' + nameById(room, lp.id) + '，他今天的发言没什么问题',
           '我保' + nameById(room, lp.id) + '，不是狼，出他浪费轮次',
@@ -838,7 +845,7 @@ function botTalk(room, bot, level) {
       }
     }
     // v1.6.4（A2-3）：平民/无实权角色也不沉默——表态/质疑（easy 低概率、smart 中概率；有嫌疑对象优先）
-    if ((level === 'smart' && Math.random() < 0.5) || (level === 'easy' && Math.random() < 0.25)) {
+    if ((level === 'smart' && rng().next() < 0.5) || (level === 'easy' && rng().next() < 0.25)) {
       const pool = aliveOthers(room, bot).filter(q => (mem.suspicion || {})[q.id] > 0);
       if (pool.length) {
         const suspect = pick(pool);
@@ -851,7 +858,7 @@ function botTalk(room, bot, level) {
     const pt = pressureTarget(room, bot, level, level === 'smart' ? 0.5 : 0);
     if (pt && !(lp && !lp.isWolf && pt.id === lp.id)) return chat(genPhrase('pressure', { name: pt.name }) || pick(TALK_PRESSURE).split('{name}').join(pt.name));
     // 气氛：无实质话题时随机闲聊（smart 概率高，easy 低；v1.6.4（A2-5）组合式生成）
-    if ((level === 'smart' && Math.random() < 0.6) || (level === 'easy' && Math.random() < 0.3)) {
+    if ((level === 'smart' && rng().next() < 0.6) || (level === 'easy' && rng().next() < 0.3)) {
       return chat(genPhrase('flavor') || pick(TALK_FLAVOR));
     }
     return null;
@@ -874,7 +881,7 @@ function botTalk(room, bot, level) {
   // v1.6.4（A2-3）：被投票/被怀疑 → 开口辩解（easy/smart 都开口；上一轮票型 totals 里有自己）
   const lv = room.lastVoteResult;
   const wasVoted = lv && lv.totals && lv.totals[bot.id];
-  if (wasVoted && Math.random() < 0.8) {
+  if (wasVoted && rng().next() < 0.8) {
     return chat(genPhrase('defend_self', { name: nameById(room, bot.id) }) || '我是好人，别投我，浪费轮次');
   }
   // 2. 对跳辩论（有对跳者时）
@@ -889,7 +896,7 @@ function botTalk(room, bot, level) {
   const pt2 = pressureTarget(room, bot, level, 0.45);
   if (pt2 && !(lp && !lp.isWolf && pt2.id === lp.id)) return chat(genPhrase('pressure', { name: pt2.name }) || '今天先出' + pt2.name + '吧，别磨叽了');
   // 4. 气氛插科打诨（小概率；v1.6.4（A2-5）组合式生成）
-  if (Math.random() < 0.4) return chat(genPhrase('flavor') || pick(TALK_FLAVOR));
+  if (rng().next() < 0.4) return chat(genPhrase('flavor') || pick(TALK_FLAVOR));
   return null;
 }
 
@@ -910,13 +917,13 @@ function botLastWord(room, bot, level) {
     if (myRole === 'hunter') return { action: 'post', data: { text: '我是猎人，下一枪指哪打哪，狼自己掂量' } };
     if (isWolf) {
       const lp = loverPartner(room, bot); // v1.6.3：狼恋人遗言为恋人辩护
-      if (lp && !lp.isWolf && Math.random() < 0.6) return { action: 'post', data: { text: '我走了，最后说一句：' + nameById(room, lp.id) + '不是狼，别让他被冤枉' } };
+      if (lp && !lp.isWolf && rng().next() < 0.6) return { action: 'post', data: { text: '我走了，最后说一句：' + nameById(room, lp.id) + '不是狼，别让他被冤枉' } };
       return { action: 'post', data: { text: pick(['我是平民，被刀真惨，大家加油', '我是平民，别捞我，先出跳得最凶的']) } };
     }
     const sus = pressureTarget(room, bot, 'smart', 0.4);
     const nm = sus ? sus.name : '跳得最凶的';
-    if (Math.random() < 0.7) return { action: 'post', data: { text: genPhrase('lastword_good', { name: nm }) || pick(TALK_LAST_PLAIN).split('{name}').join(nm) } }; // v1.6.4（A2-5）
-  } else if (level === 'easy' && Math.random() < 0.5) {
+    if (rng().next() < 0.7) return { action: 'post', data: { text: genPhrase('lastword_good', { name: nm }) || pick(TALK_LAST_PLAIN).split('{name}').join(nm) } }; // v1.6.4（A2-5）
+  } else if (level === 'easy' && rng().next() < 0.5) {
     return { action: 'post', data: { text: pick(['我是平民，大家加油', '别捞我，不亏']) } };
   }
   return { action: 'skip', data: {} };
@@ -943,7 +950,7 @@ function botWolfChat(room, bot) {
     return { action: 'chat', data: { ch: 'wolf', text } };
   }
   const t2 = (target && lp && !lp.isWolf && target === lp.id) ? null : target; // 引导目标避免恋人
-  if (level === 'smart' && Math.random() < 0.7) {
+  if (level === 'smart' && rng().next() < 0.7) {
     const claims = bot.botMemory.seerClaims || {};
     let best = null, bestCred = -Infinity;
     for (const pid of Object.keys(claims)) {
@@ -1203,7 +1210,7 @@ function decisionSimulateV2(room, bot) {
     let vote = best;
     if (vote) {
       const conf = confidenceOf(bot, vote.id);
-      if (!isCheckedTarget(room, vote) && conf < 0.55 && Math.random() < (0.55 - conf)) {
+      if (!isCheckedTarget(room, vote) && conf < 0.55 && rng().next() < (0.55 - conf)) {
         const lp2 = loverPartner(room, bot);
         const pool2 = pool.filter(q => q.id !== vote.id && !(lp2 && !lp2.isWolf && q.id === lp2.id));
         const other = pick(pool2);
@@ -1250,6 +1257,7 @@ function decisionSimulateV2(room, bot) {
 
 
 function createBotDecision(room, bot) {
+  CUR_RNG = (room && room.rng) || global.rng; // 1.7.0（B1-8）：本决策随机流 = 房间 RNG（同步决策，无需恢复）
   const level = bot.botLevel || (room.settings.botMode === 'passive' ? 'idle' : 'easy');
   if (room.phase === 'reveal') {
     const rv = room.reveal;
@@ -1264,7 +1272,7 @@ function createBotDecision(room, bot) {
   }
   if (room.phase === 'lastword') return level === 'simulate' ? botLastWord(room, bot, 'smart') : botLastWord(room, bot, level); // v1.4.4：遗言（smart 有信息量）
   if (room.phase === 'handover') return { action: 'handover', data: { target: null } }; // 人机警长默认撕毁警徽
-  if (room.phase === 'sheriff_campaign') return { action: 'campaign', data: { run: level === 'idle' ? false : Math.random() < 0.5 } };
+  if (room.phase === 'sheriff_campaign') return { action: 'campaign', data: { run: level === 'idle' ? false : rng().next() < 0.5 } };
   if (room.phase === 'discuss') return level === 'simulate' ? decisionSimulateV2(room, bot) : botTalk(room, bot, level); // v1.4.3：白天发言模拟（simulate 走态度模型）
   if (room.phase === 'night') {
     switch (room.nightStep) {
