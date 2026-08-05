@@ -13,6 +13,8 @@ let pollMs = 0;
 let pollBusy = false; // 轮询在途标记：慢网络下跳过重叠轮询，防止增量叠加
 let sse = null;            // EventSource（SSE 推送唤醒）
 let sseConnected = false;  // SSE 当前是否可用
+let sseFails = 0;          // SSE 连续失败次数（v1.5.4）
+let sseDisabled = false;   // SSE 降级开关（v1.5.4：快速隧道对长连接不友好时转纯轮询）
 const SSE_HEARTBEAT_MS = 30000; // SSE 可用时的心跳轮询间隔（30 秒）
 let draft = {};       // 当前面板的草稿选择 { target, target2, kill, charm }
 let botLevelChoice = 'easy'; // v1.4.0：添加人机时的级别选择（idle/easy/smart/simulate）
@@ -262,6 +264,7 @@ function pollNow() {
 /* ============ SSE 推送唤醒（可选优化，失败自动回退轮询） ============ */
 function connectSSE() {
   if (!roomId || !me) return;
+  if (sseDisabled) return; // v1.5.4：已降级为纯轮询，不再尝试长连接
   try { if (sse) sse.close(); } catch (e) {}
   sseConnected = false;
   try {
@@ -276,12 +279,15 @@ function connectSSE() {
       } catch (e) { /* 忽略非 JSON 数据 */ }
     };
     sse.onerror = () => {
-      // SSE 断开：立即回退常规轮询（含指数退避），5 秒后尝试重连
+      // SSE 断开：立即回退常规轮询（含指数退避）
       sseConnected = false;
       try { if (sse) sse.close(); } catch (e) {}
       sse = null;
+      sseFails = (sseFails || 0) + 1;
       ensurePollTimer();
-      setTimeout(connectSSE, 5000);
+      // v1.5.4：连续失败 3 次 → 降级纯轮询（快速隧道对 SSE 长连接不友好时避免重连风暴，页面靠轮询存活）
+      if (sseFails >= 3) { sseDisabled = true; }
+      else setTimeout(connectSSE, 5000);
     };
   } catch (e) { sse = null; sseConnected = false; }
 }
@@ -1859,6 +1865,7 @@ function enterRoom(room, playerId, v) {
   render();
   resetPollTimer();
   poll();
+  sseFails = 0; sseDisabled = false; // v1.5.4：进房重置 SSE 降级状态
   connectSSE(); // SSE 推送唤醒（失败自动回退轮询）
 }
 init();

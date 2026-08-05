@@ -1,6 +1,6 @@
 {
   "name": "werewolf-online",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "狼人杀在线版（零依赖 Node.js，无数据库）",
   "main": "server.js",
   "scripts": {
