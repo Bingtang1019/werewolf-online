@@ -130,7 +130,7 @@ function decisionEasy(room, bot) {
         let target = (seer && seer.id !== room.guardLast) ? seer : bot;
         if (target.id === room.guardLast) { const t2 = byId(room, pickId(valid)); if (t2) target = t2; }
         if (!bot.botMemory.guarded) bot.botMemory.guarded = {};
-        bot.botMemory.guarded[target.id] = true; // v1.5.0：记住守人
+        bot.botMemory.guarded[target.id] = true; // v1.4.3：记住守人
         return { action: 'guard_pick', data: { target: target.id } };
       }
       case 'wolf': {
@@ -160,7 +160,7 @@ function decisionEasy(room, bot) {
       case 'witch': {
         const attacked = room.night.wolf.kill;
         const save = !room.witchPots.saveUsed && !!attacked; // 简单：无脑救被刀者
-        if (save && attacked && !bot.botMemory.silverWater) bot.botMemory.silverWater = attacked; // v1.5.0：记住银水
+        if (save && attacked && !bot.botMemory.silverWater) bot.botMemory.silverWater = attacked; // v1.4.3：记住银水
         let poison = null;
         if (!save && !room.witchPots.poisonUsed && room.nightNum >= 2) {
           const t = pick(aliveOthers(room, bot));
@@ -276,7 +276,7 @@ function updateSmartMemory(room, bot) {
     if (knowTruth) {
       if (!claim.credibility || claim.credibility <= 0.6) continue;
     } else {
-      // 好人视角：单声称者默认 0.5；出现对跳（多个声称者）时全存疑 0.35，避免被悍跳误导（v1.5.0）
+      // 好人视角：单声称者默认 0.5；出现对跳（多个声称者）时全存疑 0.35，避免被悍跳误导（v1.4.3）
       const claimerCount = Object.keys(claims).filter(pid => pid !== bot.id && claims[pid].claims.length).length;
       let cred = claimerCount > 1 ? 0.35 : 0.5;
       if (myClaim && myClaim.claims.length && claim.claims.length) {
@@ -305,7 +305,7 @@ function updateSmartMemory(room, bot) {
       for (const v of voters) updateBelief(room, bot, v, wasWolf ? 'voted_out_wolf' : 'voted_out_good');
     }
   }
-  // 4.5 女巫银水（v1.5.0）：救过的人持续视为好人证据（LR 0.05，强于他人查杀）；守卫守人同理弱证据
+  // 4.5 女巫银水（v1.4.3）：救过的人持续视为好人证据（LR 0.05，强于他人查杀）；守卫守人同理弱证据
   if (myRole === 'witch' && bot.botMemory.silverWater) updateBelief(room, bot, bot.botMemory.silverWater, 'silver_water');
   if (myRole === 'guard' && bot.botMemory.guarded) {
     for (const pid of Object.keys(bot.botMemory.guarded)) updateBelief(room, bot, pid, 'guard_protected');
@@ -367,7 +367,7 @@ function decisionSmart(room, bot) {
           const prob = wolfProb(room, bot, p.id);
           if (prob < lowest) { lowest = prob; target = p; }
         }
-        if (target) { if (!bot.botMemory.guarded) bot.botMemory.guarded = {}; bot.botMemory.guarded[target.id] = true; } // v1.5.0：记住守人
+        if (target) { if (!bot.botMemory.guarded) bot.botMemory.guarded = {}; bot.botMemory.guarded[target.id] = true; } // v1.4.3：记住守人
         return { action: 'guard_pick', data: { target: target.id } };
       }
       case 'wolf': {
@@ -392,7 +392,7 @@ function decisionSmart(room, bot) {
           data.kill = target ? target.id : null;
           const beauty = alivePlayers(room).find(q => effRole(q) === 'wolfBeauty');
           if (beauty && !room.night.wolf.charm) {
-            // v1.5.0 魅惑策略：优先魅惑高可信预言家（放逐可带走神职），其次最可信好人
+            // v1.4.3 魅惑策略：优先魅惑高可信预言家（放逐可带走神职），其次最可信好人
             let charmTarget = null, bestCred = -Infinity;
             for (const pid of Object.keys(claims)) {
               const cp = byId(room, pid);
@@ -410,7 +410,7 @@ function decisionSmart(room, bot) {
         return { action: 'wolf_set', data };
       }
       case 'seer': {
-        // v1.5.0：优先查验对跳者（声称过预言家且未查过），其次查狼概率最高
+        // v1.4.3：优先查验对跳者（声称过预言家且未查过），其次查狼概率最高
         const pool = shuffle(aliveOthers(room, bot).filter(q => !(room.seerHistory || []).some(h => h.target === q.id)));
         if (!pool.length) return null;
         const claimers = pool.filter(q => (mem.seerClaims || {})[q.id] && (mem.seerClaims[q.id].claims || []).length);
@@ -433,7 +433,7 @@ function decisionSmart(room, bot) {
       case 'witch': {
         const attacked = room.night.wolf.kill;
         const save = !room.witchPots.saveUsed && !!attacked && wolfProb(room, bot, attacked) < 0.4; // 狼概率高不救
-        if (save) bot.botMemory.silverWater = attacked; // v1.5.0：记住银水（后续作为好人证据）
+        if (save) bot.botMemory.silverWater = attacked; // v1.4.3：记住银水（后续作为好人证据）
         let poison = null;
         if (!save && !room.witchPots.poisonUsed && room.nightNum >= 2) {
           let best = null, bestProb = -Infinity;
@@ -471,57 +471,218 @@ function decisionSmart(room, bot) {
  * 公共层：信息量恒定的决策（盗贼选牌/遗言/警徽/竞选/丘比特/情侣/摄梦），三档一致；
  * 智力决策点（狼刀/查验/守卫/女巫/投票）按级别分发。 */
 
-/* ---------- 发言模拟（v1.5.0）：白天每人最多一条，走 chat 通道；null=不发言（仍会被标记已调度） ---------- */
+/* ---------- 发言模拟（v1.4.3）：白天每人最多一条，走 chat 通道；null=不发言（仍会被标记已调度） ---------- */
+/* ---------- 发言语料库（v1.4.4：辩论/穿衣服/气氛） ---------- */
+const TALK_FLAVOR = [
+  '这局好安静，不会都在潜水吧 🤿',
+  '预言家别藏了，出来带队呀',
+  '我掐指一算，今天必有狼出局 🔮',
+  '投票别磨蹭，再拖要上班迟到了 ⏰',
+  '谁投我我就记小本本 📒',
+  '女巫药省着点用，后面还有大场面',
+  '守卫今晚守谁，给个准话呗',
+  '我先表个态：听预言家的',
+  '狼人现在肯定在偷笑，笑什么笑 🐺',
+  '这氛围，让我想起上次被首刀的时候',
+  '昨晚居然平安夜？女巫干活了还是狼空刀了',
+  '别都沉默啊，聊一聊才有信息',
+];
+const TALK_PRESSURE = [
+  '我怀疑{name}有问题，大家投票考虑一下他',
+  '今天先出{name}吧，验民再看',
+  '我跟{name}的票',
+  '{name}这发言不像好人，太急了',
+  '先别投{name}，听他把话说完',
+];
+const TALK_DEBATE_SEER = [
+  '{name}在悍跳预言家，我才是真的，查验记录都在',
+  '{name}查杀的人我验过是金水，他在乱带节奏',
+  '对跳的都标狼，大家别被带偏，今晚我验{name}',
+];
+const TALK_DEBATE_WOLF = [
+  '{name}才是狼，狼队急了开始乱咬',
+  '我说的是真的，不信今晚验我，明天出结果',
+  '{name}带节奏带得飞起，一看就是狼',
+];
+const TALK_WOLF_NIGHT = [
+  '先刀预言家，稳赚不亏',
+  '刀{name}吧，他太跳了',
+  '我建议刀{name}，发言太像神职',
+  '别刀队友啊喂，看清楚再刀',
+  '今天白天我悍跳了预言家，你们配合一下',
+  '验民比验神难，先刀个神职',
+  '谁被女巫救过？想办法再刀一次',
+];
+const TALK_LAST_PLAIN = [
+  '我是平民，别浪费轮次捞我，先出{name}',
+  '被刀真惨，大家加油，别让我白死',
+  '我是平民，听预言家的，别被带偏',
+  '我走啦，遗言就一句：小心{name}',
+];
+
+function talkedCount(room, bot) {
+  const bt = room.botTalked && room.botTalked.day === room.dayNum ? room.botTalked.ids : null;
+  return bt ? (bt[bot.id] || 0) : 0;
+}
+/* 是否被他人查杀（claims 里有人声称查杀自己） */
+function isCheckedWolf(room, bot, mem) {
+  const claims = mem.seerClaims || {};
+  for (const pid of Object.keys(claims)) {
+    if (pid === bot.id) continue;
+    for (const c of (claims[pid].claims || [])) if (c.result === 'wolf' && c.target === bot.id) return true;
+  }
+  return false;
+}
+/* 对跳者：声称过预言家的其他玩家 */
+function counterClaimers(room, bot, mem) {
+  const claims = mem.seerClaims || {};
+  return Object.keys(claims).filter(pid => pid !== bot.id && (claims[pid].claims || []).length)
+    .map(id => byId(room, id)).filter(Boolean);
+}
+/* 施压目标：smart 用狼概率，easy 用关键词嫌疑 */
+function pressureTarget(room, bot, level, threshold) {
+  const mem = bot.botMemory || {};
+  if (level === 'smart') {
+    const t = smartVoteTarget(room, bot);
+    return t && wolfProb(room, bot, t) > threshold ? t : null;
+  }
+  const top = Object.keys(mem.suspicion || {}).map(id => ({ id, s: mem.suspicion[id] }))
+    .filter(x => x.s > 30).sort((a, b) => b.s - a.s)[0];
+  return top ? byId(room, top.id) : null;
+}
+
+/* 白天发言：每人每天至多 2 条（0=主发言，1=次发言：回应/辩论/气氛） */
 function botTalk(room, bot, level) {
   if (level === 'idle') return null;
   const mem = ensureMemory(bot);
   if (level === 'smart') updateSmartMemory(room, bot); // 发言前先刷新推理（含狼队共享/对跳存疑）
   else updateEasyMemory(room, bot);
   const myRole = effRole(bot);
-  // smart 预言家：报真实查验
-  if (level === 'smart' && myRole === 'seer') {
-    const h = (room.seerHistory || []).filter(x => x.night >= 1);
-    if (h.length) {
-      const last = h[h.length - 1];
-      const nm = nameById(room, last.target);
-      if (nm !== '未知') return { action: 'chat', data: { ch: 'all', text: `我是预言家，昨晚查验了${nm}：${last.result === 'wolf' ? '查杀' : '金水'}` } };
-    }
-    return null;
-  }
-  // smart 狼：悍跳预言家（每队只跳一次），查杀最可信好人施压
-  if (level === 'smart' && campOf(bot) === 'wolf') {
-    if (!room.wolfPackMemory) room.wolfPackMemory = {};
-    if (!room.wolfPackMemory.talkedClaim) {
-      const pool = shuffle(aliveOthers(room, bot).filter(q => campOf(q) !== 'wolf'));
-      if (pool.length) {
-        const t = pool.sort((a, b) => wolfProb(room, bot, a.id) - wolfProb(room, bot, b.id))[0];
-        room.wolfPackMemory.talkedClaim = true;
-        return { action: 'chat', data: { ch: 'all', text: `我是预言家，昨晚查验了${t.name}：查杀` } };
+  const isWolf = campOf(bot) === 'wolf';
+  const count = talkedCount(room, bot);
+  const chat = text => text ? { action: 'chat', data: { ch: 'all', text } } : null;
+
+  /* ===== 主发言（第 1 条） ===== */
+  if (count === 0) {
+    // 预言家：报真实查验
+    if (level === 'smart' && myRole === 'seer') {
+      const h = (room.seerHistory || []).filter(x => x.night >= 1);
+      if (h.length) {
+        const last = h[h.length - 1];
+        const nm = nameById(room, last.target);
+        if (nm !== '未知') return chat('我是预言家，昨晚查验了' + nm + '：' + (last.result === 'wolf' ? '查杀' : '金水'));
       }
+      return null;
+    }
+    // 狼：悍跳预言家（每队只跳一次），查杀最可信好人施压
+    if (level === 'smart' && isWolf) {
+      if (!room.wolfPackMemory) room.wolfPackMemory = {};
+      if (!room.wolfPackMemory.talkedClaim) {
+        const pool = shuffle(aliveOthers(room, bot).filter(q => campOf(q) !== 'wolf'));
+        if (pool.length) {
+          const t = pool.sort((a, b) => wolfProb(room, bot, a.id) - wolfProb(room, bot, b.id))[0];
+          room.wolfPackMemory.talkedClaim = true;
+          return chat('我是预言家，昨晚查验了' + t.name + '：查杀');
+        }
+      }
+      return null;
+    }
+    // 女巫：报银水（只报一次）
+    if (level === 'smart' && myRole === 'witch' && mem.silverWater && !mem.silverReported) {
+      mem.silverReported = true;
+      const nm = nameById(room, mem.silverWater);
+      return nm === '未知' ? null : chat('我是女巫，昨晚用解药救下' + nm + '，他是我银水');
+    }
+    // 守卫：报守人（模糊不暴露细节）
+    if (level === 'smart' && myRole === 'guard' && mem.guarded) {
+      return chat('我是守卫，昨晚守了人，具体是谁不说，免得狼来刀');
+    }
+    // 施压：有高嫌疑对象时表态
+    const pt = pressureTarget(room, bot, level, level === 'smart' ? 0.5 : 0);
+    if (pt) return chat(pick(TALK_PRESSURE).split('{name}').join(pt.name));
+    // 气氛：无实质话题时随机闲聊（smart 概率高，easy 低）
+    if ((level === 'smart' && Math.random() < 0.6) || (level === 'easy' && Math.random() < 0.3)) {
+      return chat(pick(TALK_FLAVOR));
     }
     return null;
   }
-  // smart 女巫：报银水（只报一次）
-  if (level === 'smart' && myRole === 'witch' && mem.silverWater && !mem.silverReported) {
-    mem.silverReported = true;
-    const nm = nameById(room, mem.silverWater);
-    return nm === '未知' ? null : { action: 'chat', data: { ch: 'all', text: `我是女巫，昨晚用解药救下${nm}，他是我银水` } };
+
+  /* ===== 次发言（第 2 条：回应/辩论/气氛） ===== */
+  const checked = isCheckedWolf(room, bot, mem);
+  const claimers = counterClaimers(room, bot, mem);
+  // 1. 被查杀 → 穿衣服自证 / 反跳
+  if (checked) {
+    if (myRole === 'seer') return chat('我才是真预言家，查杀我的人才是狼，我的查验记录都在');
+    if (myRole === 'guard') return chat('我是守卫，你查杀我就是在自爆，投我你们亏一个神职');
+    if (myRole === 'witch') return chat('我是女巫，解药还在，投我等于帮狼赢');
+    if (isWolf) return chat('我是守卫，你查杀我说明你就是狼，狼队急了乱咬人');
+    const cc = claimers.length ? claimers[0].name : '查杀我的人';
+    return chat('我是平民，投我不亏但浪费轮次，建议先出' + cc);
   }
-  // 施压型：smart 好人怀疑最高狼概率者；easy 怀疑关键词嫌疑最高者
-  let target = null;
-  if (level === 'smart') {
-    const t = smartVoteTarget(room, bot);
-    if (t && wolfProb(room, bot, t) > 0.5) target = t;
-  } else {
-    const top = Object.keys(mem.suspicion || {}).map(id => ({ id, s: mem.suspicion[id] })).filter(x => x.s > 30).sort((a, b) => b.s - a.s)[0];
-    if (top) target = top.id;
+  // 2. 对跳辩论（有对跳者时）
+  if (level === 'smart' && claimers.length) {
+    if (myRole === 'seer') return chat(pick(TALK_DEBATE_SEER).split('{name}').join(claimers[0].name));
+    if (isWolf) return chat(pick(TALK_DEBATE_WOLF).split('{name}').join(claimers[0].name));
   }
-  if (target) {
-    const p = byId(room, target);
-    if (p) return { action: 'chat', data: { ch: 'all', text: `我怀疑${p.name}有问题，大家留意一下` } };
-  }
+  // 3. 施压跟票
+  const pt2 = pressureTarget(room, bot, level, 0.45);
+  if (pt2) return chat('今天先出' + pt2.name + '吧，别磨叽了');
+  // 4. 气氛插科打诨（小概率）
+  if (Math.random() < 0.4) return chat(pick(TALK_FLAVOR));
   return null;
 }
+
+/* 遗言（lastword 阶段）：smart 有信息量，easy 简短，idle 沉默 */
+function botLastWord(room, bot, level) {
+  if (level === 'idle') return { action: 'skip', data: {} };
+  const mem = ensureMemory(bot);
+  const myRole = effRole(bot);
+  const isWolf = campOf(bot) === 'wolf';
+  if (level === 'smart') {
+    const last = (room.seerHistory || []).filter(x => x.night >= 1).slice(-1)[0];
+    if (myRole === 'seer' && last) {
+      const nm = nameById(room, last.target);
+      if (nm !== '未知') return { action: 'post', data: { text: '我是预言家，昨夜查了' + nm + '：' + (last.result === 'wolf' ? '查杀' : '金水') + '，大家务必出他' } };
+    }
+    if (myRole === 'guard' && mem.guarded) return { action: 'post', data: { text: '我是守卫，守人记录在我脑子里，按我之前的判断走' } };
+    if (myRole === 'witch') return { action: 'post', data: { text: '我是女巫，解药已经用了，毒药还在，你们加油' } };
+    if (myRole === 'hunter') return { action: 'post', data: { text: '我是猎人，下一枪指哪打哪，狼自己掂量' } };
+    if (isWolf) return { action: 'post', data: { text: pick(['我是平民，被刀真惨，大家加油', '我是平民，别捞我，先出跳得最凶的']) } };
+    const sus = pressureTarget(room, bot, 'smart', 0.4);
+    const nm = sus ? sus.name : '跳得最凶的';
+    if (Math.random() < 0.7) return { action: 'post', data: { text: pick(TALK_LAST_PLAIN).split('{name}').join(nm) } };
+  } else if (level === 'easy' && Math.random() < 0.5) {
+    return { action: 'post', data: { text: pick(['我是平民，大家加油', '别捞我，不亏']) } };
+  }
+  return { action: 'skip', data: {} };
+}
+
+/* 狼人夜晚狼频道发言：每狼每晚至多一条（配合出刀，营造狼队互动） */
+function botWolfChat(room, bot) {
+  const level = bot.botLevel || (room.settings.botMode === 'passive' ? 'idle' : 'easy');
+  if (level === 'idle') return null;
+  const mem = ensureMemory(bot);
+  if (mem.wolfChatNight === room.nightNum) return null;
+  mem.wolfChatNight = room.nightNum;
+  if (level === 'smart') updateSmartMemory(room, bot);
+  const target = smartVoteTarget(room, bot);
+  let text;
+  if (level === 'smart' && Math.random() < 0.7) {
+    const claims = bot.botMemory.seerClaims || {};
+    let best = null, bestCred = -Infinity;
+    for (const pid of Object.keys(claims)) {
+      const p = byId(room, pid);
+      if (!p || !p.alive || campOf(p) === 'wolf') continue;
+      const cred = claims[pid].credibility || 0;
+      if (cred > bestCred) { bestCred = cred; best = p; }
+    }
+    text = best ? '今晚刀' + best.name + '，他跳预言家太像真的了' : (target ? '刀' + nameById(room, target) + '吧，发言太像神职' : '先刀预言家，稳赚不亏');
+  } else {
+    text = pick(TALK_WOLF_NIGHT).split('{name}').join(target ? nameById(room, target) : '预言家');
+  }
+  return { action: 'chat', data: { ch: 'wolf', text } };
+}
+
 
 function createBotDecision(room, bot) {
   const level = bot.botLevel || (room.settings.botMode === 'passive' ? 'idle' : 'easy');
@@ -533,10 +694,10 @@ function createBotDecision(room, bot) {
     }
     return { action: 'confirm', data: {} };
   }
-  if (room.phase === 'lastword') return { action: 'skip', data: {} };
+  if (room.phase === 'lastword') return botLastWord(room, bot, level); // v1.4.4：遗言（smart 有信息量）
   if (room.phase === 'handover') return { action: 'handover', data: { target: null } }; // 人机警长默认撕毁警徽
   if (room.phase === 'sheriff_campaign') return { action: 'campaign', data: { run: level === 'idle' ? false : Math.random() < 0.5 } };
-  if (room.phase === 'discuss') return botTalk(room, bot, level); // v1.5.0：白天发言模拟
+  if (room.phase === 'discuss') return botTalk(room, bot, level); // v1.4.3：白天发言模拟
   if (room.phase === 'night') {
     switch (room.nightStep) {
       case 'cupid': {
@@ -556,4 +717,4 @@ function createBotDecision(room, bot) {
   return decisionIdle(room, bot);
 }
 
-module.exports = { createBotDecision };
+module.exports = { createBotDecision, botWolfChat };

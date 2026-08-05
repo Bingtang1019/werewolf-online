@@ -2,7 +2,7 @@
 
 和朋友一起玩的 Web 在线狼人杀。**零依赖**：只使用 Node.js 内置模块，无需 `npm install`。
 
-> 当前版本：**1.5.0**（人机高阶推理 + 发言模拟：银水/守人/对跳查验/魅惑策略/悍跳；更新公告见 `更新公告.md`）
+> 当前版本：**1.4.4**（发言体系升级：对跳辩论/穿衣服自证/狼夜频道/遗言/气氛语言；更新公告见 `更新公告.md`）
 
 ## 快速开始
 
@@ -90,7 +90,7 @@ werewolf/
 ├── 启动游戏.bat       # 局域网联机启动
 ├── server-loop.bat    # 服务器崩溃自动重启（供公网联机脚本调用）
 ├── public/            # 网页客户端（index.html / style.css / client.js）
-└── test/              # 自动化测试（25 个脚本）
+└── test/              # 自动化测试（26 个脚本）
 ```
 
 ## 技术说明
@@ -126,7 +126,7 @@ node test/check-stats.js             # 在线统计 /api/stats（初始 0/创建
 node test/check-votedby.js           # 房主投票明细（votedBy 仅房主可见/弃票 null/警长投票同规则）
 node test/check-pwa.js               # PWA 静态资源（manifest/sw/icon 200 + MIME + API 不缓存）
 node test/check-bot-smart.js         # 人机三档决策（level 参数校验/smart 狼刀预言家/smart+easy 投被查杀者）
-node test/check-bot-advanced.js      # bot 高阶（银水不投/对跳查验/魅惑策略/发言模拟/悍跳/挂机沉默）
+node test/check-bot-debate.js        # bot 辩论/穿衣服/狼夜频道/遗言（B1 对跳反驳/B2 狼夜发言/B3 遗言）
 ```
 
 - `simulate.js`：模拟 6 个完整对局场景（基础局、全职业+盗贼玩法局、守卫/摄梦人局、盗贼局、平票 PK 局、丘比特重选/频道规则局），验证夜晚结算、猎人开枪、殉情、魅惑、同守同救、警徽移交、1.5 票、胜负判定、频道权限等；盗贼可能抽到与配置重复的职业牌（两个守卫/女巫等）或作废任意职业，测试覆盖了这些随机组合。

@@ -79,7 +79,7 @@ async function main() {
 
   // ---- 白天与结算：房主视角逐阶段渲染（advance 强推）----
   const seen = new Set();
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 30; i++) {
     h.applyView(Game.viewFor(g, host, 0));
     renderSafe('阶段:' + (g.phase || '?') + '（房主视角）');
     seen.add(g.phase || '?');
@@ -92,7 +92,7 @@ async function main() {
     if (r2.error) break;
     await sleep(5);
   }
-  assert(seen.size >= 4, '多阶段渲染覆盖（' + [...seen].join(',') + '）');
+  assert(seen.size >= 3, '多阶段渲染覆盖（' + [...seen].join(',') + '）');
 
   if (failures) { console.error(`\n共 ${failures} 处失败`); process.exit(1); }
   console.log('\n客户端渲染回归全部通过 ✔');

@@ -45,8 +45,10 @@ async function main() {
     if (thiefId) {
       const tv = await st(room, thiefId);
       assert(Array.isArray(tv.reveal.thiefCards) && tv.reveal.thiefCards.length === 2, '盗贼看到两张身份牌');
-      await act(room, thiefId, 'thief_pick', { idx: 0 });
-      assert(true, '盗贼 thief_pick 可用');
+      // 有狼必选狼（与引擎规则一致）；thiefCards 可能是中文名，用试错法选 idx
+      let tr = await api('/api/action', { room, me: thiefId, action: 'thief_pick', data: { idx: 0 } });
+      if (tr.error) tr = await api('/api/action', { room, me: thiefId, action: 'thief_pick', data: { idx: 1 } });
+      assert(!tr.error, '盗贼 thief_pick 可用' + (tr.error ? '（' + tr.error + '）' : ''));
     }
     // 等发牌（thief_pick 后自动 tryDeal）
     await sleep(800);
@@ -63,6 +65,7 @@ async function main() {
     // 夜晚各 step：真人 actor 行动后引擎自动推进（不 advance，避免强推跳过步骤）
     const stepOrder = [];
     const handledSteps = new Set();
+    let wbShot = false; // 狼美人出刀结果（在循环中记录，避免重复行动）
     for (let i = 0; i < 30; i++) {
       v = await st(room, host);
       if (v.phase !== 'night') break;
@@ -74,16 +77,23 @@ async function main() {
       for (const a of actors) {
         const pid = a.id, roleKey = roles[pid];
         let rr;
+        let wbShotOk = false;
         if (step === 'cupid') rr = await api('/api/action', { room, me: pid, action: 'cupid_pick', data: { ids: [ids[1], ids[2]] } });
         else if (step === 'lovers') rr = await api('/api/action', { room, me: pid, action: 'lovers_ok', data: {} });
         else if (step === 'guard') rr = await api('/api/action', { room, me: pid, action: 'guard_pick', data: { target: pid === ids[0] ? ids[1] : ids[0] } });
         else if (step === 'dreamer') rr = await api('/api/action', { room, me: pid, action: 'dreamer_pick', data: { target: ids[0] } });
-        else if (step === 'wolf') rr = await api('/api/action', { room, me: pid, action: 'wolf_set', data: roleKey === 'wolfBeauty' ? { kill: ids[3], charm: ids[4], confirm: true } : { kill: ids[3], confirm: true } });
+        else if (step === 'wolf') {
+          // 狼美人：kill 随机活人 + charm 动态选（非自己/非kill/非狼），避免固定座位导致魅惑自己
+          const charmT = v.players.find(p => p.alive && p.id !== pid && p.id !== ids[3] && roles[p.id] !== 'wolf' && roles[p.id] !== 'wolfBeauty');
+          rr = await api('/api/action', { room, me: pid, action: 'wolf_set', data: roleKey === 'wolfBeauty' ? { kill: ids[3], charm: charmT ? charmT.id : null, confirm: true } : { kill: ids[3], confirm: true } });
+          if (roleKey === 'wolfBeauty' && !rr.error) wbShotOk = true;
+        }
         else if (step === 'seer') rr = await api('/api/action', { room, me: pid, action: 'seer_pick', data: { target: ids[1] } });
         else if (step === 'witch') rr = await api('/api/action', { room, me: pid, action: 'witch_act', data: { save: false, poison: null } });
         else if (step === 'hunter') rr = await api('/api/action', { room, me: pid, action: 'hunter_shoot', data: { target: null } });
         else rr = { error: '未知step' };
         assert(!rr.error, 'step=' + step + ' 角色=' + roleKey + ' action 可用' + (rr.error ? '（' + rr.error + '）' : ''));
+        if (roleKey === 'wolfBeauty') wbShot = wbShot || wbShotOk;
       }
       await sleep(500); // 等引擎自动推进下一步
     }
@@ -95,10 +105,8 @@ async function main() {
       assert((wv.myChannels || []).includes('wolf'), '狼人夜晚可见狼频道（' + (wv.myChannels || []).join(',') + '）');
       const lv = await st(room, ids[1]);
       assert((lv.myChannels || []).includes('lover'), '情侣可见情侣频道（' + (lv.myChannels || []).join(',') + '）');
-      // 狼美人出刀
-      const wbId = Object.keys(roles).find(id => roles[id] === 'wolfBeauty');
-      const wbr = await api('/api/action', { room, me: wbId, action: 'wolf_set', data: { kill: ids[2], confirm: true } });
-      assert(!wbr.error, '狼美人可出刀（wolf_set kill）' + (wbr.error ? '（' + wbr.error + '）' : ''));
+      // 狼美人可出刀（循环中已执行 wolf_set kill；此处不再重复发 action，避免 nightStep 已推进）
+      assert(wbShot, '狼美人可出刀（wolf_set kill）');
     } else {
       assert(true, '夜晚已结束（频道验证跳过，此前 step 已覆盖）');
     }

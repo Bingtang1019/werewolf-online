@@ -9,7 +9,7 @@
  * ========================================================================= */
 
 const crypto = require('crypto');
-const { createBotDecision } = require('./bot-brain'); // v1.4.0：人机三档决策（idle/easy/smart）
+const { createBotDecision, botWolfChat } = require('./bot-brain'); // v1.4.0：人机三档决策（idle/easy/smart）
 
 /* ---------------------------- 角色定义 ---------------------------- */
 const ROLE_INFO = {
@@ -1487,9 +1487,9 @@ function pendingBotActors(room) {
     case 'vote':
     case 'pk_vote':
       return room.players.filter(p => p.isBot && p.alive && !room.votes.hasOwnProperty(p.id));
-    case 'discuss': { // v1.5.0：发言模拟——每人每天至多被调度一次（发不发由决策层决定，null 也会被标记）
-      const talked = room.botTalked && room.botTalked.day === room.dayNum ? room.botTalked.ids : null;
-      return room.players.filter(p => p.isBot && p.alive && (!talked || !talked[p.id]));
+    case 'discuss': { // v1.4.4：发言模拟——每人每天至多 2 条（主发言 + 回应/辩论），null 也会被标记
+      const bt = room.botTalked && room.botTalked.day === room.dayNum ? room.botTalked.ids : null;
+      return room.players.filter(p => p.isBot && p.alive && (!bt || (bt[p.id] || 0) < 2));
     }
     case 'hunter_shot': {
       const sh = room.shooter ? byId(room, room.shooter) : null;
@@ -1504,10 +1504,10 @@ function botDecision(room, p) {
   return createBotDecision(room, p);
 }
 
-/* 标记 bot 已在本白天被调度过发言（v1.5.0：无论发不发，只调度一次） */
+/* 标记 bot 已发言一次（v1.4.4：计数，每人每天至多 2 条） */
 function markBotTalked(room, p) {
   if (!room.botTalked || room.botTalked.day !== room.dayNum) room.botTalked = { day: room.dayNum, ids: {} };
-  room.botTalked.ids[p.id] = true;
+  room.botTalked.ids[p.id] = (room.botTalked.ids[p.id] || 0) + 1;
 }
 
 /* 执行一批待行动的人机（每步都走与真人相同的 action 入口） */
@@ -1519,10 +1519,18 @@ function runBots(room) {
       const dec = botDecision(room, b);
       if (process.env.BOT_DEBUG) console.log('[runBots]', b.name, room.phase + '/' + room.nightStep, '→', JSON.stringify(dec));
       if (!dec) { markBotTalked(room, b); continue; }
-      if (dec.action === 'chat') { // v1.5.0：发言走 chat 通道（真人同款限流），失败不中断
+      if (dec.action === 'chat') { // v1.4.3：发言走 chat 通道（真人同款限流），失败不中断
         chatAction(room, b, dec.data);
         markBotTalked(room, b);
         continue;
+      }
+      // v1.4.4：狼人出刀前先在狼频道沟通（须在 applyAction 前——wolf_set 成功后 setNightStep 会把 phase 推进到非 night，狼频道权限随之失效）
+      if (dec.action === 'wolf_set') {
+        try {
+          const wt = botWolfChat(room, b);
+          if (process.env.BOT_DEBUG) console.log('[runBots]', b.name, '狼频道:', wt ? JSON.stringify(wt) : 'null');
+          if (wt) chatAction(room, b, wt.data);
+        } catch (e) { if (process.env.BOT_DEBUG) console.log('[runBots] 狼频道异常:', e && e.message); }
       }
       const res = applyAction(room, b, dec.action, dec.data);
       if (!(res && res.ok)) break; // 动作异常或阶段已变：停止本轮
