@@ -40,8 +40,12 @@ function acceptsGzip(req) { return /\bgzip\b/.test(req.headers['accept-encoding'
 const SNAPSHOT_FILE = path.join(__dirname, 'rooms.json');
 const SNAPSHOT_ENABLED = parseInt(process.env.SNAPSHOT_SEC || '60', 10) > 0; // 0 表示禁用（测试环境）
 const SNAPSHOT_SEC = SNAPSHOT_ENABLED ? Math.max(3, parseInt(process.env.SNAPSHOT_SEC, 10)) : 0;
-const SNAPSHOT_REPLACER = (k, v) => (v instanceof Set ? { __set: [...v] } : v);
-const SNAPSHOT_REVIVER = (k, v) => (v && v.__set ? new Set(v.__set) : v);
+const SNAPSHOT_REPLACER = (k, v) => {
+  if (v instanceof Set) return { __set: [...v] };
+  if (v instanceof Map) return { __map: [...v] }; // v1.6.1：防御未来加入 Map
+  return v;
+};
+const SNAPSHOT_REVIVER = (k, v) => (v && v.__set ? new Set(v.__set) : (v && v.__map ? new Map(v.__map) : v));
 function saveSnapshot() {
   if (!SNAPSHOT_ENABLED) return; // v1.5.6：禁用（测试环境）
   try {
@@ -61,6 +65,28 @@ let dirtyTimer = null;
 function markDirty() { // 房间变更后防抖 1s 原子写
   if (dirtyTimer) return;
   dirtyTimer = setTimeout(() => { dirtyTimer = null; saveSnapshot(); }, 1000);
+}
+function restoreRoomFromSnapshot(roomId) {
+  if (!SNAPSHOT_ENABLED || !roomId) return false;
+  try {
+    if (!fs.existsSync(SNAPSHOT_FILE)) return false;
+    const data = JSON.parse(fs.readFileSync(SNAPSHOT_FILE, 'utf8'), SNAPSHOT_REVIVER);
+    if (!data || data.version !== 1 || !Array.isArray(data.rooms)) return false;
+    const src = data.rooms.find(r => r && r.id === roomId);
+    if (!src) return false;
+    const room = Game.rooms.get(roomId);
+    if (room) { // 清理旧定时器
+      if (room._phaseTimer) clearTimeout(room._phaseTimer);
+      if (room._nightTimer) clearTimeout(room._nightTimer);
+      if (room._nightStepTimer) clearTimeout(room._nightStepTimer);
+      if (room._thiefTimer) clearTimeout(room._thiefTimer);
+      if (room._hunterTimer) clearTimeout(room._hunterTimer);
+      if (room._botTimer) clearTimeout(room._botTimer);
+    }
+    Game.rooms.set(roomId, src);
+    Game.resumeRoom(src);
+    return true;
+  } catch (e) { return false; }
 }
 function loadSnapshot() {
   if (!SNAPSHOT_ENABLED) return 0; // v1.5.6：禁用（测试环境）
@@ -90,8 +116,12 @@ function loadSnapshot() {
 /* v1.5.6：内存级令牌桶限流（防脚本刷房/刷号）；公网隧道下用 CF-Connecting-IP 取真实用户，避免全房间共享同一地址误伤 */
 const ipBuckets = new Map();
 function clientIp(req) {
-  return (req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || '').split(',')[0].trim()
-    || req.socket.remoteAddress || '';
+  const remote = req.socket.remoteAddress || '';
+  // v1.6.1：仅当请求来自本机代理（cloudflared/Render 反代）时才信任转发头；公网直连一律用真实 socket 地址，防伪造绕过限流
+  if (remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1') {
+    return (req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || '').split(',')[0].trim() || remote;
+  }
+  return remote;
 }
 const LOCAL_IPS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 function rateLimit(ip, key, limit, windowMs) {
@@ -150,6 +180,7 @@ function readBody(req, res, cb) {
     size += c.length;
     if (size > MAX_BODY) {
       // 超限：不再缓冲（丢弃后续数据），立即回 413；不 destroy，保证响应能送达
+      req.resume(); // v1.6.1：主动丢弃剩余数据，避免连接被占住
       if (!tooBig) {
         tooBig = true;
         try { res.writeHead(413, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Payload Too Large'); } catch (e) { /* ignore */ }
@@ -203,7 +234,7 @@ const server = http.createServer((req, res) => {
     const rss = process.memoryUsage().rss / 1048576;
     if (rss > MAX_RSS_MB) { // B1：sendJSON 固定 writeHead(200)，这里必须直接写响应，否则 ERR_HTTP_HEADERS_SENT
       const hb = JSON.stringify({ ok: false, error: 'memory-limit', rss: Math.round(rss) });
-      res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); // v1.6.1
       return res.end(hb);
     }
     return sendJSON(res, { ok: true, uptime: process.uptime(), rss: Math.round(rss), rooms: Game.rooms.size });
@@ -423,10 +454,34 @@ server.keepAliveTimeout = 65000;
 server.headersTimeout = 70000;
 
 /* v1.5.6：启动时恢复快照（房间 + 进行中对局）；失败/格式不兼容则静默忽略 */
+/* v1.6.1：钩子必须在 loadSnapshot 之前注册（恢复过程任何变更也计入防抖落盘） */
+Game.setOnChange(() => markDirty());
+Game.setOnBroken((roomId, reason) => { // v1.6.1：不变式校验失败 → 快照回滚该房间（局级事务）
+  try {
+    const room = Game.rooms.get(roomId);
+    const cnt = (room && room._brokenCount || 0) + 1;
+    if (restoreRoomFromSnapshot(roomId)) {
+      const r2 = Game.rooms.get(roomId);
+      if (r2) {
+        r2._brokenCount = cnt;
+        if (cnt >= 3) { // 快照也救不回来（持续触发）→ 解散房间，避免回滚风暴
+          try { if (r2._phaseTimer) clearTimeout(r2._phaseTimer); if (r2._nightTimer) clearTimeout(r2._nightTimer); if (r2._nightStepTimer) clearTimeout(r2._nightStepTimer); if (r2._thiefTimer) clearTimeout(r2._thiefTimer); if (r2._hunterTimer) clearTimeout(r2._hunterTimer); if (r2._botTimer) clearTimeout(r2._botTimer); } catch (e) {}
+          Game.rooms.delete(roomId);
+          console.error('[invariants] ' + roomId + ' 连续异常，已解散（' + reason + '）');
+          markDirty();
+          return;
+        }
+        try { Game.addMessage(r2, null, 'all', '⚠️ 房间检测到异常，已自动回滚到最近存档（' + reason + '）', '系统'); } catch (e) {}
+        console.error('[invariants] ' + roomId + ' 回滚（' + reason + '）');
+        markDirty();
+      }
+    }
+  } catch (e) {}
+});
 const restoredRooms = loadSnapshot();
 if (restoredRooms > 0) console.log('[snapshot] 已恢复 ' + restoredRooms + ' 个房间（含进行中对局）');
 setInterval(saveSnapshot, SNAPSHOT_SEC * 1000); // 定期兜底保存
-Game.onChange = () => markDirty(); // B2：所有状态变更（含 timer/bot 行动）→ 防抖 1s 落盘
+
 process.on('SIGTERM', () => { try { saveSnapshot(); } catch (e) {} process.exit(0); });
 process.on('SIGINT', () => { try { saveSnapshot(); } catch (e) {} process.exit(0); });
 process.on('exit', () => { try { saveSnapshot(); } catch (e) {} });

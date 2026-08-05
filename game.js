@@ -44,6 +44,22 @@ function uid() { return crypto.randomBytes(8).toString('hex'); }
 function randInt(n) { return Math.floor(Math.random() * n); }
 function shuffle(arr) { for (let i = arr.length - 1; i > 0; i--) { const j = randInt(i + 1); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; }
 let onChange = null; // v1.5.6：状态变更钩子（server.js 注册 → 快照防抖落盘；覆盖 timer/bot 等非 API 路径变更）
+let onBroken = null; // v1.6.1：房间不变式校验失败回调（server.js 注册 → 快照回滚）
+/* v1.6.1：引擎不变式自检（O(房间) 轻量，bump 时运行；失败 → 标记 broken → 快照回滚该房间，不污染全局） */
+const VALID_NIGHT_STEPS = ['wolf', 'seer', 'witch', 'guard', 'dreamer', 'hunter', 'cupid', 'lovers'];
+function checkInvariants(room) {
+  if (!room || typeof room.id !== 'string' || room.id.length !== 6) return 'room-id';
+  if (!Array.isArray(room.players) || room.players.length < 1 || room.players.length > 18) return 'players';
+  for (const p of room.players) {
+    if (!p || typeof p.id !== 'string') return 'player-id';
+    if (typeof p.alive !== 'boolean') return 'player-alive';
+    if (p.role !== null && p.role !== undefined && typeof p.role !== 'string') return 'player-role';
+  }
+  if (room.phase === 'night' && room.nightStep && !VALID_NIGHT_STEPS.includes(room.nightStep)) return 'night-step';
+  if (room.phase === 'reveal' && (!room.reveal || typeof room.reveal !== 'object')) return 'reveal';
+  if (room.lastVoteResult !== null && room.lastVoteResult !== undefined && typeof room.lastVoteResult !== 'object') return 'vote-result';
+  return null;
+}
 /* v1.6.0：游戏事件流（环形缓冲 200 条）——运维勘查 + 上帝视角回放的数据源 */
 function pushEvent(room, type, data) {
   if (!room || !room.id) return;
@@ -51,7 +67,13 @@ function pushEvent(room, type, data) {
   room.events.push({ t: Date.now(), night: room.nightNum || 0, phase: room.phase || '', type, data });
   if (room.events.length > 200) room.events.splice(0, room.events.length - 200);
 }
-function bump(room) { room.version = (room.version || 0) + 1; if (onChange) { try { onChange(room); } catch (e) {} } }
+function bump(room) {
+  room.version = (room.version || 0) + 1;
+  if (onChange) { try { onChange(room); } catch (e) {} }
+  // v1.6.1：不变式自检（轻量 O(房间)）；失败 → 通知 server 快照回滚该房间
+  const inv = checkInvariants(room);
+  if (inv && onBroken) { try { onBroken(room.id, inv); } catch (e) {} }
+}
 
 /* 白天发言/投票阶段超时（秒），可用环境变量 PHASE_TIMEOUT 覆盖（便于测试）；默认 60s */
 const PHASE_TIMEOUT = Math.max(2, parseInt(process.env.PHASE_TIMEOUT || '60', 10));
@@ -1807,5 +1829,9 @@ function resumeRoom(room) {
 }
 
 module.exports = {
-  ROLE_INFO, rooms, createRoom, joinRoom, handleAction, handleChat, handleAdvance, handleLeave, handleKick, viewFor, resumeRoom, onChange,
+  ROLE_INFO, rooms, createRoom, joinRoom, handleAction, handleChat, handleAdvance, handleLeave, handleKick, viewFor, resumeRoom,
+  // v1.6.1：钩子用 setter 导出（CommonJS 值导出会让外部赋值不生效）
+  setOnChange(fn) { onChange = fn; },
+  setOnBroken(fn) { onBroken = fn; },
+  addMessage,
 };

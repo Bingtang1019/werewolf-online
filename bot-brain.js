@@ -59,8 +59,10 @@ function shuffle(arr) { const a = arr.slice(); for (let i = a.length - 1; i > 0;
 function alivePlayers(room) { return room.players.filter(p => p.alive); }
 function aliveOthers(room, bot) { return alivePlayers(room).filter(p => p.id !== bot.id); }
 function getWolfCount(room) {
+  // v1.6.1：狼总数取角色配置 roleCounts（随狼死亡减少会让 calibrateBeliefs 先验不断漂移）
+  if (room.roleCounts && room.roleCounts.wolf) return room.roleCounts.wolf;
   if (room.settings && room.settings.counts && room.settings.counts.wolf) return room.settings.counts.wolf;
-  return room.players.filter(p => isWolfRole(p)).length || 1;
+  return 1;
 }
 /* 从发言中提取“查杀/金水 + 玩家名”的目标 */
 function extractTarget(room, text) {
@@ -396,7 +398,7 @@ function concentratedPick(room, pool, score) {
 }
 /* v1.5.2：卖狼美人——狼美人魅惑高价值目标（可信预言家/自称神职）且狼数充足时，狼队投狼美人放逐带走目标 */
 function sellWolfBeauty(room, bot) {
-  if (campOf(bot) !== 'wolf') return null;
+  if (factionOf(room, bot) !== 'wolf') return null; // v1.6.1：第三方狼美人（人狼恋）不进入卖狼逻辑
   const pack = room.wolfPackMemory || {};
   if (!pack.charmTarget) return null;
   const wb = room.players.find(p => p.alive && p.isBot && effRole(p) === 'wolfBeauty' && campOf(p) === 'wolf');
@@ -418,7 +420,7 @@ function smartVoteTarget(room, bot) {
   // v1.5.1：狼不投第三方（保第三方耗好人）；第三方不投自己阵营（保恋人保自己）
   if (myFaction === 'wolf' || myFaction === 'third') pool = pool.filter(p => factionOf(room, p) !== 'third');
   if (!pool.length) return null;
-  const isWolf = campOf(bot) === 'wolf';
+  const isWolf = factionOf(room, bot) === 'wolf'; // v1.6.1：第三方（人狼恋狼恋人）不再被误判为狼队
   const t = concentratedPick(room, pool, p => (isWolf ? -wolfProb(room, bot, p.id) : wolfProb(room, bot, p.id)));
   return t ? t.id : null;
 }
@@ -1063,6 +1065,7 @@ function decisionSimulateV2(room, bot) {
       ? [...(room.pkTied || []).map(id => byId(room, id)).filter(Boolean)]
       : shuffle(aliveOthers(room, bot));
     const myFaction = factionOf(room, bot);
+    const isWolf = myFaction === 'wolf'; // v1.6.1：第三方不再误判为狼队
     if (myFaction === 'wolf' || myFaction === 'third') pool = pool.filter(p => factionOf(room, p) !== 'third'); // v1.5.1：狼/第三方不投第三方
     if (!pool.length) return { action: 'vote', data: { target: null } };
     const sellId = sellWolfBeauty(room, bot); // v1.5.2：卖狼美人优先
@@ -1070,8 +1073,8 @@ function decisionSimulateV2(room, bot) {
     const best = concentratedPick(room, pool, p => {
       let score = simulatedScoreV2(room, bot, p.id);
       if (isWolf) {
-        if (wolfStyle === 'charge') score = -score;
-        else if (wolfStyle === 'shark' && isWolfRole(p)) score -= 0.3;
+        score = -score; // v1.6.1：狼投“最不像狼”的人（此前非 charge 狼会选分数最高的 = 投狼队友/错投好人）
+        if (wolfStyle === 'shark' && isWolfRole(p)) score -= 0.3; // 避狼队友
       }
       return score;
     }); // v1.5.2：投票集中
