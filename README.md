@@ -90,7 +90,8 @@ werewolf/
 ├── 启动游戏.bat       # 局域网联机启动
 ├── server-loop.bat    # 服务器崩溃自动重启（供公网联机脚本调用）
 ├── public/            # 网页客户端（index.html / style.css / client.js）
-└── test/              # 自动化测试（36 个脚本 + 1 个渲染 harness）
+└── test/              # 自动化测试（37 个脚本 + 1 个渲染 harness）
+└── tools/selfcheck.js # 代码自检工具（语法/版本串/死代码/重复case/文档-代码一致，--tests 可带全量测试）
 ```
 
 ## 技术说明
@@ -140,6 +141,8 @@ node test/check-invariants.js       # 引擎不变式自检 + 快照回滚（正
 node test/check-balance-lab.js      # 蒙特卡洛平衡实验室（工具：--games/--cap/--counts/--bots/--winMode 批量自动对局输出胜率）
 node test/check-version-sync.js     # 版本串同步检查（package.json/页脚/sw.js CACHE/README/更新公告 五处一致）
 node test/check-bot-lover.js        # 狼恋人逻辑专项（不刀/不魅惑/不投恋人、狼频道引导、白天辩护）
+node test/check-docs.js             # 文档-代码一致性（版本总览表结构/已知事项与实现双向一致/版本标签齐全）
+node tools/selfcheck.js             # 代码自检工具：语法+版本串+死代码+重复case+遗留标记+文档一致（--quick 快速；--tests 带全量回归）
 ```
 
 - `simulate.js`：模拟 6 个完整对局场景（基础局、全职业+盗贼玩法局、守卫/摄梦人局、盗贼局、平票 PK 局、丘比特重选/频道规则局），验证夜晚结算、猎人开枪、殉情、魅惑、同守同救、警徽移交、1.5 票、胜负判定、频道权限等；盗贼可能抽到与配置重复的职业牌（两个守卫/女巫等）或作废任意职业，测试覆盖了这些随机组合。
