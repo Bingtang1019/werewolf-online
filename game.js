@@ -449,6 +449,7 @@ function tryDeal(room) {
 
 /* ---------------------------- 夜晚 ---------------------------- */
 function beginNight(room) {
+  if (checkGameEnd(room)) return; // v1.6.4（A2-1）：阶段推进入口兜底——防“结算后无人可行动”挂起
   pushEvent(room, 'night_start', { night: room.nightNum + 1 }); // v1.6.0
   clearPhaseTimer(room); // 白天阶段倒计时清掉（夜晚步骤有自己的 30 秒倒计时）
   if (room._thiefTimer) { clearTimeout(room._thiefTimer); room._thiefTimer = null; }
@@ -804,6 +805,7 @@ function beginMorning(room) {
   schedulePhase(room, 'morning', () => continueMorning(room));
 }
 function continueMorning(room) {
+  if (checkGameEnd(room)) return; // v1.6.4（A2-1）
   // 夜晚死亡：仅第一晚有遗言
   if (room.nightNum === 1 && room.morningDeaths.length) {
     const entitled = room.morningDeaths.filter(id => !byId(room, id).lastWordUsed);
@@ -818,6 +820,7 @@ function continueMorning(room) {
   startDaySteps(room);
 }
 function startDaySteps(room) {
+  if (checkGameEnd(room)) return; // v1.6.4（A2-1）
   if (room.dayNum === 1 && room.settings.sheriff && !room.sheriff) {
     room.phase = 'sheriff_campaign';
     room.candidates = [];
@@ -829,17 +832,22 @@ function startDaySteps(room) {
   startDiscuss(room);
 }
 function startDiscuss(room) {
+  if (checkGameEnd(room)) return; // v1.6.4（A2-1）
   room.phase = 'discuss';
   bump(room);
   schedulePhase(room, 'discuss', () => startVote(room)); // 超时自动进入投票
 }
 function startHandover(room) {
+  if (checkGameEnd(room)) return; // v1.6.4（A2-1）
   room.phase = 'handover';
   room.handoverFrom = room.sheriff;
   bump(room);
   schedulePhase(room, 'handover', handoverTimeout); // 超时默认撕毁警徽
 }
 function startLastWord(room, ids, context) {
+  // v1.6.4（A2-1）：防“结算后无人可行动”挂起——但放逐链中（exileDeaths 非空）不提前判胜负：
+  // 放逐后的魅惑/殉情链尚未结算（afterExile 才是递归出口），此刻检查会“早判”（人狼恋狼恋人属第三方被排除 → 误判好人胜）
+  if (!(room.exileDeaths && room.exileDeaths.length) && checkGameEnd(room)) return;
   room.phase = 'lastword';
   room.lastWorders = ids;
   room.lastWordContext = context;
@@ -861,6 +869,7 @@ function afterLastWord(room) {
 
 /* 白天投票 */
 function startVote(room) {
+  if (checkGameEnd(room)) return; // v1.6.4（A2-1）
   room.phase = 'vote';
   room.votes = {};
   bump(room);
@@ -960,6 +969,12 @@ function resolveSheriffVote(room) {
 }
 
 /* ---------------------------- 胜负判定 ---------------------------- */
+/* v1.6.4（A2-1）：终局幂等兜底——checkWin 幂等（ended 直接返回）；阶段推进入口统一调用，
+ * 覆盖“结算后无人可行动”的挂起场景（死亡链为同步递归，兜底点放入口/递归出口均安全）。 */
+function checkGameEnd(room) {
+  if (room.phase === 'ended') return true;
+  return !!checkWin(room);
+}
 function thirdFaction(room) {
   const ids = [];
   const cupid = rolePlayer(room, 'cupid');
@@ -972,10 +987,18 @@ function thirdFaction(room) {
   return ids;
 }
 function checkWin(room) {
+  if (room.phase === 'ended') return room.winner || null; // v1.6.4（A2-1）：幂等——终局后重复调用直接返回
   const alive = room.players.filter(p => p.alive && !p.leftGame);
-  if (!alive.length) return null;
-  // 第三方：场上仅剩第三方成员（丘比特/情侣已死仍计入名单）→ 第三方胜
   const endRoles = () => room.players.map(p => ({ id: p.id, name: p.name, role: roleText(room, p), camp: campText(room, p), alive: p.alive, seat: p.seat }));
+  // v1.6.4（A2-1）：全员阵亡（无活人）→ 平局结束——此前 return null 导致“全死了还能继续”（真实反馈）
+  if (!alive.length) {
+    room.winner = 'draw';
+    room.endInfo = { winner: 'draw', text: '全员阵亡（平局）', roles: endRoles() };
+    room.phase = 'ended';
+    bump(room);
+    return room.winner;
+  }
+  // 第三方：场上仅剩第三方成员（丘比特/情侣已死仍计入名单）→ 第三方胜
   const third = thirdFaction(room);
   if (third.length && alive.every(p => third.includes(p.id))) {
     room.winner = 'third';
@@ -1141,6 +1164,7 @@ function dayAction(room, p, action, data) {
   return { error: '未知操作' };
 }
 function beginSheriffVote(room) {
+  if (checkGameEnd(room)) return; // v1.6.4（A2-1）
   if (!room.candidates.length) {
     room.lastVoteResult = { kind: 'sheriff', totals: {}, max: 0, result: 'none', exiled: null, tied: null };
     startDiscuss(room);
@@ -1152,6 +1176,7 @@ function beginSheriffVote(room) {
   schedulePhase(room, 'sheriff_vote', () => resolveSheriffVote(room)); // 超时未投视为弃票
 }
 function beginPkVote(room) {
+  if (checkGameEnd(room)) return; // v1.6.4（A2-1）
   room.phase = 'pk_vote';
   room.votes = {};
   bump(room);
@@ -1533,9 +1558,25 @@ function pendingBotActors(room) {
     case 'vote':
     case 'pk_vote':
       return room.players.filter(p => p.isBot && p.alive && !room.votes.hasOwnProperty(p.id));
-    case 'discuss': { // v1.4.4：发言模拟——每人每天至多 2 条（主发言 + 回应/辩论），null 也会被标记
+    case 'discuss': { // v1.4.4：发言模拟；v1.6.4（A4-1）：发言次数动态化——人类越多人机越不倾向发言
       const bt = room.botTalked && room.botTalked.day === room.dayNum ? room.botTalked.ids : null;
-      return room.players.filter(p => p.isBot && p.alive && (!bt || (bt[p.id] || 0) < 2));
+      // 人类占比：>50% → 配额 1 条；>80% → 配额 1 条且仅“被质疑时开口”（被投/被查杀时允许额外 1 条回应）；否则 2 条
+      const humans = room.players.filter(q => !q.isBot && !q.leftGame && q.alive).length;
+      const aliveCount = room.players.filter(q => q.alive).length || 1;
+      const humanRatio = humans / aliveCount;
+      const quota = humanRatio > 0.5 ? 1 : 2;
+      const challenged = p => {
+        const lv = room.lastVoteResult;
+        if (lv && lv.totals && lv.totals[p.id]) return true; // 上一轮被投
+        return room.messages.some(m => m.ch === 'all' && m.from && m.from !== p.id && m.text && m.text.includes('查杀') && m.text.includes(p.name)); // 被查杀
+      };
+      return room.players.filter(p => {
+        if (!p.isBot || !p.alive) return false;
+        const n = bt ? (bt[p.id] || 0) : 0;
+        if (n < quota) return true;
+        if (humanRatio > 0.5 && n < quota + 1 && challenged(p)) return true; // 被质疑时允许额外 1 条回应
+        return false;
+      });
     }
     case 'hunter_shot': {
       const sh = room.shooter ? byId(room, room.shooter) : null;

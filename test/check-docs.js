@@ -64,9 +64,10 @@ if (knownSec) {
   // 第一条应描述快照持久化（不得残留“内存不持久化/重启会清空”过时描述）
   assert(!known.includes('内存不持久化') && !known.includes('重启会清空所有房间'), '已知事项第一条不再含过时描述（内存不持久化）');
   assert(known.includes('rooms.json'), '已知事项第一条提及 rooms.json');
+  assert(known.includes('data/rooms.json'), '已知事项第一条明确 data/rooms.json 路径（v1.6.4 A3 快照迁移）');
   // 代码 ↔ 文档双向一致：公告声称快照持久化 ↔ server.js 确有实现
-  const hasSnapshot = serverSrc.includes('rooms.json') && serverSrc.includes('loadSnapshot') && serverSrc.includes('saveSnapshot');
-  assert(hasSnapshot, 'server.js 实现快照持久化（rooms.json + loadSnapshot + saveSnapshot），与公告一致');
+  const hasSnapshot = serverSrc.includes('rooms.json') && serverSrc.includes('loadSnapshot') && serverSrc.includes('saveSnapshot') && serverSrc.includes("path.join(__dirname, 'data')");
+  assert(hasSnapshot, 'server.js 实现快照持久化（data/rooms.json + loadSnapshot + saveSnapshot），与公告一致');
 }
 
 /* ---------- 3. 版本标签与公告对应 ---------- */

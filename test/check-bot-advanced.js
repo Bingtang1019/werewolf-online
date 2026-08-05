@@ -184,7 +184,7 @@ async function main() {
       await toDiscuss(s.room, s.host);
       await sleep(1500);
       const vd = await st(s.room, s.host);
-      const talk = (vd.chat || []).find(m => m.from === s.target && m.text && m.text.includes('我是预言家'));
+      const talk = (vd.chat || []).find(m => m.from === s.target && m.text && m.text.includes('预言家')); // v1.6.4：悍跳为组合式生成（前缀可能为“我跳预言家”），断言放宽与 A4 一致
       assert(!!talk, 'A5 悍跳：smart 狼白天悍跳预言家（' + (talk ? talk.text : '未悍跳') + '）');
       await api('/api/leave', { room: s.room, me: s.host }).catch(() => {});
       break;

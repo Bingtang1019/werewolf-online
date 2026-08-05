@@ -25,6 +25,8 @@ node.exe
 cloudflared.exe
 
 # 房间快照（含玩家 ID 与身份，隐私数据，绝不上库）
+# v1.6.4（A3）：快照收纳到 data/ 子目录（根目录旧文件仅启动时 WARN 提示，不自动迁移）
 rooms.json
 rooms.json.bak
 rooms.json.tmp
+data/

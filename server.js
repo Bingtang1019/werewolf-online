@@ -25,6 +25,78 @@ const ROOM_SWEEP_MS = Math.max(5, parseInt(process.env.ROOM_SWEEP_SEC || '300', 
 /* v1.5.6：内存看门狗——RSS 持续超限（泄漏）则主动退出让平台/脚本重启；与 log-and-continue 崩溃容错互补 */
 const MAX_RSS_MB = Math.max(64, parseInt(process.env.MAX_RSS_MB || '400', 10));
 
+/* v1.6.4（A1-P2-1）：服务器端指标——请求总数/失败数/延迟直方图（固定毫秒桶，p95 从直方图 O(1) 估算，避免把统计本身做成热点） */
+const httpStats = { total: 0, fail: 0, buckets: new Array(20).fill(0) };
+const HTTP_BUCKETS = [5, 10, 25, 50, 100, 150, 200, 250, 300, 400, 500, 750, 1000, 1500, 2000, 3000, 5000, 8000, 12000, Infinity]; // 20 桶（含上界）
+function recordHttp(ms, isFail) {
+  httpStats.total++;
+  if (isFail) httpStats.fail++;
+  let i = 0;
+  while (i < HTTP_BUCKETS.length - 1 && ms > HTTP_BUCKETS[i]) i++;
+  httpStats.buckets[i]++;
+}
+function p95Estimate() {
+  const total = httpStats.buckets.reduce((a, b) => a + b, 0);
+  if (!total) return 0;
+  const target = Math.ceil(total * 0.95);
+  let acc = 0;
+  for (let i = 0; i < HTTP_BUCKETS.length; i++) {
+    acc += httpStats.buckets[i];
+    if (acc >= target) return HTTP_BUCKETS[i] === Infinity ? HTTP_BUCKETS[HTTP_BUCKETS.length - 2] : HTTP_BUCKETS[i];
+  }
+  return 0;
+}
+/* 慢请求日志（>500ms，节流 ≥1s 一条）：隧道与服务器谁慢一眼可见 */
+let lastSlowLogAt = 0;
+function logSlow(pathname, ms) {
+  const now = Date.now();
+  if (now - lastSlowLogAt < 1000) return; // 节流
+  lastSlowLogAt = now;
+  logError('slow', '[' + ms + 'ms] ' + pathname); // 写 server.log + console
+}
+
+/* v1.6.4（A1-P1-1）：写操作 opId 幂等去重——客户端网络重试时防止“发言说两遍”类双执行。
+ * 并发窗口：先写 pending 占位再处理，重试命中 pending 视为成功（写操作幂等）；
+ * 只缓存轻量确认 {ok,code,ts}，不缓存完整响应体；懒清理（读取时比对 TTL + 超上限删最旧一半），无定时器；
+ * 进程重启丢缓存可接受（重试窗口极小）。 */
+const recentOps = new Map();
+const OP_TTL_MS = 5 * 60 * 1000;
+const OP_MAX = 2000;
+function opCheck(body) {
+  const opId = String((body && body.opId) || '');
+  if (!opId || opId.length > 64 || !/^[A-Za-z0-9_-]+$/.test(opId)) return { pass: true }; // 无 opId 的旧客户端直接放行
+  const now = Date.now();
+  const hit = recentOps.get(opId);
+  if (hit) {
+    if (hit.status === 'pending') return { replay: true, ok: true }; // 并发窗口：A 在处理中，B 到达 → 视为成功
+    if (now - hit.ts > OP_TTL_MS) recentOps.delete(opId); // 过期 → 允许再次执行
+    else return { replay: true, ok: hit.ok, code: hit.code };
+  }
+  if (recentOps.size >= OP_MAX) { // 懒清理：删除最旧一半（O(n) 一次）
+    const arr = [...recentOps.entries()].sort((a, b) => a[1].ts - b[1].ts);
+    for (let i = 0; i < arr.length / 2; i++) recentOps.delete(arr[i][0]);
+  }
+  recentOps.set(opId, { status: 'pending', ts: now });
+  return { pass: true, opId };
+}
+function opCommit(opId, ok, code) {
+  if (!opId) return;
+  recentOps.set(opId, { ok: !!ok, code: code || 200, ts: Date.now() });
+}
+
+/* v1.6.4（A1-P2-1）：/api/stats 与 /api/debug 访问控制——
+ * STATS_TOKEN / DEBUG_TOKEN 环境变量存在 → 要求 X-API-Token 或 Authorization: Bearer 匹配（token 不放 query，避免被中间层 access log 记录）；
+ * 未配置 → 仅绑 localhost（公网访问 404/403，防裸奔——别让“忘了配 env”变成裸奔）。 */
+function apiTokenOk(req, envName) {
+  const token = process.env[envName];
+  const ip = clientIp(req);
+  if (token) {
+    const h = String(req.headers['x-api-token'] || '').trim() || String(req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
+    return h === token;
+  }
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+}
+
 function lanIPs() {
   const ips = [];
   try {
@@ -49,8 +121,17 @@ const MIME = {
 
 function acceptsGzip(req) { return /\bgzip\b/.test(req.headers['accept-encoding'] || ''); }
 /* ============ v1.5.6 房间快照持久化：重启/崩溃恢复进行中对局（rooms.json，已 gitignore） ============ */
-const SNAPSHOT_FILE = path.join(__dirname, 'rooms.json');
+/* v1.6.4（A3）：快照收纳到 data/ 子目录（与代码分离，避免根目录散落 rooms.json*）；启动自动建目录；
+ * 不自动迁移旧路径——检测到根目录旧 rooms.json 时打 WARN 提示手动移动，否则用户“房间全没了”无解释 */
+const DATA_DIR = path.join(__dirname, 'data');
+const SNAPSHOT_FILE = path.join(DATA_DIR, 'rooms.json');
 const SNAPSHOT_ENABLED = parseInt(process.env.SNAPSHOT_SEC || '60', 10) > 0; // 0 表示禁用（测试环境）
+try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) { /* 目录创建失败不影响主流程 */ }
+try {
+  if (fs.existsSync(path.join(__dirname, 'rooms.json')) && !fs.existsSync(SNAPSHOT_FILE)) {
+    console.warn('[snapshot] 检测到根目录旧 rooms.json —— v1.6.4 起快照改存 data/rooms.json；如需保留旧对局请手动移动该文件到 data/ 目录');
+  }
+} catch (e) { /* ignore */ }
 const SNAPSHOT_SEC = SNAPSHOT_ENABLED ? Math.max(3, parseInt(process.env.SNAPSHOT_SEC, 10)) : 0;
 const SNAPSHOT_REPLACER = (k, v) => {
   if (v instanceof Set) return { __set: [...v] };
@@ -237,6 +318,12 @@ setInterval(() => {
 }, 1000);
 
 const server = http.createServer((req, res) => {
+  const reqStart = Date.now();
+  res.on('finish', () => { // v1.6.4（A1-P2-1）：请求结束打点（状态码 >=400 记失败）+ 慢请求日志
+    const ms = Date.now() - reqStart;
+    recordHttp(ms, res.statusCode >= 400);
+    if (ms > 500) logSlow(pathname, ms);
+  });
   let pathname;
   try { pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname); }
   catch (e) { res.writeHead(400); res.end('Bad Request'); return; }
@@ -253,13 +340,14 @@ const server = http.createServer((req, res) => {
       res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); // v1.6.1
       return res.end(hb);
     }
-    return sendJSON(res, { ok: true, uptime: process.uptime(), rss: Math.round(rss), rooms: Game.rooms.size });
+    return sendJSON(res, { ok: true, uptime: process.uptime(), rss: Math.round(rss), rooms: Game.rooms.size, http: { total: httpStats.total, fail: httpStats.fail, p95ms: p95Estimate() } }); // v1.6.4（A1-P2-1）
   }
   if (pathname.startsWith('/api/')) {
     /* 在线统计：当前“活跃”房间数/玩家数（首页“🔥 正在开黑”）。
      * 活跃判定与 TTL 共用 lastActive：超过 STATS_ACTIVE_MS 无轮询/SSE/操作视为非活动房间，不计入。
      * 阈值可用 STATS_ACTIVE_SEC 环境变量调整（默认 30 秒，测试可调小）。 */
     if (pathname === '/api/stats' && req.method === 'GET') {
+      if (!apiTokenOk(req, 'STATS_TOKEN')) { res.writeHead(404); res.end('Not Found'); return; } // v1.6.4（A1-P2-1）：未配 token 仅 localhost
       const now = Date.now();
       let rooms = 0, players = 0;
       for (const r of Game.rooms.values()) {
@@ -267,9 +355,10 @@ const server = http.createServer((req, res) => {
         rooms++;
         players += r.players.length;
       }
-      return sendJSON(res, { rooms, players });
+      return sendJSON(res, { rooms, players, http: { total: httpStats.total, fail: httpStats.fail, p95ms: p95Estimate() } });
     }
     if (pathname === '/api/debug' && req.method === 'GET') { // v1.6.0：事件流勘查/上帝视角回放数据源
+      if (!apiTokenOk(req, 'DEBUG_TOKEN')) { res.writeHead(404); res.end('Not Found'); return; } // v1.6.4（A1-P2-1）：防泄露（含玩家名）
       const url = new URL(req.url, 'http://x');
       const roomId = (url.searchParams.get('room') || '').toUpperCase();
       const room = Game.rooms.get(roomId);
@@ -348,27 +437,36 @@ const server = http.createServer((req, res) => {
     if (pathname === '/api/action' && req.method === 'POST') {
       return readBody(req, res, body => {
         if (!validSession(body)) return sendJSON(res, { error: '参数格式错误' });
+        const op = opCheck(body); // v1.6.4（A1-P1-1）：opId 幂等去重（重试命中 → 直接返回缓存确认）
+        if (op.replay) return sendJSON(res, { ok: op.ok, code: op.code, replayed: true });
         const r = Game.handleAction(body.room, body.me, body.action, body.data || {}, body.chatSince || 0);
-        if (r.error) return sendJSON(res, { error: r.error });
+        if (r.error) { opCommit(op.opId, false, 400); return sendJSON(res, { error: r.error }); }
         markDirty();
+        opCommit(op.opId, true, 200);
         sendJSON(res, { ok: true, view: r.view, left: !!r.left });
       });
     }
     if (pathname === '/api/chat' && req.method === 'POST') {
       return readBody(req, res, body => {
         if (!validSession(body)) return sendJSON(res, { error: '参数格式错误' });
+        const op = opCheck(body);
+        if (op.replay) return sendJSON(res, { ok: op.ok, code: op.code, replayed: true });
         const r = Game.handleChat(body.room, body.me, body.data || {}, body.chatSince || 0);
-        if (r.error) return sendJSON(res, { error: r.error });
+        if (r.error) { opCommit(op.opId, false, 400); return sendJSON(res, { error: r.error }); }
         markDirty();
+        opCommit(op.opId, true, 200);
         sendJSON(res, { ok: true, view: r.view });
       });
     }
     if (pathname === '/api/advance' && req.method === 'POST') {
       return readBody(req, res, body => {
         if (!validSession(body)) return sendJSON(res, { error: '参数格式错误' });
+        const op = opCheck(body); // v1.6.4（A1-P1-1）：advance 也去重——重试不会把阶段连跳两格
+        if (op.replay) return sendJSON(res, { ok: op.ok, code: op.code, replayed: true });
         const r = Game.handleAdvance(body.room, body.me, body.chatSince || 0);
-        if (r.error) return sendJSON(res, { error: r.error });
+        if (r.error) { opCommit(op.opId, false, 400); return sendJSON(res, { error: r.error }); }
         markDirty();
+        opCommit(op.opId, true, 200);
         sendJSON(res, { ok: true, view: r.view });
       });
     }
@@ -465,7 +563,8 @@ setInterval(() => {
 }, 30000);
 
 server.keepAliveTimeout = 65000;
-server.headersTimeout = 70000;
+server.headersTimeout = 70000; // v1.6.2：必须 > keepAliveTimeout（node 对 headers 的计时含 keep-alive 空闲期，65s 形同虚设）
+server.requestTimeout = 90000; // v1.6.4（A1-P2-2）：请求生命周期（含 body 接收）上限，大 POST 防挂起；三者关系：requestTimeout(请求全程) > headersTimeout(含空闲) > keepAliveTimeout(纯空闲)
 
 /* v1.5.6：启动时恢复快照（房间 + 进行中对局）；失败/格式不兼容则静默忽略 */
 /* v1.6.1：钩子必须在 loadSnapshot 之前注册（恢复过程任何变更也计入防抖落盘） */

@@ -9,7 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const ROOT = path.join(__dirname, '..');
 const PORT_A = 8200, PORT_B = 8201;
-const SNAP = path.join(ROOT, 'rooms.json');
+const SNAP = path.join(ROOT, 'data', 'rooms.json'); // v1.6.4（A3）：快照收纳到 data/ 子目录
 let failures = 0;
 const assert = (c, m) => { if (c) console.log(' ✓ ' + m); else { failures++; console.error(' ✗ FAIL: ' + m); } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));

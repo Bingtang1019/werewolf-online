@@ -130,16 +130,29 @@ let sfxOn = true;          // 音效总开关（localStorage ww_sfx）
 const sfxFlags = { wolf: true, morning: true, tick: true, heavy: true, flip: true, enter: true }; // v1.6.3：分项开关（localStorage ww_sfx_flags）
 
 /* ---------------------------- API ---------------------------- */
+/* v1.6.4（A1-P1-1）：幂等/可重复操作清单——网络失败自动重试（沿用同一 opId，服务端去重防双执行）；
+ * 非幂等（createRoom/joinRoom/kick/leave）不重试。 */
+const IDEMPOTENT_ACTIONS = ['vote', 'wolf_set', 'guard_pick', 'dreamer_pick', 'seer_pick', 'witch_act', 'cupid_pick', 'confirm', 'handover', 'post', 'mood'];
+function genOpId() {
+  try { if (crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+  return 'op-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10); // 非安全上下文（http://局域网IP）回退
+}
 async function api(path, body) {
   try {
     const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
     return await res.json();
   } catch (e) {
-    return { error: '无法连接服务器：请确认已运行 node server.js，并通过 http://localhost:3000 访问' };
+    return { error: '无法连接服务器：请确认已运行 node server.js，并通过 http://localhost:3000 访问', netFail: true }; // v1.6.4：netFail 供幂等重试区分网络失败与业务失败
   }
 }
 async function act(action, data) {
-  const r = await api('api/action', { room: roomId, me, action, data: data || {}, chatSince: lastChatTs() });
+  const payload = { room: roomId, me, action, data: data || {}, chatSince: lastChatTs() };
+  if (IDEMPOTENT_ACTIONS.includes(action)) payload.opId = genOpId(); // v1.6.4（A1-P1-1）：幂等操作带 opId，网络失败自动重试（同 opId 服务端去重）
+  let r = await api('api/action', payload);
+  for (let i = 0; i < 2 && r && r.netFail; i++) { // 最多重试 2 次（间隔 500ms）——隧道 50% 失败率下“点不动”体感显著改善
+    await new Promise(res => setTimeout(res, 500));
+    r = await api('api/action', payload);
+  }
   if (r.error) { toast(r.error); return null; }
   if (r.left) { clearSession(); location.reload(); return null; }
   fxForAction(action, data || {}); // v1.3.0：行动成功 → 目标卡反馈动画
@@ -149,7 +162,12 @@ async function act(action, data) {
   return view;
 }
 async function chatSend(ch, text) {
-  const r = await api('api/chat', { room: roomId, me, data: { ch, text }, chatSince: lastChatTs() });
+  const payload = { room: roomId, me, data: { ch, text }, chatSince: lastChatTs(), opId: genOpId() }; // v1.6.4（A1-P1-1）：聊天重试靠 opId 防“一句话说两遍”
+  let r = await api('api/chat', payload);
+  for (let i = 0; i < 2 && r && r.netFail; i++) {
+    await new Promise(res => setTimeout(res, 500));
+    r = await api('api/chat', payload);
+  }
   if (r.error) { toast(r.error); return; }
   applyView(r.view);
   resetPollTimer();
@@ -279,6 +297,9 @@ function pollNow() {
 function connectSSE() {
   if (!roomId || !me) return;
   if (sseDisabled) return; // v1.5.4：已降级为纯轮询，不再尝试长连接
+  // v1.6.4（A1-P1-3）：快速隧道（trycloudflare）对 SSE 长连接不友好（http2 边缘取消）→ 直接纯轮询，省掉每次进房的失败风暴
+  const hn = (location.hostname || '').toLowerCase();
+  if (hn === 'trycloudflare.com' || hn.endsWith('.trycloudflare.com')) { sseDisabled = true; return; }
   try { if (sse) sse.close(); } catch (e) {}
   sseConnected = false;
   try {

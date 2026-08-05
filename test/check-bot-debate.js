@@ -114,6 +114,9 @@ async function main() {
         let v = null;
         for (let i = 0; i < 30; i++) { v = await st(s.room, s.host); if (v.phase !== 'night') break; await sleep(400); }
         if ((v.morningDeaths || []).some(d => d.id === s.host)) { await api('/api/leave', { room: s.room, me: s.host }); continue; }
+        // v1.6.4：确认预言家 bot 已完成查验（否则遗言无查验记录，B3 误判“未发遗言”的调度竞态）
+        let vvSeer = await st(s.room, s.target);
+        for (let i = 0; i < 25 && !((vvSeer.seerHistory || []).length); i++) { await sleep(400); vvSeer = await st(s.room, s.target); }
         await toDiscuss(s.room, s.host);
         await act(s.room, s.host, 'startVote');
         await sleep(1200); // 等 bot 投票

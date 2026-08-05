@@ -1,4 +1,7 @@
 'use strict';
+/* v1.6.4（A5-1/A2-5）：统一置信度入口 + 发言语料库（组合式生成）——C1 意图层未来只消费这两处 */
+const { confidenceOf } = require('./server/ai/confidence.js');
+const LEXICON = require('./server/ai/lexicon.json');
 /* ================================================================
    bot-brain.js - 人机决策模块（v1.4.0，适配自开源补丁）
    级别（每个 bot 独立，bot.botLevel；未设置时按房间 botMode 映射：
@@ -57,6 +60,11 @@ function loverPartner(room, bot) {
   const p = byId(room, partnerId);
   if (!p) return null;
   return { id: partnerId, isWolf: isWolfRole(p) };
+}
+/* v1.6.4（A2-4）：目标是否被公开查杀——强证据目标不参与投票波动（“高置信才准”的具象） */
+function isCheckedTarget(room, t) {
+  if (!room || !t) return false;
+  return (room.messages || []).some(m => m.ch === 'all' && m.text && m.text.includes('查杀') && m.text.includes(t.name));
 }
 function randInt(n) { return Math.floor(Math.random() * n); }
 function pick(arr) { return arr && arr.length ? arr[randInt(arr.length)] : null; }
@@ -229,6 +237,15 @@ function decisionEasy(room, bot) {
     const lp = loverPartner(room, bot); // v1.6.3：狼恋人不投恋人
     let t = suspicionTarget(room, bot);
     if (t && lp && !lp.isWolf && t.id === lp.id) t = null;
+    // v1.6.4（A2-4）：不确定性表达——置信度低时小概率偏离最优（随机/跟风），高置信才准（同时缓解“太傻”与“太准”）；被公开查杀的目标为强证据，不波动
+    if (t) {
+      const conf = confidenceOf(bot, t.id);
+      if (!isCheckedTarget(room, t) && conf < 0.6 && Math.random() < (0.6 - conf)) {
+        const pool = aliveOthers(room, bot).filter(q => q.id !== t.id && !(lp && !lp.isWolf && q.id === lp.id));
+        const other = pick(pool) || t;
+        t = other;
+      }
+    }
     return { action: 'vote', data: { target: t ? t.id : null } };
   }
   if (room.phase === 'pk_vote') {
@@ -594,7 +611,18 @@ function decisionSmart(room, bot) {
     return { action: 'vote', data: { target: t ? t.id : null } };
   }
   if (room.phase === 'vote') {
-    return { action: 'vote', data: { target: smartVoteTarget(room, bot) } };
+    let target = smartVoteTarget(room, bot);
+    // v1.6.4（A2-4）：低置信波动（smart 信息多通常置信高，波动小；被公开查杀目标不波动）
+    if (target) {
+      const conf = confidenceOf(bot, target);
+      if (!isCheckedTarget(room, byId(room, target)) && conf < 0.55 && Math.random() < (0.55 - conf)) {
+        const lp = loverPartner(room, bot);
+        const pool = aliveOthers(room, bot).filter(q => q.id !== target && !(lp && !lp.isWolf && q.id === lp.id));
+        const other = pick(pool);
+        if (other) target = other.id;
+      }
+    }
+    return { action: 'vote', data: { target } };
   }
   if (room.phase === 'pk_vote') {
     const pool = [...(room.pkTied || []).map(id => byId(room, id)).filter(Boolean)];
@@ -663,6 +691,20 @@ const TALK_LAST_PLAIN = [
   '我走啦，遗言就一句：小心{name}',
 ];
 
+/* v1.6.4（A2-5）：组合式生成——lexicon.json（意图→语料库键值）prefix+core+suffix 各取一段拼接；
+ * 占位符 {name}/{result} 运行时替换；残留占位符清除；总长控制 120 字。 */
+function genPhrase(intent, params) {
+  const tpl = LEXICON.intents[intent];
+  if (!tpl) return null;
+  const parts = [pick(tpl.prefixes || ['']), pick(tpl.cores || ['']), pick(tpl.suffixes || [''])]
+    .map(s => (s === '' ? null : s)).filter(Boolean);
+  if (!parts.length) return null;
+  let text = parts.join('，');
+  if (params) for (const k of Object.keys(params)) text = text.split('{' + k + '}').join(String(params[k]));
+  text = text.replace(/\{[a-zA-Z]+\}/g, ''); // 清除未替换占位符
+  return text.length > 120 ? text.slice(0, 120) : text;
+}
+
 function talkedCount(room, bot) {
   const bt = room.botTalked && room.botTalked.day === room.dayNum ? room.botTalked.ids : null;
   return bt ? (bt[bot.id] || 0) : 0;
@@ -708,8 +750,8 @@ function botTalk(room, bot, level) {
 
   /* ===== 主发言（第 1 条） ===== */
   if (count === 0) {
-    // 预言家：报真实查验
-    if (level === 'smart' && myRole === 'seer') {
+    // 预言家：报真实查验（v1.6.4（A2-3）：easy 档预言家也补报查验，不再“p 都不放一个”）
+    if (myRole === 'seer' && (level === 'smart' || level === 'easy')) {
       const h = (room.seerHistory || []).filter(x => x.night >= 1);
       if (h.length) {
         const last = h[h.length - 1];
@@ -730,7 +772,7 @@ function botTalk(room, bot, level) {
         if (pool.length) {
           const t = pool.sort((a, b) => wolfProb(room, bot, a.id) - wolfProb(room, bot, b.id))[0];
           room.wolfPackMemory.talkedClaim = true;
-          return chat('我是预言家，昨晚查验了' + t.name + '：查杀');
+          return chat(genPhrase('wolf_fake_seer', { name: t.name }) || '我是预言家，昨晚查验了' + t.name + '：查杀'); // v1.6.4（A2-5）：组合式生成
         }
       }
       // v1.5.2：狼美人魅惑高价值目标时威胁自曝（配合卖狼美人）
@@ -795,12 +837,22 @@ function botTalk(room, bot, level) {
         ]));
       }
     }
-    // 施压：有高嫌疑对象时表态（狼恋人不施压恋人）
+    // v1.6.4（A2-3）：平民/无实权角色也不沉默——表态/质疑（easy 低概率、smart 中概率；有嫌疑对象优先）
+    if ((level === 'smart' && Math.random() < 0.5) || (level === 'easy' && Math.random() < 0.25)) {
+      const pool = aliveOthers(room, bot).filter(q => (mem.suspicion || {})[q.id] > 0);
+      if (pool.length) {
+        const suspect = pick(pool);
+        return chat(genPhrase('accusation', { name: suspect.name }) || '我觉得' + suspect.name + '值得关注');
+      }
+      const anyone = pick(aliveOthers(room, bot));
+      return chat(genPhrase('flavor_action', { name: anyone ? anyone.name : '' }) || pick(TALK_FLAVOR));
+    }
+    // 施压：有高嫌疑对象时表态（狼恋人不施压恋人；v1.6.4（A2-5）组合式生成）
     const pt = pressureTarget(room, bot, level, level === 'smart' ? 0.5 : 0);
-    if (pt && !(lp && !lp.isWolf && pt.id === lp.id)) return chat(pick(TALK_PRESSURE).split('{name}').join(pt.name));
-    // 气氛：无实质话题时随机闲聊（smart 概率高，easy 低）
+    if (pt && !(lp && !lp.isWolf && pt.id === lp.id)) return chat(genPhrase('pressure', { name: pt.name }) || pick(TALK_PRESSURE).split('{name}').join(pt.name));
+    // 气氛：无实质话题时随机闲聊（smart 概率高，easy 低；v1.6.4（A2-5）组合式生成）
     if ((level === 'smart' && Math.random() < 0.6) || (level === 'easy' && Math.random() < 0.3)) {
-      return chat(pick(TALK_FLAVOR));
+      return chat(genPhrase('flavor') || pick(TALK_FLAVOR));
     }
     return null;
   }
@@ -819,6 +871,12 @@ function botTalk(room, bot, level) {
     const cc = claimers.length ? claimers[0].name : '查杀我的人';
     return chat('我是平民，投我不亏但浪费轮次，建议先出' + cc);
   }
+  // v1.6.4（A2-3）：被投票/被怀疑 → 开口辩解（easy/smart 都开口；上一轮票型 totals 里有自己）
+  const lv = room.lastVoteResult;
+  const wasVoted = lv && lv.totals && lv.totals[bot.id];
+  if (wasVoted && Math.random() < 0.8) {
+    return chat(genPhrase('defend_self', { name: nameById(room, bot.id) }) || '我是好人，别投我，浪费轮次');
+  }
   // 2. 对跳辩论（有对跳者时）
   if (level === 'smart' && claimers.length) {
     if (myRole === 'seer') return chat(pick(TALK_DEBATE_SEER).split('{name}').join(claimers[0].name));
@@ -827,11 +885,11 @@ function botTalk(room, bot, level) {
       return chat(pick(TALK_DEBATE_WOLF).split('{name}').join(cc.name));
     }
   }
-  // 3. 施压跟票（v1.6.3：狼恋人不施压恋人）
+  // 3. 施压跟票（v1.6.3：狼恋人不施压恋人；v1.6.4（A2-5）组合式生成）
   const pt2 = pressureTarget(room, bot, level, 0.45);
-  if (pt2 && !(lp && !lp.isWolf && pt2.id === lp.id)) return chat('今天先出' + pt2.name + '吧，别磨叽了');
-  // 4. 气氛插科打诨（小概率）
-  if (Math.random() < 0.4) return chat(pick(TALK_FLAVOR));
+  if (pt2 && !(lp && !lp.isWolf && pt2.id === lp.id)) return chat(genPhrase('pressure', { name: pt2.name }) || '今天先出' + pt2.name + '吧，别磨叽了');
+  // 4. 气氛插科打诨（小概率；v1.6.4（A2-5）组合式生成）
+  if (Math.random() < 0.4) return chat(genPhrase('flavor') || pick(TALK_FLAVOR));
   return null;
 }
 
@@ -857,7 +915,7 @@ function botLastWord(room, bot, level) {
     }
     const sus = pressureTarget(room, bot, 'smart', 0.4);
     const nm = sus ? sus.name : '跳得最凶的';
-    if (Math.random() < 0.7) return { action: 'post', data: { text: pick(TALK_LAST_PLAIN).split('{name}').join(nm) } };
+    if (Math.random() < 0.7) return { action: 'post', data: { text: genPhrase('lastword_good', { name: nm }) || pick(TALK_LAST_PLAIN).split('{name}').join(nm) } }; // v1.6.4（A2-5）
   } else if (level === 'easy' && Math.random() < 0.5) {
     return { action: 'post', data: { text: pick(['我是平民，大家加油', '别捞我，不亏']) } };
   }
@@ -894,9 +952,9 @@ function botWolfChat(room, bot) {
       const cred = claims[pid].credibility || 0;
       if (cred > bestCred) { bestCred = cred; best = p; }
     }
-    text = best ? '今晚刀' + best.name + '，他跳预言家太像真的了' : (t2 ? '刀' + nameById(room, t2) + '吧，发言太像神职' : '先刀预言家，稳赚不亏');
+    text = best ? '今晚刀' + best.name + '，他跳预言家太像真的了' : (t2 ? genPhrase('wolf_night_talk', { name: nameById(room, t2) }) || '刀' + nameById(room, t2) + '吧，发言太像神职' : '先刀预言家，稳赚不亏');
   } else {
-    text = pick(TALK_WOLF_NIGHT).split('{name}').join(t2 ? nameById(room, t2) : '预言家');
+    text = genPhrase('wolf_night_talk', { name: t2 ? nameById(room, t2) : '预言家' }) || pick(TALK_WOLF_NIGHT).split('{name}').join(t2 ? nameById(room, t2) : '预言家');
   }
   return { action: 'chat', data: { ch: 'wolf', text } };
 }
@@ -1141,7 +1199,18 @@ function decisionSimulateV2(room, bot) {
       }
       return score;
     }); // v1.5.2：投票集中
-    return { action: 'vote', data: { target: best ? best.id : null } };
+    // v1.6.4（A2-4）：低置信波动（与 smart 同规则，simulate 证据更足通常更稳；被公开查杀目标不波动）
+    let vote = best;
+    if (vote) {
+      const conf = confidenceOf(bot, vote.id);
+      if (!isCheckedTarget(room, vote) && conf < 0.55 && Math.random() < (0.55 - conf)) {
+        const lp2 = loverPartner(room, bot);
+        const pool2 = pool.filter(q => q.id !== vote.id && !(lp2 && !lp2.isWolf && q.id === lp2.id));
+        const other = pick(pool2);
+        if (other) vote = other;
+      }
+    }
+    return { action: 'vote', data: { target: vote ? vote.id : null } };
   }
 
   // 夜晚行动（复用 smart，加风格微调）
