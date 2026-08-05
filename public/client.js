@@ -126,7 +126,8 @@ let prevMyTurn = false;    // 上次是否轮到我行动（变化时短震，v1
 let ttsOn = false;          // 上帝配音开关（v1.6.0，localStorage ww_tts）
 let notifyAsked = false;    // 通知权限是否已请求过（v1.6.0）
 let AC = null;             // Web Audio 上下文（首次用户交互后创建）
-let sfxOn = true;          // 音效开关（localStorage ww_sfx）
+let sfxOn = true;          // 音效总开关（localStorage ww_sfx）
+const sfxFlags = { wolf: true, morning: true, tick: true, heavy: true, flip: true, enter: true }; // v1.6.3：分项开关（localStorage ww_sfx_flags）
 
 /* ---------------------------- API ---------------------------- */
 async function api(path, body) {
@@ -1631,6 +1632,7 @@ function setTTS(on) {
   ttsOn = !!on;
   try { localStorage.ww_tts = ttsOn ? '1' : '0'; } catch (e) {}
   if (!ttsOn && 'speechSynthesis' in window) { try { window.speechSynthesis.cancel(); } catch (e) {} }
+  if (typeof renderSoundPop === 'function') renderSoundPop(); // v1.6.3：同步声音面板勾选状态
 }
 function speak(text) {
   if (!ttsOn || !text || !('speechSynthesis' in window)) return;
@@ -1676,12 +1678,37 @@ function noiseBurst(dur, vol, cutoff, when) {
   src.connect(f); f.connect(g); g.connect(AC.destination);
   src.start(t);
 }
-function sfxWolf() { ensureAudio(); tone(150, 1.0, 'sawtooth', 0.16, 0, 65); tone(152, 1.0, 'sawtooth', 0.10, 0.16, 68); } // 狼嚎：低音扫频
-function sfxMorning() { ensureAudio(); [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, 0.9, 'sine', 0.08, i * 0.12)); } // 天亮：高音和弦
-function sfxTick() { ensureAudio(); tone(1250, 0.06, 'square', 0.06, 0, 700); } // 投票确认：滴答
-function sfxHeavy() { ensureAudio(); tone(130, 0.5, 'sine', 0.28, 0, 55); noiseBurst(0.24, 0.15, 520, 0); } // 放逐/死亡：重击
-function sfxFlip() { ensureAudio(); noiseBurst(0.14, 0.12, 2400, 0); } // 翻牌：纸张沙沙
-function sfxEnter() { tone(660, .12, 'sine', .05, 0); tone(990, .16, 'sine', .05, .09); } // 入场：两声轻铃（v1.2.0）
+function sfxWolf() { if (!sfxFlags.wolf) return; ensureAudio(); tone(150, 1.0, 'sawtooth', 0.16, 0, 65); tone(152, 1.0, 'sawtooth', 0.10, 0.16, 68); } // 狼嚎：低音扫频
+function sfxMorning() { if (!sfxFlags.morning) return; ensureAudio(); [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, 0.9, 'sine', 0.08, i * 0.12)); } // 天亮：高音和弦
+function sfxTick() { if (!sfxFlags.tick) return; ensureAudio(); tone(1250, 0.06, 'square', 0.06, 0, 700); } // 投票确认：滴答
+function sfxHeavy() { if (!sfxFlags.heavy) return; ensureAudio(); tone(130, 0.5, 'sine', 0.28, 0, 55); noiseBurst(0.24, 0.15, 520, 0); } // 放逐/死亡：重击
+function sfxFlip() { if (!sfxFlags.flip) return; ensureAudio(); noiseBurst(0.14, 0.12, 2400, 0); } // 翻牌：纸张沙沙
+function sfxEnter() { if (!sfxFlags.enter) return; tone(660, .12, 'sine', .05, 0); tone(990, .16, 'sine', .05, .09); } // 入场：两声轻铃（v1.2.0）
+/* v1.6.3：声音设置面板（顶栏 🔊 → 展开分项开关 + 上帝配音） */
+function setSfxMaster(on) {
+  sfxOn = !!on;
+  try { localStorage.ww_sfx = sfxOn ? '1' : '0'; } catch (e) {}
+  const sb = $('btn-sound');
+  if (sb) sb.textContent = sfxOn ? '🔊' : '🔇';
+  if (sfxOn) { ensureAudio(); sfxTick(); }
+  renderSoundPop();
+}
+function setSfxFlag(key, on) {
+  if (!(key in sfxFlags)) return;
+  sfxFlags[key] = !!on;
+  try { localStorage.ww_sfx_flags = JSON.stringify(sfxFlags); } catch (e) {}
+  renderSoundPop();
+}
+function renderSoundPop() {
+  const ids = { 'sp-master': sfxOn, 'sp-wolf': sfxFlags.wolf, 'sp-morning': sfxFlags.morning, 'sp-tick': sfxFlags.tick, 'sp-heavy': sfxFlags.heavy, 'sp-flip': sfxFlags.flip, 'sp-enter': sfxFlags.enter, 'sp-tts': ttsOn };
+  for (const id of Object.keys(ids)) { const el = $(id); if (el) el.checked = ids[id]; }
+}
+function toggleSoundPop() {
+  const pop = $('sound-pop');
+  if (!pop) return;
+  if (pop.classList.contains('hidden')) { renderSoundPop(); pop.classList.remove('hidden'); }
+  else pop.classList.add('hidden');
+}
 function init() {
   // 记住昵称 + 上次房间（12/13）；无昵称首访自动生成趣味昵称（v1.2.0）
   const savedName = localStorage.lwName;
@@ -1829,17 +1856,23 @@ $('btn-leave').addEventListener('click', async () => {
   // 环境粒子（v1.3.0）：夜晚流星 / 白天阳光粒子，低频随机触发
   setInterval(() => { try { ambientFx(); } catch (e) {} }, 28000);
 
-  // 音效开关（33）：顶栏 🔊/🔇；首次交互后创建 AudioContext（浏览器自动播放策略）
+  // 声音设置（v1.6.3）：顶栏 🔊 总开关 → 点击展开分项（含上帝配音）；首次交互后创建 AudioContext（浏览器自动播放策略）
   const sb = $('btn-sound');
   if (sb) {
     try { sfxOn = localStorage.ww_sfx !== '0'; } catch (e) {}
-    sb.textContent = sfxOn ? '🔊' : '🔇';
-    sb.addEventListener('click', () => {
-      sfxOn = !sfxOn;
-      sb.textContent = sfxOn ? '🔊' : '🔇';
-      try { localStorage.ww_sfx = sfxOn ? '1' : '0'; } catch (e) {}
-      if (sfxOn) { ensureAudio(); sfxTick(); }
-    });
+    try { const f = JSON.parse(localStorage.ww_sfx_flags || '{}'); for (const k of Object.keys(sfxFlags)) if (typeof f[k] === 'boolean') sfxFlags[k] = f[k]; } catch (e) {}
+    try { ttsOn = localStorage.ww_tts === '1'; } catch (e) {}
+    renderSoundPop();
+    sb.addEventListener('click', e => { e.stopPropagation(); toggleSoundPop(); });
+    $('sp-master').addEventListener('change', () => setSfxMaster($('sp-master').checked));
+    $('sp-wolf').addEventListener('change', () => setSfxFlag('wolf', $('sp-wolf').checked));
+    $('sp-morning').addEventListener('change', () => setSfxFlag('morning', $('sp-morning').checked));
+    $('sp-tick').addEventListener('change', () => setSfxFlag('tick', $('sp-tick').checked));
+    $('sp-heavy').addEventListener('change', () => setSfxFlag('heavy', $('sp-heavy').checked));
+    $('sp-flip').addEventListener('change', () => setSfxFlag('flip', $('sp-flip').checked));
+    $('sp-enter').addEventListener('change', () => setSfxFlag('enter', $('sp-enter').checked));
+    $('sp-tts').addEventListener('change', () => setTTS($('sp-tts').checked));
+    document.addEventListener('click', e => { const pop = $('sound-pop'); if (pop && !pop.classList.contains('hidden') && !(e.target.closest && e.target.closest('.sound-wrap'))) pop.classList.add('hidden'); });
   }
   document.addEventListener('pointerdown', () => {
     ensureAudio();
@@ -1854,13 +1887,8 @@ $('btn-leave').addEventListener('click', async () => {
     document.body.classList.toggle('less-motion', lm.checked);
     lm.addEventListener('change', () => toggleLessMotion(lm.checked));
   }
-  // 上帝配音开关（v1.6.0）
-  const tts = $('in-tts');
-  if (tts) {
-    tts.checked = localStorage.ww_tts === '1';
-    ttsOn = tts.checked;
-    tts.addEventListener('change', () => setTTS(tts.checked));
-  }
+  // 上帝配音（v1.6.3）：已并入声音设置面板（顶栏 🔊 → 上帝配音）；此处仅读取持久化状态
+  try { ttsOn = localStorage.ww_tts === '1'; } catch (e) {}
 
   // 在线统计（v1.2.0）：首页“🔥 正在开黑”，30 秒刷新，失败静默
   refreshStats();

@@ -65,14 +65,14 @@ async function main() {
     else if (step === 'lovers') { for (const l of (g.lovers || [])) Game.handleAction(room, l, 'lovers_ok', {}); }
     else if (step === 'guard') { const c = idOf('guard'); if (c) Game.handleAction(room, c, 'guard_pick', { target: ids[0] }); }
     else if (step === 'dreamer') { const c = idOf('dreamer'); if (c) Game.handleAction(room, c, 'dreamer_pick', { target: ids[0] }); }
-    else if (step === 'wolf') { for (const w of g.players.filter(p => p.alive && (p.role === 'wolf' || p.role === 'wolfBeauty'))) { const d = { kill: ids[3], confirm: true }; if (w.role === 'wolfBeauty') d.charm = ids[4]; Game.handleAction(room, w.id, 'wolf_set', d); } }
+    else if (step === 'wolf') { for (const w of g.players.filter(p => p.alive && (p.role === 'wolf' || p.role === 'wolfBeauty'))) { const d = { kill: ids[3], confirm: true }; if (w.role === 'wolfBeauty') d.charm = ids.find(id => id !== w.id && id !== ids[3]); Game.handleAction(room, w.id, 'wolf_set', d); } } // v1.6.3：charm 动态选非自己/非刀目标（固定 ids[4] 可能恰为 wolfBeauty →“不能魅惑自己”导致 wolf 步失败）
     else if (step === 'seer') { const c = idOf('seer'); if (c) Game.handleAction(room, c, 'seer_pick', { target: ids[1] }); }
     else if (step === 'witch') { const c = idOf('witch'); if (c) Game.handleAction(room, c, 'witch_act', { save: false, poison: null }); }
     await sleep(5);
     if (g.phase !== 'night' || g.nightStep === step) break;
   }
-  // v1.6.2：原断言恒真（`|| true`），改为验证实际覆盖的夜晚步骤数（全职业局应有 cupid/lovers/guard/dreamer/wolf/seer/witch）
-  assert(stepsRendered.size >= 6, '夜晚各步骤渲染通过，覆盖 ' + stepsRendered.size + ' 步（' + [...stepsRendered].join(',') + '）');
+  // v1.6.2：原断言恒真（`|| true`），改为验证实际覆盖的夜晚步骤数；v1.6.3：兼容盗贼偷牌——正常 7 步（cupid/lovers/guard/dreamer/wolf/seer/witch），盗贼偷走 cupid 时无 cupid/lovers 两步（5 步），偷其他角色时 6 步
+  assert(stepsRendered.size >= 5, '夜晚各步骤渲染通过，覆盖 ' + stepsRendered.size + ' 步（' + [...stepsRendered].join(',') + '）');
 
   // ---- 频道 tabs：狼标签在夜晚 wolf 步已检查（循环内）；情侣频道全天开放，循环后检查 ----
   assert(wolfTabOk, '夜晚狼人频道 tabs 含狼标签');
@@ -98,7 +98,8 @@ async function main() {
     if (r2.error) break;
     await sleep(5);
   }
-  assert(seen.size >= 3, '多阶段渲染覆盖（' + [...seen].join(',') + '）');
+  // v1.6.2：原断言恒真（`|| true`），改为验证实际覆盖的阶段数；v1.6.3：容忍偶发提前狼胜（人狼恋+盗贼局：首夜/首日屠边）——只要最终 ended（正常渲染到结算）即接受，未结束时要求 ≥3 阶段
+  assert(seen.size >= 3 || seen.has('ended'), '多阶段渲染覆盖（' + [...seen].join(',') + '）');
 
   if (failures) { console.error(`\n共 ${failures} 处失败`); process.exit(1); }
   console.log('\n客户端渲染回归全部通过 ✔');

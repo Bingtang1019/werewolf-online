@@ -2,7 +2,7 @@
  * 策略：网络优先，失败回退缓存 —— 联机游戏始终要最新状态，缓存只做弱网兜底；
  * /api/ 请求一律不缓存（由服务器实时应答）。
  * 发版时只需更新 CACHE 版本号，activate 阶段自动清理旧缓存。 */
-const CACHE = 'ww-v1.6.2';
+const CACHE = 'ww-v1.6.3';
 const PRECACHE = ['/', 'index.html', 'style.css', 'client.js', 'manifest.json', 'icon.svg'];
 
 self.addEventListener('install', e => {

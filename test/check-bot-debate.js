@@ -75,9 +75,13 @@ async function main() {
         await toDiscuss(s.room, s.host);
         const y = s.players.find(p => p.alive && p.id !== s.host && p.id !== s.target && p.id !== victim.id);
         await chat(s.room, s.host, '我跳预言家，查杀' + y.name); // 悍跳
-        await sleep(2500); // 等 bot 主发言 + 次发言（辩论）
-        const vd = await st(s.room, s.host);
-        const debate = (vd.chat || []).find(m => m.from === s.target && m.text && (m.text.includes('悍跳') || m.text.includes('乱带节奏') || m.text.includes('带偏') || m.text.includes('标狼')));
+        // v1.6.3：原固定 sleep(2500) 存在调度竞态（bot 次发言需等主发言完成后再调度，窗口不够时误判失败）→ 改轮询等待最多 8s
+        let debate = null;
+        for (let i = 0; i < 20 && !debate; i++) {
+          await sleep(400);
+          const vd = await st(s.room, s.host);
+          debate = (vd.chat || []).find(m => m.from === s.target && m.text && (m.text.includes('悍跳') || m.text.includes('乱带节奏') || m.text.includes('带偏') || m.text.includes('标狼')));
+        }
         b1ok = !!debate; // v1.5.6：循环内不 assert（失败尝试只 continue），循环外统一断言
         await api('/api/leave', { room: s.room, me: s.host }).catch(() => {});
       } catch (e) {
