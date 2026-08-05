@@ -147,9 +147,28 @@ node test/check-opid.js             # 写操作 opId 幂等去重（重试不双
 node test/check-game-end.js         # 终局幂等兜底（屠边结束/猎人同归平局/无活人阶段入口兜底/ended 幂等）
 node test/check-bot-expression.js   # 好人 bot 发言（easy 预言家报查验/被投辩解/平民表态/组合式生成质量）
 node test/check-bot-vote-noise.js   # 投票不确定性表达（低置信波动/高置信稳定/波动不投恋人/confidenceOf）
+node test/check-lab-stats.js        # 实验室 stats 纯函数（Wilson CI/McNemar/报告错误分类）
 node tools/selfcheck.js             # 代码自检工具：语法+版本串+死代码+重复case+遗留标记+文档一致（--quick 快速；--tests 带全量回归）
 node tools/ai/determinism-check.js  # 对局确定性验证（1.7.0 B1-8：同种子跑两遍，actionLog 逐字节一致）
 ```
+
+### 🧪 蒙特卡洛实验室平台（test/lab/）——数据生产/消费分离
+
+跑局与分析彻底解耦：**跑一次局产出 GameRecord（JSONL），胜率报告、训练样本、配对统计、确定性重放全部从中产出**。
+
+```bash
+node test/lab/lab.js smoke          # 冒烟（10 局 8 人）
+node test/lab/lab.js baseline --games=500 --cap=13 --parallel=8   # 胜率基线（Wilson CI）
+node test/lab/lab.js sample --games=2000 --cap=13 --out=data/lab-records.jsonl  # B1-2 样本管道（流式落盘+断点续跑）
+node test/lab/lab.js deterministic --games=20 --seed=abc          # B1-0 确定性验收（同种子两遍事件流 hash 一致）
+node test/lab/lab.js paired --strategy-a=smart --strategy-b=simulate --games=400 --seed=pair-001  # B1-6 配对验收（McNemar）
+```
+
+- 架构：`scenario → core → game.js` 单向依赖；`stats/`（wilson/mcnemar/report）纯函数零依赖
+- GameRecord：`{schema, gameId, seed, scenario, config, result{winner,timeout,error{kind}}, players, events, firstKill}`——错误分类（config/engine/stall）一跑就知道该查谁
+- 事件标准化（`core/events.js`）映射表已按 game.js 核对固化（night_start/night_step/wolf_kill/deaths/exile/shot）
+- 任何新实验 = 新增一个 30 行的 scenario 文件，core 一行不改
+- 数据落 `data/lab-*.jsonl`（已 gitignore）；2000 局约 200MB（JSONL 流式，断点续跑）
 
 - `simulate.js`：模拟 6 个完整对局场景（基础局、全职业+盗贼玩法局、守卫/摄梦人局、盗贼局、平票 PK 局、丘比特重选/频道规则局），验证夜晚结算、猎人开枪、殉情、魅惑、同守同救、警徽移交、1.5 票、胜负判定、频道权限等；盗贼可能抽到与配置重复的职业牌（两个守卫/女巫等）或作废任意职业，测试覆盖了这些随机组合。
 - `simulate-cupid-self.js`：丘比特把自己连进人狼情侣 → 第三方 = 丘比特+狼 两人，清场后第三方获胜。
