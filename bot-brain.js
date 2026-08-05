@@ -684,6 +684,282 @@ function botWolfChat(room, bot) {
 }
 
 
+/* =================================================================
+   SIMULATE 档位（v1.5.0）- 5状态马尔可夫态度模型 + 多证据源 + Sigmoid校准
+   适配说明（开源补丁 → 本项目）：
+   - room.sheriffVotes 不存在 → 警长票证据从 lastVoteResult.kind==='sheriff' + room.votes 提取
+   - room.lastWitchPoison 不存在 → 毒药证据从死亡事实（deadBy==='poison'）提取
+   - 被狼刀死亡（deadBy==='wolf'）接入 DEATH 证据
+   - 发言证据提取加 attMsgSeen 去重（补丁未去重：多次决策会把同一条消息反复应用）
+   ================================================================= */
+const ATT_STATE = {
+  SUSPECT_EXTREME: 0,
+  SUSPECT_SOME: 1,
+  NEUTRAL: 2,
+  TRUST_SOME: 3,
+  TRUST_EXTREME: 4
+};
+
+const EVIDENCE = {
+  VOTE_AGAINST: 'vote_against',
+  CHAT_BAD: 'chat_bad',
+  DEATH: 'death',
+  CHAT_GOOD: 'chat_good',
+  WITCH_SAVE: 'witch_save',
+  SHERIFF: 'sheriff',
+  POISON: 'poison'
+};
+
+const TRANSFER_5 = {
+  aggressive: [
+    [0.60, 0.25, 0.10, 0.03, 0.02],
+    [0.20, 0.50, 0.20, 0.07, 0.03],
+    [0.10, 0.20, 0.40, 0.20, 0.10],
+    [0.03, 0.07, 0.20, 0.50, 0.20],
+    [0.02, 0.03, 0.10, 0.25, 0.60]
+  ],
+  balanced: [
+    [0.70, 0.20, 0.07, 0.02, 0.01],
+    [0.15, 0.60, 0.20, 0.04, 0.01],
+    [0.05, 0.15, 0.60, 0.15, 0.05],
+    [0.01, 0.04, 0.20, 0.60, 0.15],
+    [0.01, 0.02, 0.07, 0.20, 0.70]
+  ],
+  conservative: [
+    [0.80, 0.15, 0.03, 0.01, 0.01],
+    [0.10, 0.70, 0.15, 0.04, 0.01],
+    [0.02, 0.10, 0.75, 0.10, 0.03],
+    [0.01, 0.02, 0.15, 0.70, 0.12],
+    [0.01, 0.01, 0.03, 0.15, 0.80]
+  ]
+};
+
+function getStyleKey(bot) {
+  const s = (bot.botStyle || 'balanced').toLowerCase();
+  return TRANSFER_5[s] ? s : 'balanced';
+}
+
+function normalize(arr) {
+  const sum = arr.reduce((a, b) => a + b, 0);
+  if (sum === 0) arr.fill(0.2);
+  else for (let i = 0; i < arr.length; i++) arr[i] /= sum;
+}
+
+function vectorMatrixMul(vector, matrix) {
+  const result = new Array(5).fill(0);
+  for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 5; j++) {
+      result[j] += vector[i] * matrix[i][j];
+    }
+  }
+  return result;
+}
+
+function targetDistFromEvidence(ev) {
+  const raw = [];
+  for (let i = 0; i < 5; i++) raw.push(Math.exp(ev * (i - 2)));
+  normalize(raw);
+  return raw;
+}
+
+function getLearningRate(bot) {
+  const style = getStyleKey(bot);
+  switch (style) {
+    case 'conservative': return 0.15;
+    case 'aggressive': return 0.35;
+    default: return 0.25;
+  }
+}
+
+function getDynamicMatrix(styleKey, nightNum) {
+  const base = TRANSFER_5[styleKey];
+  if (nightNum < 3) return base.map(r => r.slice());
+  const f = Math.min(0.4, (nightNum - 2) * 0.1);
+  const mat = base.map(r => r.slice());
+  for (let i = 0; i < 5; i++) {
+    const oldDiag = mat[i][i];
+    const newDiag = Math.min(0.95, oldDiag + f);
+    const factor = (1 - newDiag) / (1 - oldDiag);
+    mat[i][i] = newDiag;
+    for (let j = 0; j < 5; j++) if (j !== i) mat[i][j] *= factor;
+  }
+  return mat;
+}
+
+function initAttitudes5(room, bot) {
+  if (bot.botMemory.attitudes) return;
+  const att = {};
+  const initialDist = [0.05, 0.15, 0.60, 0.15, 0.05];
+  for (const p of room.players) {
+    if (p.id !== bot.id) att[p.id] = { dist: initialDist.slice() };
+  }
+  bot.botMemory.attitudes = att;
+}
+
+function updateAttitude5(room, bot, targetId, evidenceType, strength) {
+  const att = bot.botMemory.attitudes[targetId];
+  if (!att) return;
+  const P = getDynamicMatrix(getStyleKey(bot), room.nightNum);
+  const evolved = vectorMatrixMul(att.dist, P);
+  let ev = 0;
+  switch (evidenceType) {
+    case EVIDENCE.VOTE_AGAINST: ev = -1.5; break;
+    case EVIDENCE.CHAT_BAD: ev = -1.0; break;
+    case EVIDENCE.DEATH: ev = 0.5; break;
+    case EVIDENCE.CHAT_GOOD: ev = 1.0; break;
+    case EVIDENCE.WITCH_SAVE: ev = 0.8; break;
+    case EVIDENCE.SHERIFF: ev = 0.6; break;
+    case EVIDENCE.POISON: ev = -0.8; break;
+    default: ev = 0.0;
+  }
+  ev *= strength;
+  const target = targetDistFromEvidence(ev);
+  const lambda = getLearningRate(bot);
+  for (let i = 0; i < 5; i++) {
+    att.dist[i] = (1 - lambda) * evolved[i] + lambda * target[i];
+  }
+  normalize(att.dist);
+}
+
+function distToSuspectScore(dist) {
+  return dist[0] * 1.0 + dist[1] * 0.75 + dist[2] * 0.5 + dist[3] * 0.25 + dist[4] * 0.0;
+}
+
+function predictAttitude5(room, bot, targetId, steps) {
+  const att = bot.botMemory.attitudes[targetId];
+  if (!att) return 0.5;
+  let dist = att.dist.slice();
+  const P = getDynamicMatrix(getStyleKey(bot), room.nightNum);
+  for (let i = 0; i < steps; i++) dist = vectorMatrixMul(dist, P);
+  return distToSuspectScore(dist);
+}
+
+function sigmoidMap(value) {
+  const s = 1 / (1 + Math.exp(-8 * (value - 0.5)));
+  return 0.3 + 0.4 * s;
+}
+
+function simulatedScoreV2(room, bot, targetId) {
+  const bayes = wolfProb(room, bot, targetId);
+  const predicted = predictAttitude5(room, bot, targetId, 2);
+  const mappedBayes = sigmoidMap(bayes);
+  const mappedPredicted = sigmoidMap(predicted);
+  const styleKey = getStyleKey(bot);
+  const aggressiveness = styleKey === 'aggressive' ? 0.8 : styleKey === 'conservative' ? 0.3 : 0.5;
+  return mappedBayes * aggressiveness + mappedPredicted * (1 - aggressiveness);
+}
+
+function processAdditionalEvidence(room, bot) {
+  const mem = bot.botMemory;
+  // 死亡证据（项目：deadBy 字段区分死因；去重）
+  if (!mem.attDead) mem.attDead = {};
+  for (const p of room.players) {
+    if (p.alive || mem.attDead[p.id]) continue;
+    mem.attDead[p.id] = true;
+    if (p.deadBy === 'wolf') updateAttitude5(room, bot, p.id, EVIDENCE.DEATH, 1);
+    else if (p.deadBy === 'poison') updateAttitude5(room, bot, p.id, EVIDENCE.POISON, 1);
+  }
+  // 警长票（项目：sheriff_vote 的 votes 保留到下一轮，lastVoteResult.kind==='sheriff' 标记）
+  if (room.lastVoteResult && room.lastVoteResult.kind === 'sheriff' && mem.lastSheriffRound !== room.dayNum) {
+    mem.lastSheriffRound = room.dayNum;
+    for (const k of Object.keys(room.votes || {})) {
+      const t = room.votes[k];
+      if (!t || k === bot.id || t === bot.id) continue;
+      updateAttitude5(room, bot, t, EVIDENCE.SHERIFF, 1);
+    }
+  }
+}
+
+function decisionSimulateV2(room, bot) {
+  updateSmartMemory(room, bot);
+  initAttitudes5(room, bot);
+  const mem = bot.botMemory;
+  const isWolf = campOf(bot) === 'wolf';
+  const wolfStyle = (bot.wolfStyle || 'normal').toLowerCase();
+
+  // 发言证据（去重：避免同一条消息被多次决策反复应用）
+  if (!mem.attMsgSeen) mem.attMsgSeen = new Set();
+  const recentMsgs = room.messages.slice(-20);
+  for (const msg of recentMsgs) {
+    if (!msg.text || msg.ch !== 'all' || !msg.from || mem.attMsgSeen.has(msg.id)) continue;
+    mem.attMsgSeen.add(msg.id);
+    const target = extractTarget(room, msg.text);
+    if (!target) continue;
+    if (msg.text.includes('查杀') || msg.text.includes('是狼')) {
+      updateAttitude5(room, bot, target.id, EVIDENCE.CHAT_BAD, 1);
+    } else if (msg.text.includes('金水') || msg.text.includes('是好人')) {
+      updateAttitude5(room, bot, target.id, EVIDENCE.CHAT_GOOD, 1);
+    }
+  }
+
+  // 放逐投票（项目：votes 保留到下一轮；lastVoteResult.exiled 标记被放逐者）
+  if (room.lastVoteResult && room.lastVoteResult.exiled && mem.lastProcessedExile !== room.lastVoteResult.exiled) {
+    mem.lastProcessedExile = room.lastVoteResult.exiled;
+    const voters = Object.keys(room.votes || {}).filter(k => room.votes[k] === room.lastVoteResult.exiled);
+    for (const v of voters) {
+      if (v !== bot.id) updateAttitude5(room, bot, v, EVIDENCE.VOTE_AGAINST, 1);
+    }
+  }
+
+  processAdditionalEvidence(room, bot);
+
+  // 投票决策
+  if (room.phase === 'vote' || room.phase === 'sheriff_vote' || room.phase === 'pk_vote') {
+    let pool = room.phase === 'pk_vote'
+      ? [...(room.pkTied || []).map(id => byId(room, id)).filter(Boolean)]
+      : shuffle(aliveOthers(room, bot));
+    if (!pool.length) return { action: 'vote', data: { target: null } };
+    let best = null, bestScore = -Infinity;
+    for (const p of pool) {
+      let score = simulatedScoreV2(room, bot, p.id);
+      if (isWolf) {
+        if (wolfStyle === 'charge') {
+          score = -score;
+        } else if (wolfStyle === 'shark') {
+          if (isWolfRole(p)) score -= 0.3;
+        }
+      }
+      if (score > bestScore) { bestScore = score; best = p; }
+    }
+    return { action: 'vote', data: { target: best ? best.id : null } };
+  }
+
+  // 夜晚行动（复用 smart，加风格微调）
+  if (room.phase === 'night') {
+    const smartResult = decisionSmart(room, bot);
+    if (smartResult && smartResult.action === 'wolf_set' && smartResult.data.kill) {
+      const target = byId(room, smartResult.data.kill);
+      if (isWolf && wolfStyle === 'charge' && target && isWolfRole(target)) {
+        const goodPool = aliveOthers(room, bot).filter(p => campOf(p) !== 'wolf');
+        if (goodPool.length) {
+          const newTarget = goodPool.sort((a, b) => wolfProb(room, bot, a.id) - wolfProb(room, bot, b.id))[0];
+          smartResult.data.kill = newTarget.id;
+        }
+      }
+    }
+    return smartResult;
+  }
+
+  // 白天发言
+  if (room.phase === 'discuss') {
+    const talk = botTalk(room, bot, 'smart');
+    if (talk) return talk;
+    const pool = shuffle(aliveOthers(room, bot));
+    if (!pool.length) return null;
+    let target = null;
+    if (!isWolf) {
+      target = pool.reduce((a, p) => simulatedScoreV2(room, bot, p.id) > simulatedScoreV2(room, bot, a.id) ? p : a, pool[0]);
+    } else {
+      target = pool.reduce((a, p) => simulatedScoreV2(room, bot, p.id) < simulatedScoreV2(room, bot, a.id) ? p : a, pool[0]);
+    }
+    if (target) return { action: 'chat', data: { ch: 'all', text: `我觉得${target.name}值得关注，大家怎么看？` } };
+    return null;
+  }
+
+  return decisionSmart(room, bot);
+}
+
+
 function createBotDecision(room, bot) {
   const level = bot.botLevel || (room.settings.botMode === 'passive' ? 'idle' : 'easy');
   if (room.phase === 'reveal') {
@@ -694,10 +970,10 @@ function createBotDecision(room, bot) {
     }
     return { action: 'confirm', data: {} };
   }
-  if (room.phase === 'lastword') return botLastWord(room, bot, level); // v1.4.4：遗言（smart 有信息量）
+  if (room.phase === 'lastword') return level === 'simulate' ? botLastWord(room, bot, 'smart') : botLastWord(room, bot, level); // v1.4.4：遗言（smart 有信息量）
   if (room.phase === 'handover') return { action: 'handover', data: { target: null } }; // 人机警长默认撕毁警徽
   if (room.phase === 'sheriff_campaign') return { action: 'campaign', data: { run: level === 'idle' ? false : Math.random() < 0.5 } };
-  if (room.phase === 'discuss') return botTalk(room, bot, level); // v1.4.3：白天发言模拟
+  if (room.phase === 'discuss') return level === 'simulate' ? decisionSimulateV2(room, bot) : botTalk(room, bot, level); // v1.4.3：白天发言模拟（simulate 走态度模型）
   if (room.phase === 'night') {
     switch (room.nightStep) {
       case 'cupid': {
@@ -712,6 +988,7 @@ function createBotDecision(room, bot) {
       default: break;
     }
   }
+  if (level === 'simulate') return decisionSimulateV2(room, bot); // v1.5.0：态度模型档位
   if (level === 'smart') return decisionSmart(room, bot);
   if (level === 'easy') return decisionEasy(room, bot);
   return decisionIdle(room, bot);

@@ -641,6 +641,7 @@ function renderLobby() {
         <button class="mini bot-level${botLevelChoice === 'idle' ? ' active' : ''}" onclick="setBotLevel('idle')">挂机</button>
         <button class="mini bot-level${botLevelChoice === 'easy' ? ' active' : ''}" onclick="setBotLevel('easy')">简单</button>
         <button class="mini bot-level${botLevelChoice === 'smart' ? ' active' : ''}" onclick="setBotLevel('smart')">智能</button>
+ <button class="mini bot-level ${botLevelChoice === 'simulate' ? 'active' : ''}" onclick="setBotLevel('simulate')">模拟</button>
       </div>
       <div class="btn-row">
         <button onclick="act('add_bot',{level:botLevelChoice})">＋ 添加人机</button>
