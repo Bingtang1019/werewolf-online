@@ -1,7 +1,7 @@
 'use strict';
 /* baseline：胜率报告（Wilson CI）+ 首刀分布 + 错误分类统计；--out=<file> 落盘 records（供样本/对比复用） */
 const path = require('path');
-const { runRoom } = require('../core/room-runner');
+const { runOneLabGame } = require('../core/room-runner');
 const { runPool } = require('../core/pool');
 const { createRecorder } = require('../core/recorder');
 const { summarize } = require('../stats/report');
@@ -10,7 +10,7 @@ async function run(cfg) {
   const ROOT = path.resolve(__dirname, '..', '..', '..');
   const rec = cfg.out ? createRecorder(path.isAbsolute(cfg.out) ? cfg.out : path.join(ROOT, cfg.out)) : null;
   const fn = async (i, seed) => {
-    const r = await runRoom(Object.assign({}, cfg, { seed }), `base-${i}`);
+    const r = await runOneLabGame(Object.assign({}, cfg, { seed, gameId: `base-${i}` }));
     if (rec && !rec.has(r.gameId)) rec.write(r);
     return r;
   };

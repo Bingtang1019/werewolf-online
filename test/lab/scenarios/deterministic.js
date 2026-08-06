@@ -3,13 +3,13 @@
  * 前置：B1-8 显式 RNG 注入已落地（本库 room-runner 每局 seed 注入）→ 两遍应一致；若不一致即回归信号。
  */
 const crypto = require('crypto');
-const { runRoom } = require('../core/room-runner');
+const { runOneLabGame } = require('../core/room-runner');
 const { runPool } = require('../core/pool');
 
 async function run(cfg) {
   const seedBase = cfg.seed || 'det';
-  const run1 = await runPool(cfg.games, 1, (i) => runRoom(Object.assign({}, cfg, { seed: `${seedBase}-${i}` }), `det-a-${i}`));
-  const run2 = await runPool(cfg.games, 1, (i) => runRoom(Object.assign({}, cfg, { seed: `${seedBase}-${i}` }), `det-b-${i}`));
+  const run1 = await runPool(cfg.games, 1, (i) => runOneLabGame(Object.assign({}, cfg, { seed: `${seedBase}-${i}`, gameId: `det-a-${i}` })));
+  const run2 = await runPool(cfg.games, 1, (i) => runOneLabGame(Object.assign({}, cfg, { seed: `${seedBase}-${i}`, gameId: `det-b-${i}` })));
   // 对比前归一化：玩家 uid 每局不同（crypto 随机）→ 映射到座位号（同配置两遍座位分配一致）
   const norm = (rec) => {
     const seatOf = id => { const p = (rec.players || []).find(x => x.id === id); return p ? p.seat : id; };

@@ -5,6 +5,9 @@
  * 依赖方向（单向）：scenario → core → game.js；stats 谁都不依赖；core 不 import stats。
  */
 const { buildConfig } = require('./core/config');
+const clock = require('../../server/clock');
+clock.setMode('virtual'); // v1.7.1：实验室统一虚拟时间（墙钟不随游戏流逝，驱动靠 tickNext 推时钟）
+process.env.CHAT_INTERVAL = '0'; // 虚拟模式下发言限流也是虚拟的，跑量时关闭
 const scenarios = {
   baseline: require('./scenarios/baseline'),
   sample: require('./scenarios/sample'),

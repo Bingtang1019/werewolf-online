@@ -1,7 +1,7 @@
 'use strict';
 /* paired：B1-6 验收——同 seed 双策略各跑一遍，逐局比较胜负，McNemar 检验。
  * 注意：交替换边/按阵营配对由调用方（CLI --strategy-a/--strategy-b）决定；胜率按阵营在 baseline 里分别报。 */
-const { runRoom } = require('../core/room-runner');
+const { runOneLabGame } = require('../core/room-runner');
 const { mcnemar } = require('../stats/mcnemar');
 
 async function run(cfg) {
@@ -13,7 +13,7 @@ async function run(cfg) {
     const seed = `${seedBase}-${i}`;
     const cfgA = Object.assign({}, cfg, { seed, botLine: Array(Math.max(1, cfg.cap - 1)).fill(A) });
     const cfgB = Object.assign({}, cfg, { seed, botLine: Array(Math.max(1, cfg.cap - 1)).fill(B) });
-    const [r1, r2] = await Promise.all([runRoom(cfgA, `pair-${i}-a`), runRoom(cfgB, `pair-${i}-b`)]);
+    const [r1, r2] = await Promise.all([runOneLabGame(Object.assign({}, cfgA, { gameId: `pair-${i}-a` })), runOneLabGame(Object.assign({}, cfgB, { gameId: `pair-${i}-b` }))]);
     const w1 = r1.result.winner, w2 = r2.result.winner;
     if (w1 && w2 && w1 !== w2) { if (w1 === 'good') a++; else b++; }
     else if (w1 && w2 && w1 === w2) both++;

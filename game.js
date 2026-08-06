@@ -12,7 +12,8 @@ const crypto = require('crypto');
 const fs = require('fs'); // 1.7.0（B1-2）：样本采集钩子（lab 平台）
 const { createBotDecision, botWolfChat, resetBotPerGame, injectGrudge } = require('./bot-brain'); // v1.4.0：人机三档决策（idle/easy/smart）
 const { voteFeatures } = require('./server/ai/features.js'); // 1.7.0（B1-2）：vote 特征（训练/推理共用，只含公开信息）
-const { createRng } = require('./server/ai/rng.js'); // 1.7.0（B1-8）：显式可注入 RNG
+const { createRng } = require('./server/ai/rng.js');
+const clock = require('./server/clock'); // v1.7.1：可注入时钟（真实/虚拟），所有定时器与时间戳一律经此模块 // 1.7.0（B1-8）：显式可注入 RNG
 
 /* 1.7.0（B1-8）：全局 RNG——server.js 启动时用 SEED env 注入；独立 require（如测试直接调引擎）时回退默认种子 */
 if (!global.rng) global.rng = createRng(parseInt(process.env.SEED || '0', 10) || 12345);
@@ -62,7 +63,7 @@ function checkInvariants(room) {
 function pushEvent(room, type, data) {
   if (!room || !room.id) return;
   if (!room.events) room.events = [];
-  room.events.push({ t: Date.now(), night: room.nightNum || 0, phase: room.phase || '', type, data });
+  room.events.push({ t: clock.now(), night: room.nightNum || 0, phase: room.phase || '', type, data });
   if (room.events.length > 200) room.events.splice(0, room.events.length - 200);
 }
 function bump(room) {
@@ -81,14 +82,14 @@ const NIGHT_TIMEOUT = Math.max(2, parseInt(process.env.NIGHT_TIMEOUT || '45', 10
 const MOODS = ['😀', '😨', '😤', '😭', '😏', '🤔', '😇', '🤡', '😴', '😱', '🥳', '🕶️'];
 
 function clearPhaseTimer(room) {
-  if (room._phaseTimer) { clearTimeout(room._phaseTimer); room._phaseTimer = null; }
+  if (room._phaseTimer) { clock.clearTimeout(room._phaseTimer); room._phaseTimer = null; }
   room.phaseDeadline = null;
 }
 function schedulePhase(room, expectedPhase, fn, delayMs) {
   clearPhaseTimer(room);
   const t = Math.max(0, delayMs === undefined ? PHASE_TIMEOUT * 1000 : delayMs); // v1.5.6：C1 支持剩余时间重挂
-  room.phaseDeadline = Date.now() + t;
-  room._phaseTimer = setTimeout(() => {
+  room.phaseDeadline = clock.now() + t;
+  room._phaseTimer = clock.setTimeout(() => {
     room._phaseTimer = null;
     room.phaseDeadline = null;
     if (!rooms.has(room.id)) return;
@@ -230,7 +231,7 @@ function createRoom(hostName) {
     phaseDeadline: null,
     rng: createRng(global.rng.int(0x7fffffff)), // 1.7.0（B1-8）：房间级显式 RNG（从全局派生；快照记录 state 可续流）
     actionLog: [], // 1.7.0（B1-8）：决策动作日志（L2-lite 基础，确定性验证/回放数据源；不进 view）
-    lastActive: Date.now(), // 最近一次被轮询的时间（供服务端 TTL 清理无活动房间）
+    lastActive: clock.now(), // 最近一次被轮询的时间（供服务端 TTL 清理无活动房间）
   };
   rooms.set(id, room);
   const host = addPlayer(room, hostName);
@@ -362,7 +363,7 @@ function startGame(room) {
   room.center = null;
   room.reveal = { stage: 'hostChoice', hostPicked: false, thiefId: null, thiefPicked: false, dealt: false, deck };
   room.phase = 'reveal';
-  if (room._nightTimer) { clearTimeout(room._nightTimer); room._nightTimer = null; }
+  if (room._nightTimer) { clock.clearTimeout(room._nightTimer); room._nightTimer = null; }
   bump(room);
   return { ok: true };
 }
@@ -394,9 +395,9 @@ function revealAction(room, p, action, data) {
       // 盗贼选牌 30 秒倒计时：超时自动选牌（有狼必选狼，否则随机）
       // v1.6.2：hostPick 受 hostPicked 守卫仅执行一次，此处 thiefPicked 恒为 false，去除恒真分支并修正缩进
       rv.stage = 'thiefPick';
-      if (room._thiefTimer) clearTimeout(room._thiefTimer);
-      room.revealDeadline = Date.now() + NIGHT_TIMEOUT * 1000;
-      room._thiefTimer = setTimeout(() => autoThiefPick(room), NIGHT_TIMEOUT * 1000); // 有狼必选狼
+      if (room._thiefTimer) clock.clearTimeout(room._thiefTimer);
+      room.revealDeadline = clock.now() + NIGHT_TIMEOUT * 1000;
+      room._thiefTimer = clock.setTimeout(() => autoThiefPick(room), NIGHT_TIMEOUT * 1000); // 有狼必选狼
       bump(room);
       return { ok: true };
     }
@@ -406,7 +407,7 @@ function revealAction(room, p, action, data) {
   // 盗贼从两张身份牌中选择一张（若其中有狼人牌则必须选狼人）
   if (action === 'thief_pick') {
     if (rv.stage !== 'thiefPick' || p.id !== rv.thiefId) return { error: '操作不合法' };
-    if (room._thiefTimer) { clearTimeout(room._thiefTimer); room._thiefTimer = null; }
+    if (room._thiefTimer) { clock.clearTimeout(room._thiefTimer); room._thiefTimer = null; }
     room.revealDeadline = null;
     const idx = data.idx;
     if (idx !== 0 && idx !== 1) return { error: '参数错误' };
@@ -425,7 +426,7 @@ function revealAction(room, p, action, data) {
     p.confirmed = true;
     bump(room);
     if (room.players.every(q => q.confirmed || q.leftGame) && !room.reveal.thiefPicked) {
-      if (room._nightTimer) { clearTimeout(room._nightTimer); room._nightTimer = null; }
+      if (room._nightTimer) { clock.clearTimeout(room._nightTimer); room._nightTimer = null; }
       beginNight(room);
     }
     return { ok: true };
@@ -438,7 +439,7 @@ function revealAction(room, p, action, data) {
 function tryDeal(room) {
   const rv = room.reveal;
   // 盗贼选牌倒计时已结束/已选牌 → 清理定时器与倒计时展示
-  if (room._thiefTimer) { clearTimeout(room._thiefTimer); room._thiefTimer = null; }
+  if (room._thiefTimer) { clock.clearTimeout(room._thiefTimer); room._thiefTimer = null; }
   room.revealDeadline = null;
   if (rv.dealt) return;
   if (!rv.hostPicked) return; // 等房主确定期望身份
@@ -453,8 +454,8 @@ function tryDeal(room) {
   }
   rv.dealt = true;
   rv.stage = 'dealt';
-  if (room._nightTimer) clearTimeout(room._nightTimer);
-  room._nightTimer = setTimeout(() => autoBeginNight(room), 5000); // 5 秒后自动进入夜晚
+  if (room._nightTimer) clock.clearTimeout(room._nightTimer);
+  room._nightTimer = clock.setTimeout(() => autoBeginNight(room), 5000); // 5 秒后自动进入夜晚
   bump(room);
 }
 
@@ -463,10 +464,10 @@ function beginNight(room) {
   if (checkGameEnd(room)) return; // v1.6.4（A2-1）：阶段推进入口兜底——防“结算后无人可行动”挂起
   pushEvent(room, 'night_start', { night: room.nightNum + 1 }); // v1.6.0
   clearPhaseTimer(room); // 白天阶段倒计时清掉（夜晚步骤有自己的 30 秒倒计时）
-  if (room._thiefTimer) { clearTimeout(room._thiefTimer); room._thiefTimer = null; }
+  if (room._thiefTimer) { clock.clearTimeout(room._thiefTimer); room._thiefTimer = null; }
   room.revealDeadline = null;
   clearNightTimer(room);
-  clearTimeout(room._hunterTimer); room._hunterTimer = null; room.hunterDeadline = null;
+  clock.clearTimeout(room._hunterTimer); room._hunterTimer = null; room.hunterDeadline = null;
   room.nightNum++;
   room.phase = 'night';
   room.nightStep = null;
@@ -552,19 +553,19 @@ function setNightStep(room) {
 }
 /* 夜晚步骤 30 秒倒计时：超时未完成则跳过本步骤（与房主强制继续同语义） */
 function clearNightTimer(room) {
-  if (room._nightStepTimer) { clearTimeout(room._nightStepTimer); room._nightStepTimer = null; }
+  if (room._nightStepTimer) { clock.clearTimeout(room._nightStepTimer); room._nightStepTimer = null; }
   room.nightDeadline = null;
 }
 /*猎人开枪 30 秒超时弃枪（夜晚被刀 / 白天被放逐两条路径共用；N1 修复） */
 function scheduleHunterShotTimer(room, delayMs) {
-  clearTimeout(room._hunterTimer);
+  clock.clearTimeout(room._hunterTimer);
   room.hunterDeadline = null;
   const active = (room.phase === 'night' && room.nightStep === 'hunter') || room.phase === 'hunter_shot';
   if (!active || !room.shooter) return;
   const t = Math.max(0, delayMs === undefined ? NIGHT_TIMEOUT * 1000 : delayMs); // v1.5.6：C1
-  room.hunterDeadline = Date.now() + t;
+  room.hunterDeadline = clock.now() + t;
   const shooter = room.shooter;
-  room._hunterTimer = setTimeout(() => {
+  room._hunterTimer = clock.setTimeout(() => {
     room._hunterTimer = null;
     room.hunterDeadline = null;
     if (!rooms.has(room.id)) return;
@@ -581,9 +582,9 @@ function scheduleNightStepTimer(room, delayMs) {
   const actors = nightActors(room, room.nightStep);
   if (!actors.length) return;
   const t = Math.max(0, delayMs === undefined ? NIGHT_TIMEOUT * 1000 : delayMs); // v1.5.6：C1
-  room.nightDeadline = Date.now() + t;
+  room.nightDeadline = clock.now() + t;
   const step = room.nightStep;
-  room._nightStepTimer = setTimeout(() => {
+  room._nightStepTimer = clock.setTimeout(() => {
     room._nightStepTimer = null;
     room.nightDeadline = null;
     if (!rooms.has(room.id) || room.phase !== 'night' || room.nightStep !== step) return; // 已推进/已结束
@@ -772,7 +773,7 @@ function finishNight(room) {
 }
 function resolveShot(room, target) {
   pushEvent(room, 'shot', { shooter: room.shooter, target: target || null }); // v1.6.0
-  clearTimeout(room._hunterTimer); room._hunterTimer = null; room.hunterDeadline = null;
+  clock.clearTimeout(room._hunterTimer); room._hunterTimer = null; room.hunterDeadline = null;
   const deaths = [];
   const die = (pid, by) => {
     const q = byId(room, pid);
@@ -1208,7 +1209,7 @@ function resolvePkVote(room) {
 function addMessage(room, p, ch, text, marker) {
   const prev = room.messages[room.messages.length - 1];
   // ts 严格递增：作为聊天增量传输的锚点（同一毫秒内的多条消息也不会丢失）
-  const ts = Math.max(Date.now(), (prev ? prev.ts : 0) + 1);
+  const ts = Math.max(clock.now(), (prev ? prev.ts : 0) + 1);
   room.messages.push({ id: uid(), ch, from: p ? p.id : null, name: p ? p.name : '系统', text, marker: marker || null, ts, day: room.dayNum, night: room.nightNum });
   if (room.messages.length > 500) room.messages.splice(0, room.messages.length - 500);
 }
@@ -1235,7 +1236,7 @@ function chatAction(room, p, data) {
   if (!text) return { error: '消息不能为空' };
   if (text.length > 200) return { error: '消息过长（≤200字）' };
   if (CHAT_INTERVAL > 0) { // 防刷屏限流
-    const now = Date.now();
+    const now = clock.now();
     if (p.lastChatAt && now - p.lastChatAt < CHAT_INTERVAL) return { error: '发言太快了，请稍候再试' };
     p.lastChatAt = now;
   }
@@ -1273,8 +1274,8 @@ function advance(room, pid) {
         return { ok: true };
       }
       room.players.forEach(q => { q.confirmed = true; });
-      if (room._nightTimer) { clearTimeout(room._nightTimer); room._nightTimer = null; }
-      if (room._thiefTimer) { clearTimeout(room._thiefTimer); room._thiefTimer = null; } // 清理盗贼选牌倒计时
+      if (room._nightTimer) { clock.clearTimeout(room._nightTimer); room._nightTimer = null; }
+      if (room._thiefTimer) { clock.clearTimeout(room._thiefTimer); room._thiefTimer = null; } // 清理盗贼选牌倒计时
       room.revealDeadline = null;
       bump(room);
       beginNight(room);
@@ -1371,11 +1372,11 @@ function removePlayer(room, pid) {
 }
 function rematch(room) {
   clearPhaseTimer(room);
-  if (room._nightTimer) { clearTimeout(room._nightTimer); room._nightTimer = null; }
+  if (room._nightTimer) { clock.clearTimeout(room._nightTimer); room._nightTimer = null; }
   clearNightTimer(room);
-  if (room._thiefTimer) { clearTimeout(room._thiefTimer); room._thiefTimer = null; }
+  if (room._thiefTimer) { clock.clearTimeout(room._thiefTimer); room._thiefTimer = null; }
   room.revealDeadline = null;
-  clearTimeout(room._hunterTimer); room._hunterTimer = null; room.hunterDeadline = null;
+  clock.clearTimeout(room._hunterTimer); room._hunterTimer = null; room.hunterDeadline = null;
   // v1.5.6：先把上一局狼名单取出（endInfo 即将清空，跨局"恩怨"用局部变量保留）
   const grudgeWolfIds = (room.endInfo && room.endInfo.roles)
     ? room.endInfo.roles.filter(r => r && r.camp === '狼人').map(r => r.id) : [];
@@ -1397,7 +1398,7 @@ function rematch(room) {
   room.messages = [];
   room.actionLog = []; // 1.7.0（B1-8）：新局清空动作日志
   room.reveal = null;
-  if (room._nightTimer) { clearTimeout(room._nightTimer); room._nightTimer = null; }
+  if (room._nightTimer) { clock.clearTimeout(room._nightTimer); room._nightTimer = null; }
   room.players.forEach(p => { p.role = null; p.alive = true; p.deadBy = null; p.deadNote = null; p.leftGame = false; p.confirmed = false; p.lastWordUsed = false; p.mood = null; if (p.isBot) resetBotPerGame(p); }); // v1.5.6：同 startGame（reset 保留 suspicion）
   room.wolfPackMemory = undefined; room.botTalked = undefined; // v1.5.6
   // v1.5.6：先 reset 再注入——上一局狼名单写成轻量"恩怨"（跨局印象，显式建模而非概率泄漏）
@@ -1406,6 +1407,68 @@ function rematch(room) {
 }
 
 /* 自动推进（动作完成后链式推进阶段） */
+
+/* =========================================================================
+ * 测试构造器（debug-only）：跳过建房/发牌，直接摆出指定阶段状态。
+ * 仅供测试/实验室使用。opts.roles 用固定 id（'p1'..）便于断言。
+ * 自动补齐：night 阶段会按 nightSteps 顺序把 nightStep 之前的步骤标记为已完成。
+ * ========================================================================= */
+function debugRoom(opts = {}) {
+  const r = createRoom('调试房主');
+  const room = rooms.get(r.roomId);
+  if (opts.seed != null) room.rng = createRng(opts.seed);          // 摆盘也可确定性
+  const cap = opts.cap || (opts.roles ? opts.roles.length : 6);
+  room.playerCap = cap;
+  room.roleCounts = opts.counts || defaultCounts(cap);
+  room.players = (opts.roles || []).map((x, i) => ({
+    id: x.id || ('p' + (i + 1)), name: x.name || ('玩家' + (i + 1)), seat: x.seat || (i + 1),
+    role: x.role || null, alive: x.alive !== false, deadBy: x.deadBy || null, deadNote: x.deadNote || null,
+    leftGame: !!x.leftGame, confirmed: true, lastWordUsed: !!x.lastWordUsed,
+    isBot: !!x.isBot, botLevel: x.botLevel, lastChatAt: 0,
+  }));
+  room.host = opts.host || (room.players[0] ? room.players[0].id : room.host);
+  room.phase = opts.phase || 'night';
+  room.nightNum = opts.night || 0;
+  room.dayNum = opts.day || 0;
+  room.nightStep = opts.nightStep || null;
+  room.votes = opts.votes || {};
+  room.lovers = opts.lovers || null;
+  room.sheriff = opts.sheriff || null;
+  room.witchPots = Object.assign({ saveUsed: false, poisonUsed: false }, opts.witchPots);
+  room.guardLast = opts.guardLast || null;
+  room.charmTarget = opts.charmTarget || null;
+  room.night = Object.assign({
+    wolf: { kill: null, charm: null, locked: false, sel: {} },
+    guard: { target: null }, dreamer: { target: null }, seer: { target: null },
+    witch: { save: false, poison: null, revealed: false }, cupid: { pick: null },
+  }, opts.night || {});
+  room.nightActed = opts.nightActed || {};
+  room.candidates = opts.candidates || [];
+  room.pkTied = opts.pkTied || null;
+  room.campaignDecided = opts.campaignDecided || {};
+  room.lastWorders = opts.lastWorders || [];
+  room.lastWordDone = opts.lastWordDone || {};
+  room.lastWordContext = opts.lastWordContext || null;
+  room.handoverFrom = opts.handoverFrom || null;
+  room.shooter = opts.shooter || null;
+  room.shotContext = opts.shotContext || null;
+  room.morningDeaths = opts.morningDeaths || [];
+  room.dayDeaths = opts.dayDeaths || [];
+  room.exileDeaths = opts.exileDeaths || [];
+  room.seerHistory = opts.seerHistory || [];
+  room.messages = []; room.actionLog = [];
+  room.reveal = { stage: 'dealt', hostPicked: true, thiefId: null, thiefPicked: true, dealt: true, deck: [] };
+  // night 摆盘：自动把 nightStep 之前的步骤标记完成（guard 未行动时 wolf 步不会被 setNightStep 接受）
+  if (room.phase === 'night' && room.nightStep) {
+    for (const s of nightSteps(room)) {
+      if (s === room.nightStep) break;
+      nightActors(room, s).forEach(id => markActed(room, s, id));
+    }
+  }
+  bump(room);
+  return room;
+}
+
 function autoAdvanceInner(room) {
   let guard = 0;
   while (guard++ < 60) {
@@ -1674,7 +1737,7 @@ function maybeRunBots(room) {
   if (room._botTimer) return;
   if (!pendingBotActors(room).length) return;
   if (process.env.BOT_DEBUG) console.log('[sched]', room.phase + '/' + room.nightStep, '→', pendingBotActors(room).map(p => p.name).join(','));
-  room._botTimer = setTimeout(() => {
+  room._botTimer = clock.setTimeout(() => {
     room._botTimer = null;
     if (!rooms.has(room.id)) return;
     if (room.phase === 'lobby' || room.phase === 'ended') return;
@@ -1876,16 +1939,16 @@ function resumeRoom(room) {
   room._phaseTimer = null; room._nightTimer = null; room._nightStepTimer = null;
   room._thiefTimer = null; room._hunterTimer = null; room._botTimer = null;
   room.phaseDeadline = null; room.nightDeadline = null; room.revealDeadline = null; room.hunterDeadline = null;
-  room.lastActive = Date.now(); // 防 TTL 秒杀
-  const now = Date.now();
+  room.lastActive = clock.now(); // 防 TTL 秒杀
+  const now = clock.now();
   const remain = (d) => (d ? Math.max(0, d - now) : undefined); // C1：按剩余时间重挂（已过期 → 0 → 立即触发）
   if (room.phase === 'reveal' && room.reveal) {
     if (room.reveal.stage === 'thiefPick' && !room.reveal.thiefPicked && !room.reveal.dealt) {
       const t = remain(room.revealDeadline) === undefined ? NIGHT_TIMEOUT * 1000 : remain(room.revealDeadline);
       room.revealDeadline = now + t;
-      room._thiefTimer = setTimeout(() => autoThiefPick(room), t); // v1.5.7：补闭包传参
+      room._thiefTimer = clock.setTimeout(() => autoThiefPick(room), t); // v1.5.7：补闭包传参
     } else if (room.reveal.dealt) {
-      room._nightTimer = setTimeout(() => autoBeginNight(room), 5000); // v1.5.7：补闭包传参
+      room._nightTimer = clock.setTimeout(() => autoBeginNight(room), 5000); // v1.5.7：补闭包传参
     }
   } else if (room.phase === 'night') {
     scheduleNightStepTimer(room, remain(room.nightDeadline));
@@ -1900,6 +1963,7 @@ function resumeRoom(room) {
 }
 
 module.exports = {
+  debugRoom,
   ROLE_INFO, rooms, createRoom, joinRoom, handleAction, handleChat, handleAdvance, handleLeave, handleKick, viewFor, resumeRoom,
   // v1.6.1：钩子用 setter 导出（CommonJS 值导出会让外部赋值不生效）
   setOnChange(fn) { onChange = fn; },
