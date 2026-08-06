@@ -1581,6 +1581,21 @@ function applyAction(room, p, action, data) {
         if (room.labSampleBuf.length >= 500) flushLabSamples(room);
       }
     }
+    // v1.7.7（α3）：夜刀样本采集（wolf_set 成功且 bot 狼出刀）——狼侧刀神分类器训练数据；
+    // 与 vote 钩子同模式：特征只含公开信息（wolfTrain/features 复用 voteFeatures 13 维），label 用真实身份（是否神职）
+    if (action === 'wolf_set' && room.labSampleFile && p.isBot && isWolfRole(p) && data && data.kill) {
+      try {
+        // v1.7.7（α3）：采集“被杀者 + 随机对照”（去选择偏置）——每夜每狼 bot 决策时采 1+upTo 个样本
+        const smps = require('./wolfTrain/collector.js').collectKillSamples(room, p.id, data.kill, 3);
+        if (smps.length) {
+          room.labSampleBuf = room.labSampleBuf || [];
+          for (const wf of smps) {
+            room.labSampleBuf.push(JSON.stringify({ gameId: room.labGameId || 'x', night: room.nightNum || 0, wolfId: p.id, kill: wf.victimId, isKill: wf.isKill, features: wf.X, label: wf.y }));
+          }
+          if (room.labSampleBuf.length >= 500) flushLabSamples(room);
+        }
+      } catch (e) { /* 采集失败绝不影响对局 */ }
+    }
     // 1.7.0（B1-8）：决策动作日志（L2-lite）——确定性验证/回放数据源；mood 等纯展示动作不记
     if (action !== 'mood') {
       if (!room.actionLog) room.actionLog = [];

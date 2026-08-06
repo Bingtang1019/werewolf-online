@@ -71,9 +71,10 @@ function planTasks(cfg) {
       tasks.push({ id: gameId, gameId, seed: `${seedBase}-r${rci}-${g}`, overrides: { cap: rc.cap, counts: rc.counts, winMode: rc.winMode, botLine: Array(Math.max(1, rc.cap - 1)).fill(cfg.bots || 'smart'), name: rc.name, random: true }, full: !!cfg.out });
     }
   }
+  const sf = cfg.sampleFile ? (path.isAbsolute(cfg.sampleFile) ? cfg.sampleFile : path.join(ROOT, cfg.sampleFile)) : null;
   let i = -1;
   return {
-    total: tasks.length, rec, N, RAND_N, usePresets, randCount, tasks,
+    total: tasks.length, rec, sampleFile: sf, N, RAND_N, usePresets, randCount, tasks,
     next() {
       if (++i >= tasks.length) return null;
       const t = tasks[i];

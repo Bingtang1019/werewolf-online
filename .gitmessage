@@ -1,0 +1,7 @@
+feat: v1.7.7 alpha3-5 wolf-side training pipeline
+
+- wolfTrain/: adaboost (binned stumps, fromJSON rebuilds predict fn), features (reuse voteFeatures 13d), collector (kill+control sampling, debiased), kill.js (god-prioritized night kill, fail-open argmin), rollout.js (night-kill sim), train.js (loop), gridSearch.js (S3 params)
+- game.js: wolf_set kill sample hook (kill + up to 3 random controls, room rng)
+- bot-brain.js: loadWolfGodModel (models/wolf-god-v1.json), buildWolfKillWorld, wolf kill integration (2 sites), S3 params (WOLF_CLAIM_GOD / WOLF_COUNTER_SEER)
+- lab: matrix/balance planTasks return sampleFile for worker merge
+- result: S1 god-classifier AUC 0.89 but balance effect ~0 (77.6% vs 77.0% baseline; god-kill negated by witch/guard defense)

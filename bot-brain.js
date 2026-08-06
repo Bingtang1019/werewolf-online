@@ -21,6 +21,36 @@ function getValueModelForBot() {
   try { _vModel = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'models', 'value-vote-v1.json'), 'utf8')); } catch (e) { _vModel = null; }
   return _vModel;
 }
+/* v1.7.7（α3）：狼侧刀神分类器——models/wolf-god-v1.json（wolfTrain/adaboost 训练产物，fail-open） */
+let _wolfGodModel = null, _wolfGodTried = false;
+function loadWolfGodModel() {
+  if (_wolfGodTried) return _wolfGodModel;
+  _wolfGodTried = true;
+  try {
+    const { AdaBoost } = require('./wolfTrain/adaboost.js');
+    _wolfGodModel = AdaBoost.fromJSON(JSON.parse(fs.readFileSync(path.join(__dirname, 'models', 'wolf-god-v1.json'), 'utf8')));
+  } catch (e) { _wolfGodModel = null; }
+  return _wolfGodModel;
+}
+/* v1.7.7（α3）：刀神分类器 world 构造——候选特征（13 维，复用 voteFeatures）+ 角色映射 + 公开自称神职 */
+function buildWolfKillWorld(room, bot) {
+  const { wolfGodFeatures } = require('./wolfTrain/features.js');
+  const world = { aliveIds: [], features: new Map(), roles: new Map(), roleClaims: new Map() };
+  for (const q of aliveOthers(room, bot)) {
+    world.aliveIds.push(q.id);
+    world.roles.set(q.id, q.role);
+    const f = wolfGodFeatures(room, bot.id, q.id);
+    if (f) world.features.set(q.id, f);
+  }
+  for (const m of room.messages || []) {
+    if (m.ch === 'all' && m.from && m.text) {
+      const mm = m.text.match(/我是(女巫|预言家|猎人|守卫|摄梦人)/);
+      if (mm && !world.roleClaims.has(m.from)) world.roleClaims.set(m.from, mm[1]);
+    }
+  }
+  return world;
+}
+const wolfKillDecide = require('./wolfTrain/kill.js').decideNightKill; // v1.7.7（α3）：刀神决策（区别于 legacy decideNightKill）
 /* ================================================================
    bot-brain.js - 人机决策模块（v1.4.0，适配自开源补丁）
    级别（每个 bot 独立，bot.botLevel；未设置时按房间 botMode 映射：
@@ -216,8 +246,12 @@ function decisionEasy(room, bot) {
               if (!t2 && pool.length) t2 = pool.slice().sort((a, b) => (world.scores[a.id] || 0.5) - (world.scores[b.id] || 0.5))[0];
               target = t2;
             } else {
-              const nk = decideNightKill(world, aliveOthers(room, bot).map(p => p.id), rng());
-              target = nk.target ? byId(room, nk.target) : null;
+              // v1.7.7（α3）：刀神分类器优先（fail-open：模型缺失回退 argmin）；普通狼（非第三方）走此分支
+              const wm = loadWolfGodModel();
+              let t2 = null;
+              if (wm) t2 = byId(room, wolfKillDecide(buildWolfKillWorld(room, bot), wm, { killPriority: { '女巫': 5, '预言家': 4, '猎人': 3, '守卫': 2, '摄梦人': 1 } }));
+              if (!t2) { const nk = decideNightKill(world, aliveOthers(room, bot).map(p => p.id), rng()); t2 = nk.target ? byId(room, nk.target) : null; }
+              target = t2;
             }
             if (target && lp && !lp.isWolf && target.id === lp.id) target = null;
           }
@@ -680,8 +714,12 @@ function decisionSmart(room, bot) {
               if (!t2 && pool.length) t2 = pool.slice().sort((a, b) => (world.scores[a.id] || 0.5) - (world.scores[b.id] || 0.5))[0];
               target = t2;
             } else {
-              const nk = decideNightKill(world, enemies.map(p => p.id), rng());
-              target = nk.target ? byId(room, nk.target) : null;
+              // v1.7.7（α3）：刀神分类器优先（fail-open）；enemies 已排除队友+恋人
+              const wm = loadWolfGodModel();
+              let t2 = null;
+              if (wm) t2 = byId(room, wolfKillDecide(buildWolfKillWorld(room, bot), wm, { killPriority: { '女巫': 5, '预言家': 4, '猎人': 3, '守卫': 2, '摄梦人': 1 } }));
+              if (!t2) { const nk = decideNightKill(world, enemies.map(p => p.id), rng()); t2 = nk.target ? byId(room, nk.target) : null; }
+              target = t2;
             }
             if (!target) target = lp && !lp.isWolf ? null : pick(aliveOthers(room, bot));
           }
@@ -929,6 +967,11 @@ function botTalk(room, bot, level) {
           return chat(genPhrase('wolf_fake_seer', { name: t.name }) || '我是预言家，昨晚查验了' + t.name + '：查杀'); // v1.6.4（A2-5）：组合式生成
         }
       }
+      // v1.7.7（S3）：穿衣服概率参数（WOLF_CLAIM_GOD，网格搜索用；默认0=现状不穿）
+      const claimGodP = parseFloat(process.env.WOLF_CLAIM_GOD || '0');
+      if (isWolf && rng().next() < claimGodP) {
+        return chat(pick(['我是守卫，昨晚守了自己', '我是女巫，药还没用，别急着出我', '我是猎人，开枪前一换一，别惹我']));
+      }
       // v1.5.2：狼美人魅惑高价值目标时威胁自曝（配合卖狼美人）
       if (myRole === 'wolfBeauty') {
         const pack = room.wolfPackMemory || {};
@@ -1050,8 +1093,12 @@ function botTalk(room, bot, level) {
   if (level === 'smart' && claimers.length) {
     if (myRole === 'seer') return chat(pick(TALK_DEBATE_SEER).split('{name}').join(claimers[0].name));
     if (isWolf) {
-      const cc = (claimers.find(c => !(lp && !lp.isWolf && c.id === lp.id)) || claimers[0]); // v1.6.3：狼恋人不踩恋人
-      return chat(pick(TALK_DEBATE_WOLF).split('{name}').join(cc.name));
+      // v1.7.7（S3）：对跳概率参数（WOLF_COUNTER_SEER，默认1=现状必跳；网格搜索设0.3/0.6/0.9）
+      const counterSeerP = process.env.WOLF_COUNTER_SEER != null ? Math.min(1, Math.max(0, parseFloat(process.env.WOLF_COUNTER_SEER))) : 1;
+      if (rng().next() < counterSeerP) {
+        const cc = (claimers.find(c => !(lp && !lp.isWolf && c.id === lp.id)) || claimers[0]); // v1.6.3：狼恋人不踩恋人
+        return chat(pick(TALK_DEBATE_WOLF).split('{name}').join(cc.name));
+      }
     }
   }
   // 3. 施压跟票（v1.6.3：狼恋人不施压恋人；v1.6.4（A2-5）组合式生成）

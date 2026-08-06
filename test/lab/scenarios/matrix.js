@@ -36,8 +36,9 @@ function planTasks(cfg) {
   const seedBase = cfg.seed || 'mx';
   const rec = cfg.out ? createRecorder(path.isAbsolute(cfg.out) ? cfg.out : path.join(ROOT, cfg.out)) : null;
   let ci = -1, gi = gamesPer;
+  const sf = cfg.sampleFile ? (path.isAbsolute(cfg.sampleFile) ? cfg.sampleFile : path.join(ROOT, cfg.sampleFile)) : null;
   return {
-    total: combos.length * gamesPer, rec, combos,
+    total: combos.length * gamesPer, rec, combos, sampleFile: sf,
     next() {
       if (++gi >= gamesPer) { gi = 0; ci++; }
       if (ci >= combos.length) return null;
@@ -51,10 +52,11 @@ function planTasks(cfg) {
 function report(statsOrRecords, cfg) {
   const s = Array.isArray(statsOrRecords) ? summarize(statsOrRecords) : statsOrRecords.result();
   console.log('\n--- 配置矩阵（按 cap 分组，胜率 95% Wilson CI）---');
-  const caps = Object.keys(s.byCap || {}).map(Number).sort((a, b) => a - b);
+  // v1.7.6：byCap key 是 'cap'+数字（createStreamStats 分组前缀），解析出纯 cap 数字
+  const caps = Object.keys(s.byCap || {}).map(k => parseInt(String(k).replace(/^cap/, ''), 10)).filter(n => !isNaN(n)).sort((a, b) => a - b);
   if (!caps.length) { console.log('（无分组数据）'); return; }
   for (const cap of caps) {
-    const g = s.byCap[cap];
+    const g = s.byCap['cap' + cap] || s.byCap[cap];
     const line = Object.entries(g.camps).map(([c, v]) => `${c} ${(v.pct * 100).toFixed(1)}%[${(v.ci[0] * 100).toFixed(0)}-${(v.ci[1] * 100).toFixed(0)}]`).join(' | ');
     console.log(`  cap ${cap}（${g.valid} 局）: ${line}${g.timeouts ? ' | 超时' + g.timeouts : ''}`);
   }
