@@ -7,25 +7,50 @@
  * 关键修正（B1-5 二期）：逐候选评估"假设我投 X"的后果（me 的票参与结算），
  *   否则排除 me 后投 X 无法影响结果，得分无区分度
  * 纪律：纯函数（绝不 mutate 真实 room）；派生 RNG 保证确定性；预算不足自动降 worlds
- * 已知近视边界（P2-4，1.7.3 标注）：只模拟到“放逐”本身，不展开放逐连锁——
+ * 已知近视边界（P2-4，1.7.3 标注）：只模拟到"放逐"本身，不展开放逐连锁——
  *   放逐猎人的开枪、放逐狼美人的魅惑带走（若带走预言家是 -3 量级的损失）未进 payoff。
- *   符合 B1-5“深度分层”规格，但 C 系列前重训/调参时记住：投狼美人的风险被系统性低估。
+ *   符合 B1-5"深度分层"规格，但 C 系列前重训/调参时记住：投狼美人的风险被系统性低估。
+ * 1.7.4（Q1/Q2/动态化）：见 payoffFor 与 rolloutVote 内注释。
  * ========================================================================= */
-const { createRng } = require('./rng.js'); // 1.7.3（P1-2）：不再用 Date.now 兑底（见下）
 
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
+/* 1.7.4（Q1）：动态 payoff——阵营分流 + R/S/M 双线加权（全部公开量）。
+ * 公开量（死后全翻牌）：wolfAlive/godAlive/villAlive = roleCounts − 已翻牌死亡。
+ * payoffP/payoffQ 曲率（0 时精确退化为静态 3/1.5；默认 1）：
+ *   好人侧：放逐狼 A=3×(R0/R)^p（1/R 进度——狼越少越敢投，一票定胜负值得赌）；
+ *           误放逐 B 按神/民线余量加权（神快崩则保守，宁跟票不赌）
+ *   狼侧：放逐好人 A 按神/民线加权（屠边进度）；误投队友 B=1.5×(R0/R)^p（狼越少越贵）
+ * 语义推演（p=q=1）：开局 P*=0.333=现状；残局狼少（R=1）P*≈0.294 更敢投；神快崩（S=1）P*≈0.455 更保守 */
+function payoffFor(world, xIsWolf) {
+  const { faction, wolfAlive, godAlive, villAlive, wolfInit, godInit, villInit, payoffP, payoffQ } = world;
+  const p = payoffP == null ? 1 : payoffP;
+  const q = payoffQ == null ? 1 : payoffQ;
+  const R = Math.max(1, wolfAlive), S = Math.max(1, godAlive), M = Math.max(1, villAlive);
+  const R0 = Math.max(1, wolfInit), S0 = Math.max(1, godInit), M0 = Math.max(1, villInit);
+  const pGod = S / (S + M), pVill = M / (S + M);
+  if (faction === 'wolf') {
+    if (!xIsWolf) return pVill * 3 * Math.pow(M0 / M, q) + pGod * 3 * Math.pow(S0 / S, q);
+    return -1.5 * Math.pow(R0 / R, p);
+  }
+  if (xIsWolf) return 3 * Math.pow(R0 / R, p);
+  return -(pVill * 1.5 * Math.pow(M0 / M, q) + pGod * 1.5 * Math.pow(S0 / S, q));
+}
+
 /**
- * world: { faction, teammates, scores:{id:Pwolf}, votes:{voter:target}, allVoters:[id], me }
+ * world: { faction, teammates, scores:{id:Pwolf}, votes:{voter:target}, allVoters:[id], me,
+ *         wolfAlive, godAlive, villAlive, wolfInit, godInit, villInit, payoffP, payoffQ, sellTarget }
  * state: 候选 id 数组
- * 返回：推荐投的候选 id（或 null）
+ * 返回：{ target, margin }（margin 为相对量：top1-top2 除以 W×单世界得分幅度；调用方用 0.05 相对阈值）
  */
 function rolloutVote(world, state, rng, { worlds = 64 } = {}) {
   if (!state || state.length < 2) return null;
   // 1.7.3（P1-2）：rng 必须由调用方注入——兜底 Date.now 是原生墙钟，虚拟时钟实验室里会悄悄破掉确定性（B1-7 P0②）。
-  // 缺 rng 是调用方 bug，让它在测试里炸出来，而不是线上静默降级。
   if (!rng) throw new Error('rolloutVote requires injected rng（确定性纪律 B1-7 P0②）');
   const r = rng;
+  // 1.7.4（Q2）：卖狼优先——pool 排除队友后 rv.target 永远不可能是卖狼目标，margin≥阈值时卖狼被静默架空；
+  // 与 decideVote 的优先语义对齐（入口特判，pool 过滤前返回；margin=Infinity 保证调用方不回退）
+  if (world.sellTarget && state.includes(world.sellTarget)) return { target: world.sellTarget, margin: Infinity };
   const isWolf = world.faction === 'wolf';
   const teammates = world.teammates || [];
   const pool = state.filter(id => !(isWolf && teammates.includes(id)));
@@ -37,6 +62,7 @@ function rolloutVote(world, state, rng, { worlds = 64 } = {}) {
   const W = pool.length > 10 ? Math.max(4, worlds >> 1) : worlds; // 预算感知
   const score = {};
   for (const x of pool) score[x] = 0;
+  let scale = 0; // 得分幅度累积（margin 相对化用）
 
   for (let w = 0; w < W; w++) {
     // 1) 采样隐藏身份（伯努利，按 P(wolf)）
@@ -45,6 +71,10 @@ function rolloutVote(world, state, rng, { worlds = 64 } = {}) {
       const p = clamp(sc[x] == null ? 0.3 : sc[x], 0.05, 0.95);
       if (r.next() < p) wolfSet.add(x);
     }
+    // 1.7.4（狼侧世界构造修复）：狼 bot 的信念采样会把队友标成好人（P(wolf)≈0.23，77% 概率），
+    // 队友被当好人投票且"投队友"被记成收益（放逐好人）→ 狼 bot 反而倾向投队友。
+    // 狼知道队友（规则内知识，B1-7 纪律允许）——采样后强制并入真实队友。
+    if (world.faction === 'wolf') for (const t of world.teammates || []) wolfSet.add(t);
     // 2) 模拟其他玩家投票（不含 me）——v1.7.2（B-2）：好人分支加入"跟票集中"（优先投已有票的高分候选），
     //    与现实 decideVote 的 concentratedPick 一致（否则模拟比现实更"理性"，平票边缘的 payoff 估计失真）
     const counts = {};
@@ -65,25 +95,33 @@ function rolloutVote(world, state, rng, { worlds = 64 } = {}) {
       }
       if (pick) counts[pick] = (counts[pick] || 0) + 1;
     }
-    // 3) 逐候选评估"假设我投 X"（me 的票参与结算）——收益按"X 是否被放逐 + X 的狼概率"计分：
+    // 3) 逐候选评估"假设我投 X"（me 的票参与结算）——收益 = payoffFor(阵营分流, X 是否狼)：
     //    搭便车修正：若其他人已把 X 投成最高票，投 X 的得分仍按"X 被放逐"计（协作而非规避）；
-    //    风险修正：X 被放逐且是好人 → 投 X 扣分（避免投死好人）；top≠X → 0（投 X 未促成 X 放逐）
+    //    风险修正：X 被放逐且是好人 → 投 X 扣分；top≠X → 0（投 X 未促成 X 放逐）
+    let scaleW = 0;
     for (const x of pool) {
       const c = Object.assign({}, counts, { [x]: (counts[x] || 0) + 1 });
       let top = null, topN = 0;
       for (const k of Object.keys(c)) if (c[k] > topN) { topN = c[k]; top = k; }
       if (!top) continue;
-      if (top === x) { if (wolfSet.has(x)) score[x] += 3; else score[x] -= 1.5; } // v1.7.2（4-②）：payoff 含身份揭示价值——放逐狼+3（票型变强证据喂给 A-1 票型推理）/误放逐好人-1.5（信息污染）；过度风险厌恶被缓解
+      if (top === x) {
+        const g = payoffFor(world, wolfSet.has(x)); // 1.7.4（Q1）：阵营分流——此前狼 bot 也在用好人视角 payoff（放逐狼+3），与 decideVote argmin 直接打架
+        score[x] += g;
+        scaleW += Math.abs(g);
+      }
     }
+    scale += scaleW / Math.max(1, pool.length);
   }
-  // 返回得分最高候选（平局用 rng 打破——派生 RNG 保证确定性）；margin=top1-top2（回退阈值用）
+  // 返回得分最高候选（平局用 rng 打破——派生 RNG 保证确定性）；margin 相对化（1.7.4）：
+  // 绝对阈值 2 相对 ±W×3 的总分尺度近乎恒真，fallback 极少触发——改为 margin/(W×scale)，调用方用 0.05 相对阈值
   let best = null, bs = -Infinity, second = -Infinity;
   for (const x of pool) {
     const s = score[x];
     if (s > bs) { second = bs; bs = s; best = x; }
     else if (s > second) second = s;
   }
-  return { target: best, margin: best ? bs - second : 0 };
+  const scaleNorm = Math.max(1e-9, scale / Math.max(1, W));
+  return { target: best, margin: best ? (bs - second) / (W * scaleNorm) : 0 };
 }
 
-module.exports = { rolloutVote };
+module.exports = { rolloutVote, payoffFor }; // 1.7.4：payoffFor 导出供语义验证/诊断

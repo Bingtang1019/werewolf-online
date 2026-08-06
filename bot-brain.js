@@ -502,6 +502,15 @@ function buildVoteWorld(room, bot) {
     }
     scores[p.id] = s;
   }
+  // 1.7.4：动态 payoff 公开量——wolfAlive/godAlive/villAlive = roleCounts − 已翻牌死亡（死后全翻牌，公开精确；只统计死者不碰活人隐藏身份）
+  const rc = room.roleCounts || {};
+  const wolfInit = (rc.wolf || 0) + (rc.wolfBeauty || 0);
+  const godInit = (rc.seer || 0) + (rc.witch || 0) + (rc.hunter || 0) + (rc.guard || 0) + (rc.dreamer || 0);
+  const villInit = rc.villager || 0;
+  const eff = p => (p.role === 'thief' && p.pickedRole) ? p.pickedRole : p.role;
+  const deadWolf = room.players.filter(q => !q.alive && (eff(q) === 'wolf' || eff(q) === 'wolfBeauty')).length;
+  const deadGod = room.players.filter(q => !q.alive && ['seer', 'witch', 'hunter', 'guard', 'dreamer'].includes(eff(q))).length;
+  const deadVill = room.players.filter(q => !q.alive && eff(q) === 'villager').length;
   return {
     faction: factionOf(room, bot),
     teammates: room.players.filter(p => p.alive && isWolfRole(p)).map(p => p.id),
@@ -510,6 +519,12 @@ function buildVoteWorld(room, bot) {
     sellTarget: sellWolfBeauty(room, bot),
     allVoters: room.players.filter(p => p.alive && !p.leftGame).map(p => p.id), // 1.7.0（B1-5）：rollout 模拟投票者
     me: bot.id,
+    // 1.7.4（动态 payoff）：公开量 + 曲率参数（env 可配，lab 参数纪律：每版记录）
+    //   默认 p=1,q=0：进度侧保留（配对 34:9，p=0.0003 显著，好人+6.3pp）；容错侧回退（28:26，p=0.89 不显著）
+    wolfAlive: Math.max(0, wolfInit - deadWolf), godAlive: Math.max(0, godInit - deadGod), villAlive: Math.max(0, villInit - deadVill),
+    wolfInit, godInit, villInit,
+    payoffP: parseFloat(process.env.PAYOFF_P || '1'),
+    payoffQ: parseFloat(process.env.PAYOFF_Q || '0'),
   };
 }
 function smartVoteTarget(room, bot) {
@@ -1267,7 +1282,7 @@ function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRol
       if (process.env.LAB_DEBUG_ROLLOUT === '1') console.log('[rollout-dbg] scores=' + JSON.stringify(Object.fromEntries(Object.entries(world.scores).map(([k, v]) => [k, +v.toFixed(2)]))) + ' rv=' + (rv && rv.target));
       // v1.7.2（4-①）：rollout 得分差距 <ε 时回退 decideVote 的跟票目标——低信息局（无查杀/票数接近）
       // 64 世界采样噪声大，rollout 可能与公众票型冲突 → 分票 → 狼渔利；跟票在低信息时是防分票的正确策略
-      resTarget = (rv && rv.margin >= 2 && rv.target) ? rv.target : decideVote(world, state, rng()).target;
+      resTarget = (rv && rv.margin >= 0.05 && rv.target) ? rv.target : decideVote(world, state, rng()).target; // 1.7.4：margin 相对化（0.05×W×scale；卖狼 margin=Infinity 恒命中）
     } else {
       resTarget = decideVote(world, state, rng()).target;
     }
