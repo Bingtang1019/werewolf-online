@@ -1651,11 +1651,13 @@ function handleKick(roomId, pid, target, chatSince) {
  *   'passive'挂机：只补必要动作（被刀自救/全员人机时补狼刀），白天一律弃票。
  * 队内有人类时，人机只补 confirm、绝不覆盖人类的共享选择（狼刀/魅惑）。
  */
-const BOT_NAMES = ['豆豆', '阿蓝', '阿紫', '阿青', '阿黄', '阿绿', '阿橙', '阿粉', '阿灰', '阿白', '阿棕', '小雾'];
+const BOT_NAMES = ['豆豆', '阿蓝', '阿紫', '阿青', '阿黄', '阿绿', '阿橙', '阿粉', '阿灰', '阿白', '阿棕', '小雾', '小明', '小刚', '小红', '小花', '小丽', '小芳', '小军', '小兰'];
 function autoBotName(room) {
   const used = new Set(room.players.map(p => p.name));
   let i = 0, name;
-  do { name = '人机·' + BOT_NAMES[(room.players.length + i++) % BOT_NAMES.length]; } while (used.has(name));
+  // 1.7.6：BOT_NAMES 扩容 + 序号兑底——此前 12 个名字在 ≥13 bot 局（15 人局 14 bot）do-while 死循环
+  do { name = '人机·' + BOT_NAMES[(room.players.length + i++) % BOT_NAMES.length]; } while (used.has(name) && i <= BOT_NAMES.length);
+  if (used.has(name)) name = '人机·' + BOT_NAMES[room.players.length % BOT_NAMES.length] + (room.players.length); // 极端兑底：名字+序号
   return name;
 }
 /* 人机行动前等待：默认 10s±25%（7500~12500ms）模拟真人思考节奏（可 BOT_DELAY_MS 覆盖，测试用）

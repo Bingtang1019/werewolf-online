@@ -44,8 +44,9 @@ function createStreamStats() {
   return {
     add(r) {
       addTo(all, r);
-      const cap = r.config && r.config.cap != null ? r.config.cap : null;
-      if (cap != null) { if (!byCap[cap]) byCap[cap] = mkInner(); addTo(byCap[cap], r); }
+      // 分组优先用配置名（balance 每配置一桶），否则按 cap（matrix）
+      const g = r.config && r.config.name != null ? 'n:' + r.config.name : (r.config && r.config.cap != null ? 'cap' + r.config.cap : null);
+      if (g != null) { if (!byCap[g]) byCap[g] = mkInner(); addTo(byCap[g], r); }
       if (r.result && r.result.error) { const k = r.result.error.kind || 'unknown'; errors[k] = (errors[k] || 0) + 1; }
     },
     result() {

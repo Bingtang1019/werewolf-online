@@ -75,7 +75,7 @@ async function runOneLabGame(cfg) {
     return {
       schema: 'lab.game-record@1', gameId: cfg.gameId, seed: cfg.seed, scenario: cfg.scenario || 'lab',
       startedAt: new Date(t0).toISOString(), durMs: Date.now() - t0,
-      config: { cap: cfg.cap, counts: cfg.counts, botLine: line, winMode: cfg.winMode || 'edge' },
+      config: { cap: cfg.cap, counts: cfg.counts, botLine: line, winMode: cfg.winMode || 'edge', name: cfg.name || null },
       result: { winner: room.endInfo ? room.endInfo.winner : null, timeout: false, error: null },
       players,
       events: (room.events || []).map(e => ({
@@ -89,7 +89,7 @@ async function runOneLabGame(cfg) {
   } catch (e) {
     return { schema: 'lab.game-record@1', gameId: cfg.gameId, seed: cfg.seed, scenario: cfg.scenario || 'lab',
       startedAt: new Date(t0).toISOString(), durMs: Date.now() - t0,
-      config: { cap: cfg.cap, counts: cfg.counts, botLine: cfg.botLine || [], winMode: cfg.winMode || 'edge' },
+      config: { cap: cfg.cap, counts: cfg.counts, botLine: cfg.botLine || [], winMode: cfg.winMode || 'edge', name: cfg.name || null },
       result: { winner: null, timeout: true, error: e.kind ? e : { kind: 'engine', msg: e.message } },
       players: [], events: [], firstKill: null };
   } finally {

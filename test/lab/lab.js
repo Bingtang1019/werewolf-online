@@ -23,12 +23,13 @@ const scenarios = {
   deterministic: require('./scenarios/deterministic'),
   paired: require('./scenarios/paired'),
   matrix: require('./scenarios/matrix'), // v1.7.6 第二部分：配置矩阵扫描
+  balance: require('./scenarios/balance'), // v1.7.6：预设+随机比例预测（第三方胜率）
 };
 async function main() {
   const raw = process.argv[2];
   const scenario = raw === 'smoke' ? 'baseline' : raw; // smoke = baseline 的冒烟 preset（PRESETS.smoke）
   if (!raw || !scenarios[scenario]) {
-    console.error(`用法: node test/lab/lab.js <smoke|baseline|sample|deterministic|paired|matrix> [--key=value ...]\n  例: node test/lab/lab.js baseline --games=500 --cap=13 --parallel=8`);
+    console.error(`用法: node test/lab/lab.js <smoke|baseline|sample|deterministic|paired|matrix|balance> [--key=value ...]\n  例: node test/lab/lab.js balance --games=3000 --cupid-only=1 --workers=8`);
     process.exit(1);
   }
   const cfg = buildConfig(raw, process.argv.slice(3));
