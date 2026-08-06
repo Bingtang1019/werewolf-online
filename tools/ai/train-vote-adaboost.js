@@ -55,11 +55,18 @@ function splitByGame(rows, seed) { // gameId 分层：训练/留出不共享同�
 }
 
 // ---------- 决策树桩（加权最小错误） ----------
-function trainStump(X, y, w, nFeat) {
+// 1.7.3（P2-3）：预计算每特征排序（权重更新不改变特征值顺序）——每桩每特征不再 O(n log n) 排序，
+// 整体从 O(T×F×n log n) 降到 O(F×n log n + T×F×n)。重训频繁（AUC 分层迭代期），值得。
+function precomputeOrders(X, nFeat) {
+  const orders = [];
+  for (let f = 0; f < nFeat; f++) orders.push(X.map((x, i) => ({ v: x[f], i })).sort((a, b) => a.v - b.v));
+  return orders;
+}
+function trainStump(orders, y, w, nFeat) {
   let best = null, bestErr = Infinity;
   const totalW = w.reduce((a, b) => a + b, 0);
   for (let f = 0; f < nFeat; f++) {
-    const order = X.map((x, i) => ({ v: x[f], i })).sort((a, b) => a.v - b.v);
+    const order = orders[f];
     let wPos = 0, wNeg = 0;
     for (let k = 0; k < order.length; k++) if (y[order[k].i] === 1) wPos += w[order[k].i]; else wNeg += w[order[k].i];
     let lPos = 0, lNeg = 0, prev = order[0].v;
@@ -89,8 +96,9 @@ function trainAdaBoost(X, y, nFeat, T) {
   const w = y.map(v => (v === 1 ? 1 / (2 * pos) : 1 / (2 * neg))); // 类平衡初始权重
   const stumps = [];
   const errTrace = [];
+  const orders = precomputeOrders(X, nFeat); // 1.7.3（P2-3）
   for (let t = 0; t < T; t++) {
-    const st = trainStump(X, y, w, nFeat);
+    const st = trainStump(orders, y, w, nFeat);
     let err = 0;
     for (let i = 0; i < n; i++) if (stumpPredict(st, X[i]) !== (y[i] === 1 ? 1 : -1)) err += w[i];
     err = Math.max(Math.min(err, 0.5 - 1e-9), 1e-9);
@@ -183,10 +191,12 @@ console.log(`\n--- 三件套验收（留出集 ${test.length} 条）---`);
 console.log(`Brier = ${brier.toFixed(4)}（要求 <0.22）${brier < 0.22 ? '✔' : '✗'}`);
 console.log(`AUC = ${a.toFixed(4)}（要求 >0.6）${a > 0.6 ? '✔' : '✗'}`);
 console.log(`avgPWolf - avgPGood = ${(avgPWolf - avgPGood).toFixed(4)}（v1.7.2 起为报告项，非硬门槛——旧 0.2 门槛对应 A-2 修复前的自举假模型）`);
-// v1.7.2（A-3）：分层 AUC——剥离生态内信号（被投票/被查杀）后的真实判别力，验收可信度依据
+// v1.7.2（A-3）：分层 AUC——剥离生态内信号后的真实判别力，验收可信度依据
+// v1.7.3（P2-2）：no-info 层改用“从未被提及”定义（prev_votes=0 && checked=0 && accused=0）——
+// 旧定义 checked=0 && votes_against=0 会混入“投票刚开闸人人 0 票”的时间早样本（信息少≠从没被提及）
 const layers = {
   '全样本': rows => rows,
-  '无查杀无票信息(checked=0&voted=0)': rows => rows.filter(r => r.features[3] === 0 && r.features[5] === 0),
+  '从未被提及(prev=0&checked=0&accused=0)': rows => rows.filter(r => r.features[3] === 0 && r.features[6] === 0 && r.features[9] === 0),
   '有查杀信息(checked>0)': rows => rows.filter(r => r.features[3] > 0),
   '有票信息(voted>0)': rows => rows.filter(r => r.features[5] > 0),
 };
@@ -201,9 +211,9 @@ for (const [name, f] of Object.entries(layers)) {
   layerAUC[name] = auc(subProbs, subY);
   console.log(`${name}: AUC=${layerAUC[name].toFixed(4)}（n=${sub.length}）`);
 }
-// v1.7.2（A-3）：验收门槛更新——全样本 AUC + 无查杀无票信息 AUC（泛化核心） + 有查杀信息 AUC（跟随公开查验，合法信息流）；
+// v1.7.2（A-3）：验收门槛更新——全样本 AUC + “从未被提及”AUC（泛化核心） + 有查杀信息 AUC（跟随公开查验，合法信息流）；
 // avgP 差值因 A-2 修复后语义变化（旧 0.2 门槛对应自举假象）降为报告项。
-const noInfo = layerAUC['无查杀无票信息(checked=0&voted=0)'];
+const noInfo = layerAUC['从未被提及(prev=0&checked=0&accused=0)'];
 const ckInfo = layerAUC['有查杀信息(checked>0)'];
 const pass = brier < 0.22 && a > 0.6 && noInfo > 0.6 && ckInfo > 0.6;
 if (!pass) { console.error('验收未达标（Brier<0.22 且 全样本AUC>0.6 且 无信息AUC>0.6 且 有查杀AUC>0.6）——调特征/样本量，不输出模型'); process.exit(1); }

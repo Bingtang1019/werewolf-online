@@ -1,20 +1,21 @@
 'use strict';
 /* v1.7.2（5）：B1-4 真正验收——配对检验：同 seed 逐局「带模型 vs LAB_NO_MODEL」→ McNemar。
  * 护栏门槛（分层 AUC）管"模型是不是假的"；配对检验管"模型有没有用"，两个都要。
- * 运行：node tools/ai/model-validate.js [games] [seed] */
+ * 运行：node tools/ai/model-validate.js [games] [seed] [bots]  （默认 simulate=上线档位；v1.7.3：原写死 smart=新 easy，不具代表性） */
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const root = path.resolve(__dirname, '..', '..');
 const GAMES = parseInt(process.argv[2] || '100', 10);
 const SEED = process.argv[3] || 'mv';
+const BOTS = process.argv[4] || 'simulate'; // v1.7.3：默认上线档位（simulate）
 const tmpA = root + '/data/_mv-model.jsonl';
 const tmpB = root + '/data/_mv-nomodel.jsonl';
 for (const f of [tmpA, tmpB]) { try { fs.unlinkSync(f); } catch (e) {} }
 function runLab(model) {
   const env = Object.assign({}, process.env, model ? {} : { LAB_NO_MODEL: '1' });
   execFileSync(process.execPath,
-    [root + '/test/lab/lab.js', 'baseline', '--games=' + GAMES, '--cap=13', '--bots=smart', '--seed=' + SEED, '--out=' + (model ? tmpA : tmpB)],
+    [root + '/test/lab/lab.js', 'baseline', '--games=' + GAMES, '--cap=13', '--bots=' + BOTS, '--seed=' + SEED, '--out=' + (model ? tmpA : tmpB)],
     { cwd: root, env, stdio: 'pipe', timeout: 600000 });
 }
 function load(f) {

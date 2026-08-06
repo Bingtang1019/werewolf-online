@@ -255,9 +255,11 @@ function decisionEasy(room, bot) {
     if (t && world.faction === 'third' && factionOf(room, t) === 'third') t = null;
     // v1.6.4（A2-4）：不确定性表达——置信度低时小概率偏离最优（随机/跟风），高置信才准；被公开查杀/卖狼目标不波动
     if (t) {
-      const conf = confidenceOf(bot, t.id);
+      const conf = confidenceOf(room, bot, t.id); // 1.7.3（F2）：Platt 派生置信度优先
       if (t.id !== world.sellTarget && !isCheckedTarget(room, t) && conf < 0.6 && rng().next() < (0.6 - conf)) {
-        const pool = aliveOthers(room, bot).filter(q => q.id !== t.id && !(lp && !lp.isWolf && q.id === lp.id));
+        // 1.7.3（F5）：波动有界（A5-2 定稿）——只允许偏移到分数 top3，避免“上头投 rank 12”
+        const ranked = aliveOthers(room, bot).map(q => ({ q, s: world.scores[q.id] || 0.5 })).sort((a, b) => b.s - a.s).slice(0, 3);
+        const pool = ranked.map(x => x.q).filter(q => q.id !== t.id && !(lp && !lp.isWolf && q.id === lp.id));
         const other = pick(pool) || t;
         t = other;
       }
@@ -297,8 +299,14 @@ function updateBelief(room, bot, targetId, evidence) {
   if (!bot.botMemory.beliefs) initBeliefs(room, bot);
   const b = bot.botMemory.beliefs[targetId];
   if (!b) return;
-  // v1.7.2（A-1）：放逐结算的票型反推方向修正——狼不投狼队友（除卖狼），故：
-  // 放逐狼 → 投他的人≈全是好人 → 嫌疑应显著降低（0.4）；放逐好人 → 投他的人混着狼（狼 argmin 精准投好人）→ 嫌疑应升高（2.5）
+  // v1.7.2（A-1）+ v1.7.3（F1）：放逐票型反推的完整故事——
+  // ①方向：投票方向统计（200 局）：放逐狼 → 投票者中狼 5.5%（贝叶斯 LR≈0.20）→ 投狼者嫌疑应降；
+  //   放逐好人 → 投票者中狼 30.7%（贝叶斯 LR≈1.48）→ 投好人者嫌疑应升。狼不投狼队友（除卖狼）实锤。
+  // ②强度（战略防御，非最优贝叶斯）：实现取 0.7（方向温和版）与 1.0（中性）——1.48 被故意放弃：
+  //   放逐好人后给“投他者”升嫌疑会引发好人自相残杀级联（放逐一个好→投他的一圈好人嫌疑升→下轮被放逐→
+  //   更多人嫌疑升；狼受益）。实测：仅 1.4→1.0 就让好人胜率翻倍（24%→48%，commit 0a15a97）。
+  // ③分层：信念层温和/中性化，判别责任交给模型层（特征 votes_against/prev_votes 不受 LR 中性化影响）。
+  //   若未来改回 1.4，必须重跑 ① 的统计与 ② 的对照，否则平衡一夜回解放前。
   const LR = { check_wolf: 19, check_good: 0.05, killed_by_wolf: 0.1, voted_out_wolf: 0.7, voted_out_good: 1.0, silver_water: 0.05, guard_protected: 0.7 }[evidence] || 1;
   const odds = (b.wolf / Math.max(b.good, 0.01)) * LR;
   b.wolf = odds / (1 + odds);
@@ -670,9 +678,11 @@ function decisionSmart(room, bot) {
     if (target && lp && !lp.isWolf && target === lp.id) target = null;
     // v1.6.4（A2-4）：低置信波动（smart 信息多通常置信高，波动小；被公开查杀目标不波动；卖狼=明确策略不波动）
     if (target) {
-      const conf = confidenceOf(bot, target);
+      const conf = confidenceOf(room, bot, target); // 1.7.3（F2）：Platt 派生置信度优先
       if (target !== world.sellTarget && !isCheckedTarget(room, byId(room, target)) && conf < 0.55 && rng().next() < (0.55 - conf)) {
-        const pool = aliveOthers(room, bot).filter(q => q.id !== target && !(lp && !lp.isWolf && q.id === lp.id));
+        // 1.7.3（F5）：波动有界（A5-2 定稿）——只允许偏移到分数 top3
+        const ranked = aliveOthers(room, bot).map(q => ({ q, s: world.scores[q.id] || 0.5 })).sort((a, b) => b.s - a.s).slice(0, 3);
+        const pool = ranked.map(x => x.q).filter(q => q.id !== target && !(lp && !lp.isWolf && q.id === lp.id));
         const other = pick(pool);
         if (other) target = other.id;
       }
@@ -1268,9 +1278,11 @@ function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRol
     if (vote && world.faction === 'third' && factionOf(room, vote) === 'third') vote = null;
     // v1.6.4（A2-4）：低置信波动（simulate 证据更足通常更稳；被公开查杀目标不波动；卖狼不波动）
     if (vote) {
-      const conf = confidenceOf(bot, vote.id);
+      const conf = confidenceOf(room, bot, vote.id); // 1.7.3（F2）：Platt 派生置信度优先
       if (vote.id !== world.sellTarget && !isCheckedTarget(room, vote) && conf < 0.55 && rng().next() < (0.55 - conf)) {
-        const pool2 = state.map(id => byId(room, id)).filter(Boolean).filter(q => q.id !== vote.id && !(lp && !lp.isWolf && q.id === lp.id));
+        // 1.7.3（F5）：波动有界（A5-2 定稿）——只允许偏移到候选分数 top3
+        const ranked = state.map(id => ({ q: byId(room, id), s: world.scores[id] || 0.5 })).filter(x => x.q).sort((a, b) => b.s - a.s).slice(0, 3);
+        const pool2 = ranked.map(x => x.q).filter(q => q.id !== vote.id && !(lp && !lp.isWolf && q.id === lp.id));
         const other = pick(pool2);
         if (other) vote = other;
       }

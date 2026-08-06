@@ -34,6 +34,7 @@ async function runOne(i) {
     let prevPhase = room.phase;
     let guard = 0;
     while (room.phase !== 'ended' && ++guard < 60000) {
+      // 1.7.3（F9）：只捕 prevPhase==='vote' 的结算，pk_vote 的放逐会丢失——13 人局 pk 罕见，统计误差可忽略；如需精确可扩展 'pk_vote'
       // vote → 非 vote 的转变 = 本轮投票结算完成（votes 保留到下次 startVote）
       if (prevPhase === 'vote' && room.phase !== 'vote' && room.lastVoteResult && room.lastVoteResult.exiled) {
         const ex = room.players.find(p => p.id === room.lastVoteResult.exiled);

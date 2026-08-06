@@ -6,6 +6,7 @@
  * ========================================================================= */
 const fs = require('fs');
 const path = require('path');
+const { FEATURE_NAMES } = require('./features.js'); // 1.7.3（P1-1）：特征数量/名称联动校验（features.js 无副作用依赖，require 安全）
 const MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v1.json');
 
 let _model = null;
@@ -15,6 +16,10 @@ let _tried = false;
 function validModel(m) {
   if (!m || !Array.isArray(m.stumps) || !m.platt) return false;
   if (!Array.isArray(m.features) || !m.features.length) return false;
+  // 1.7.3（P1-1）：特征数量与名称必须与当前 FEATURE_NAMES 完全一致——
+  // features.js 改维度后旧模型若照常加载，features[st.f] 全部合法但语义错位，静默用错特征（不报错不 NaN）
+  if (m.features.length !== FEATURE_NAMES.length) return false;
+  for (let i = 0; i < m.features.length; i++) if (m.features[i] !== FEATURE_NAMES[i]) return false;
   if (typeof m.platt.A !== 'number' || typeof m.platt.B !== 'number' || !isFinite(m.platt.A) || !isFinite(m.platt.B)) return false;
   for (const st of m.stumps) {
     if (!st || typeof st.f !== 'number' || st.f < 0 || st.f >= m.features.length) return false;

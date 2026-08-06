@@ -12,6 +12,12 @@
  * 零依赖、纯函数、可快照（只读 botMemory，不 mutate）。
  * ========================================================================= */
 const MIN_C = 0.15, MAX_C = 0.95;
+/* 1.7.3（F2）：Platt 派生置信度——模型可用时，波动层/混沌层直接消费模型对目标 P(wolf) 的确定性。
+ * 公式 1 - |2P-1|：P=0.85 → 0.70（高置信不波动），P=0.5 → 0.10（低置信可波动），P=0.99 → 0.98。
+ * 否则模型给出 P(wolf)=0.85 的高置信决策，但 suspicion 方差版算出 conf<0.55，波动层照样把这一票打飞
+ * ——模型精度被波动层系统性浪费（paired +24pp 是“被波动浪费后”的结果）。 */
+const { getVoteModel, modelProb } = require('./model-loader.js');
+const { voteFeatures } = require('./features.js');
 
 function suspicionVariance(mem) {
   const s = (mem && mem.suspicion) || {};
@@ -23,12 +29,22 @@ function suspicionVariance(mem) {
 
 function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
 
-/* confidenceOf(bot, targetId) => 0..1
- * - 方差项：最可疑者越突出（嫌疑方差大）→ 越确定（“看准了”）；全部接近（方差≈0）→ 分不清谁最可疑 → 低置信
- * - 目标项：目标嫌疑相对全场均值越高 → 置信越高（“看准了才下手”）
+/* confidenceOf(room, bot, targetId) => 0..1
+ * - 模型可用：Platt 派生置信度（1-|2P-1|），波动/混沌零改动受益（A5-1“B1 只替换内部实现”闭环）
+ * - 模型不可用（fail-open / LAB_NO_MODEL）：回退 suspicion 方差版
+ *   · 方差项：最可疑者越突出（嫌疑方差大）→ 越确定；全部接近 → 低置信
+ *   · 目标项：目标嫌疑相对全场均值越高 → 置信越高
  * 两者加权，避免只有方差时“全都怀疑/全都不怀疑”的局置信度失真。 */
-function confidenceOf(bot, targetId) {
+function confidenceOf(room, bot, targetId) {
   if (!bot || !targetId) return MIN_C;
+  const m = getVoteModel();
+  if (m && room) {
+    const f = voteFeatures(room, bot.id, targetId);
+    if (f) {
+      const p = modelProb(m, f);
+      if (p != null) return clamp(1 - Math.abs(2 * p - 1), MIN_C, MAX_C);
+    }
+  }
   const mem = bot.botMemory || {};
   const v = suspicionVariance(mem);
   // 方差归一化（经验量级：suspicion 0~100+，方差 400 以上视为“非常突出”）

@@ -7,8 +7,11 @@
  * 关键修正（B1-5 二期）：逐候选评估"假设我投 X"的后果（me 的票参与结算），
  *   否则排除 me 后投 X 无法影响结果，得分无区分度
  * 纪律：纯函数（绝不 mutate 真实 room）；派生 RNG 保证确定性；预算不足自动降 worlds
+ * 已知近视边界（P2-4，1.7.3 标注）：只模拟到“放逐”本身，不展开放逐连锁——
+ *   放逐猎人的开枪、放逐狼美人的魅惑带走（若带走预言家是 -3 量级的损失）未进 payoff。
+ *   符合 B1-5“深度分层”规格，但 C 系列前重训/调参时记住：投狼美人的风险被系统性低估。
  * ========================================================================= */
-const { createRng } = require('./rng.js');
+const { createRng } = require('./rng.js'); // 1.7.3（P1-2）：不再用 Date.now 兑底（见下）
 
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
@@ -19,7 +22,10 @@ function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
  */
 function rolloutVote(world, state, rng, { worlds = 64 } = {}) {
   if (!state || state.length < 2) return null;
-  const r = rng || createRng((Date.now() >>> 0) || 1);
+  // 1.7.3（P1-2）：rng 必须由调用方注入——兜底 Date.now 是原生墙钟，虚拟时钟实验室里会悄悄破掉确定性（B1-7 P0②）。
+  // 缺 rng 是调用方 bug，让它在测试里炸出来，而不是线上静默降级。
+  if (!rng) throw new Error('rolloutVote requires injected rng（确定性纪律 B1-7 P0②）');
+  const r = rng;
   const isWolf = world.faction === 'wolf';
   const teammates = world.teammates || [];
   const pool = state.filter(id => !(isWolf && teammates.includes(id)));

@@ -17,9 +17,12 @@
 
 /* 平局打破：同分（无证据）时用注入 rng 打乱，避免稳定排序固定刀/投“座位最小”者（v1.6.4 行为回归） */
 function shuffleArr(arr, rng) {
+  // 1.7.3（P1-2）：rng 必须由调用方注入——Math.random 兑底是确定性泄漏点（B1-7 P0②）。
+  // 缺 rng 是调用方 bug，让它在测试里炸出来。
+  if (!rng) throw new Error('decideVote/decideNightKill requires injected rng（确定性纪律 B1-7 P0②）');
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
-    const j = rng ? rng.int(i + 1) : Math.floor(Math.random() * (i + 1));
+    const j = rng.int(i + 1);
     const t = a[i]; a[i] = a[j]; a[j] = t;
   }
   return a;

@@ -85,12 +85,12 @@ function setBeliefs(bot, map) { // 1.7.0（B1-1②）：阶梯后 easy←现smar
 // ---- V4：confidenceOf 范围与单调性 ----
 {
   const bot = { botMemory: { suspicion: { A: 10, B: 12, C: 11, D: 9 } } };
-  const c1 = conf.confidenceOf(bot, 'B'); // 分散 → 低
+  const c1 = conf.confidenceOf(null, bot, 'B'); // 分散 → 低
   const bot2 = { botMemory: { suspicion: { A: 5, B: 95, C: 6, D: 7 } } };
-  const c2 = conf.confidenceOf(bot2, 'B'); // 集中 → 高
+  const c2 = conf.confidenceOf(null, bot2, 'B'); // 集中 → 高
   assert(c1 >= 0.15 && c1 <= 0.95 && c2 >= 0.15 && c2 <= 0.95, 'V4a confidenceOf 输出在 0.15..0.95（' + c1.toFixed(2) + ' / ' + c2.toFixed(2) + '）');
   assert(c2 > c1, 'V4b 最可疑者越突出（方差大）置信越高（' + c1.toFixed(2) + ' < ' + c2.toFixed(2) + '）');
-  assert(conf.confidenceOf(null, 'x') === 0.15, 'V4c 无记忆 → 最低置信（防御）');
+  assert(conf.confidenceOf(null, null, 'x') === 0.15, 'V4c 无记忆 → 最低置信（防御）');
 }
 
 if (failures) { console.error(`\n共 ${failures} 处失败`); process.exit(1); }
