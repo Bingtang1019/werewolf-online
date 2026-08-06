@@ -4,7 +4,7 @@
  * S2 杀掉服务器（TerminateProcess）→ 新实例启动 → 房间与对局进度恢复
  * S3 恢复后继续推进（advance + bot 行动）→ 对局正常（间接验证 bot 记忆 Set 恢复）
  * 运行：node test/check-snapshot.js */
-const { spawn } = require('child_process');
+const { spawn, execSync: execSync2 } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const ROOT = path.join(__dirname, '..');
@@ -27,11 +27,12 @@ async function main() {
   // 清理旧快照
   try { fs.unlinkSync(SNAP); } catch (e) {}
   try { fs.unlinkSync(SNAP + '.tmp'); } catch (e) {}
+  try { fs.unlinkSync(SNAP + '.bak'); } catch (e) {} // 1.7.6：旧 .bak 损坏会污染 loadSnapshot 回退
 
   // ---- 实例 A：建房并推进到夜晚 ----
   const envA = { ...process.env, PORT: String(PORT_A), SNAPSHOT_SEC: '3', PHASE_TIMEOUT: '60', NIGHT_TIMEOUT: '45', BOT_DELAY_MS: '400' };
   const srvA = spawn(process.execPath, [path.join(ROOT, 'server.js')], { env: envA, stdio: 'ignore' });
-  if (!(await waitReady('http://127.0.0.1:' + PORT_A))) { console.error('实例 A 未就绪'); srvA.kill(); process.exit(1); }
+  if (!(await waitReady('http://127.0.0.1:' + PORT_A))) { console.error('实例 A 未就绪'); srvA.kill('SIGKILL'); try { execSync2('taskkill /PID ' + srvA.pid + ' /F /T'); } catch (e) {} process.exit(1); }
   const BA = 'http://127.0.0.1:' + PORT_A;
   const c = await post(BA, '/api/create', { name: '快照房主' });
   const room = c.roomId, host = c.playerId;
@@ -67,13 +68,13 @@ async function main() {
   assert(!!found, 'S2c 快照含目标房间');
 
   // 杀掉实例 A
-  srvA.kill();
+  srvA.kill('SIGKILL'); try { execSync2('taskkill /PID ' + srvA.pid + ' /F /T'); } catch (e) {}
   await sleep(1500);
 
   // ---- 实例 B：恢复 ----
   const envB = { ...process.env, PORT: String(PORT_B), SNAPSHOT_SEC: '3', PHASE_TIMEOUT: '60', NIGHT_TIMEOUT: '45', BOT_DELAY_MS: '400' };
   const srvB = spawn(process.execPath, [path.join(ROOT, 'server.js')], { env: envB, stdio: 'ignore' });
-  if (!(await waitReady('http://127.0.0.1:' + PORT_B))) { console.error('实例 B 未就绪'); srvB.kill(); process.exit(1); }
+  if (!(await waitReady('http://127.0.0.1:' + PORT_B))) { console.error('实例 B 未就绪'); srvB.kill('SIGKILL'); try { execSync2('taskkill /PID ' + srvB.pid + ' /F /T'); } catch (e) {} process.exit(1); }
   const BB = 'http://127.0.0.1:' + PORT_B;
   const v2 = await state(BB, room, host);
   assert(v2.roomId === room && !v2.error, 'S3a 房间恢复（room-not-found 未出现）');
@@ -104,7 +105,7 @@ async function main() {
   await sleep(1000);
   try { fs.unlinkSync(SNAP); } catch (e) {}
   try { fs.unlinkSync(SNAP + '.tmp'); } catch (e) {}
-  srvB.kill();
+  srvB.kill('SIGKILL'); try { execSync2('taskkill /PID ' + srvB.pid + ' /F /T'); } catch (e) {}
   await sleep(300);
 
   if (failures) { console.error('\n共 ' + failures + ' 处失败'); process.exit(1); }
