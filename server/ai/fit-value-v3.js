@@ -331,7 +331,24 @@ function main() {
     console.log(`  ${cfg}: AUC ${a.toFixed(4)} (n=${items.length}) V[${minV.toFixed(3)},${maxV.toFixed(3)}] std=${sdV.toFixed(4)}`);
   }
   const eqAuc = Object.values(perConfig).reduce((s, c) => s + c.auc, 0) / Math.max(1, Object.keys(perConfig).length);
-  console.log(`[v3] config-equal-weight holdout AUC: ${eqAuc.toFixed(4)}`);
+  console.log(`[v3] config-equal-weight holdout AUC（preset 级 9 配置）: ${eqAuc.toFixed(4)}`);
+
+  // ---- cap 级评估（12p/9p 等：lab 未训配置的 cap 聚合路由——P0-1 修复，验收覆盖生产路由键）----
+  const capKeyOf = cfg => ((cfg.match(/\d+/) || [''])[0]) + 'p';
+  const testByCap = new Map();
+  for (const r of testRows) {
+    const ck = capKeyOf(r.cfg);
+    if (!testByCap.has(ck)) testByCap.set(ck, []);
+    for (const s of r.states) if (s.phase === 'pre') testByCap.get(ck).push({ v: blended(s, ck), y: r.y });
+  }
+  for (const [ck, items] of testByCap) {
+    if (perConfig[ck]) continue; // preset 级已覆盖（4p/6p/8p/15p 与 cap 级同键）
+    const ys = items.map(i => i.y), vs = items.map(i => i.v);
+    const minV = Math.min(...vs), maxV = Math.max(...vs), meanV = vs.reduce((a, b) => a + b, 0) / vs.length;
+    const sdV = Math.sqrt(vs.reduce((a, b) => a + (b - meanV) ** 2, 0) / vs.length);
+    perConfig[ck] = { auc: +auc(ys, vs).toFixed(4), n: items.length, capAggregated: true, vStats: { min: +minV.toFixed(4), max: +maxV.toFixed(4), mean: +meanV.toFixed(4), std: +sdV.toFixed(4) }, calibration: calibration(ys, vs), pavCalibration: pavCalibration(ys, vs) };
+    console.log(`  ${ck}（cap 聚合）: AUC ${perConfig[ck].auc.toFixed(4)} (n=${items.length})`);
+  }
 
   // ---- payoff scale ----
   const deltaByCfg = new Map();
@@ -348,7 +365,25 @@ function main() {
     const sd = Math.sqrt(ds.reduce((a, b) => a + (b - mean) ** 2, 0) / ds.length);
     payoffScale[cfg] = +(1 / (sd || 1)).toFixed(3);
   }
-  console.log('[v3] payoffScale:', JSON.stringify(payoffScale));
+  console.log('[v3] payoffScale（preset 级）:', JSON.stringify(payoffScale));
+
+  // ---- cap 级 payoffScale（P0-1：cap 聚合 local 的 ΔV std 反推——lab 未训配置路由键必须命中）----
+  const deltaByCap = new Map();
+  for (const r of trainRows) {
+    const ck = capKeyOf(r.cfg);
+    for (let i = 1; i < r.states.length; i++) {
+      const d = blended(r.states[i], ck) - blended(r.states[i - 1], ck);
+      if (!deltaByCap.has(ck)) deltaByCap.set(ck, []);
+      deltaByCap.get(ck).push(d);
+    }
+  }
+  for (const [ck, ds] of deltaByCap) {
+    if (payoffScale[ck]) continue;
+    const mean = ds.reduce((a, b) => a + b, 0) / ds.length;
+    const sd = Math.sqrt(ds.reduce((a, b) => a + (b - mean) ** 2, 0) / ds.length);
+    payoffScale[ck] = +(1 / (sd || 1)).toFixed(3);
+  }
+  console.log('[v3] payoffScale（含 cap 级）:', JSON.stringify(payoffScale));
 
   const model = {
     version: 'v3',
@@ -373,6 +408,8 @@ function main() {
       lambda: opt.lambda,
       priorCheck: dirOk ? 'PASS' : 'FAIL',
       replaces: 'value-vote-v2.json',
+      filterNotes: 'train/test 为 holdout 分层划分（seed=42 确定性 rnd）；无投票节点局（快速结束/无 exile 事件）被跳过（states.length===0）；4p 补采 3500 局与首采 1500 局合并（覆盖 bug 后重采，实际 5000 局存档）——存档 16998 局 vs train+test 15753 局差 1245 局即无节点局过滤量',
+      uncertaintyNote: 'uncertainty.invA = global 训练 A（未归一化特征）的逆，13×13；±25 对角/交叉结构 = T_alive 与 wolfAlive/godAlive/villAlive 精确共线（存活总数=三阵营和）的 Ridge 响应——P1-B Thompson 前必须验证尺度（当前 invA[0][0]≈0.0024 对应有效样本 ~400，勿直接作后验方差）',
       note: 'LSTD(0,γ=1) — V is expected-reward scale; payoff = ΔV × payoffScale[config]',
     },
   };
@@ -415,4 +452,4 @@ function tuneAlpha(testRows, wGlobal, local, byCfg, defaultN0) {
 }
 
 if (require.main === module) main();
-module.exports = { fitLSTD, buildTransitions, rebuildVoteStates, rebuildEventStates, eventsToDays, auc, calibration, pavCalibration, main };
+module.exports = { fitLSTD, buildTransitions, rebuildEventStates, eventsToDays, auc, calibration, pavCalibration, main };

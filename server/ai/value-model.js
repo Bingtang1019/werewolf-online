@@ -78,9 +78,9 @@ function value(state, config) {
 /** payoff aligned with rollout semantics: one-step Bellman improvement, per-config scaled */
 function payoff(prevState, nextState, config) {
   const m = loadV3();
-  if (!m) return 0;
   const d = value(nextState, config) - value(prevState, config);
-  const scale = (m.payoffScale && m.payoffScale[config]) || 1;
+  const scale = m.payoffScale && m.payoffScale[config];
+  if (!scale) throw new Error(`[v3] A-2: payoffScale 缺配置 key "${config}"（训练/推理不匹配，禁止静默 fallback）`);
   return d * scale;
 }
 
