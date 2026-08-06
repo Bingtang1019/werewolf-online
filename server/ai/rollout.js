@@ -13,6 +13,9 @@
  * 1.7.4（Q1/Q2/动态化）：见 payoffFor 与 rolloutVote 内注释。
  * ========================================================================= */
 
+const fs = require('fs');
+const path = require('path');
+
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 
 /* 1.7.4（Q1）：动态 payoff——阵营分流 + R/S/M 双线加权（全部公开量）。
@@ -35,6 +38,39 @@ function payoffFor(world, xIsWolf) {
   }
   if (xIsWolf) return 3 * Math.pow(R0 / R, p);
   return -(pVill * 1.5 * Math.pow(M0 / M, q) + pGod * 1.5 * Math.pow(S0 / S, q));
+}
+
+/* 数据驱动 V 差分 payoff（1.7.4 二期）：从 models/value-vote-v1.json 加载逻辑回归 V(R,S,M,N)，
+ * payoff = V(s')−V(s)（s' = 放逐 X 后的状态，按 X 身份 R/S/M −1）——曲率由数据定，不猜 p。
+ * 拟合：1500 局 4717 个投票时刻样本，AUC=0.7789（修复 roleKey 重建后）。
+ * 尺度：K 放大到与解析版（3/1.5）可比——保相对权重、调绝对尺度；margin 相对化不受影响。
+ * 启用：PAYOFF_MODE=value；fail-open：模型缺失回退解析版 payoffFor。 */
+let _valueModel = null, _valueTried = false;
+const VALUE_PATH = path.join(__dirname, '..', '..', 'models', 'value-vote-v1.json');
+function getValueModel() {
+  if (_valueTried) return _valueModel;
+  _valueTried = true;
+  try { _valueModel = JSON.parse(fs.readFileSync(VALUE_PATH, 'utf8')); } catch (e) { _valueModel = null; }
+  return _valueModel;
+}
+function valuePayoff(world, xIsWolf) {
+  const m = getValueModel();
+  if (!m) return payoffFor(world, xIsWolf);
+  const sig = x => 1 / (1 + Math.exp(-x));
+  const V = (R, S, M, N) => sig(m.w[0] + m.w[1] * R + m.w[2] * S + m.w[3] * M + m.w[4] * N + m.w[5] * R * S + m.w[6] * R * M + m.w[7] * S * M);
+  const R = Math.max(1, world.wolfAlive), S = Math.max(1, world.godAlive), M = Math.max(1, world.villAlive);
+  const N = world.wolfAlive + world.godAlive + world.villAlive; // 存活总数（狼/神/民三分，不 clamp）
+  const dG = V(Math.max(0, R - 1), S, M, Math.max(0, N - 1)) - V(R, S, M, N);
+  const dV = V(R, Math.max(0, S - 1), M, Math.max(0, N - 1)) - V(R, S, M, N);
+  const dM = V(R, S, Math.max(0, M - 1), Math.max(0, N - 1)) - V(R, S, M, N);
+  const pGod = S / (S + M), pVill = M / (S + M);
+  const K = m.K || 1;
+  if (world.faction === 'wolf') {
+    if (!xIsWolf) return K * (pGod * -dV + pVill * -dM); // 放逐好人 → 好人胜率降 → 狼收益
+    return K * -dG; // 误投队友 → 狼少 → 好人胜率升 → 狼代价
+  }
+  if (xIsWolf) return K * dG;
+  return -K * (pGod * dV + pVill * dM);
 }
 
 /**
@@ -105,7 +141,9 @@ function rolloutVote(world, state, rng, { worlds = 64 } = {}) {
       for (const k of Object.keys(c)) if (c[k] > topN) { topN = c[k]; top = k; }
       if (!top) continue;
       if (top === x) {
-        const g = payoffFor(world, wolfSet.has(x)); // 1.7.4（Q1）：阵营分流——此前狼 bot 也在用好人视角 payoff（放逐狼+3），与 decideVote argmin 直接打架
+        // 1.7.4（Q1）：阵营分流——此前狼 bot 也在用好人视角 payoff（放逐狼+3），与 decideVote argmin 直接打架
+        // 1.7.4（二期）：PAYOFF_MODE=value 时用数据驱动 V 差分，否则解析幂律（默认 p=1,q=0）
+        const g = process.env.PAYOFF_MODE === 'value' ? valuePayoff(world, wolfSet.has(x)) : payoffFor(world, wolfSet.has(x));
         score[x] += g;
         scaleW += Math.abs(g);
       }

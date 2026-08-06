@@ -14,8 +14,9 @@ const PA = parseFloat(process.env.PC_PA || '1'), QA = parseFloat(process.env.PC_
 const PB = parseFloat(process.env.PC_PB || '0'), QB = parseFloat(process.env.PC_QB || '0');
 const tmpA = root + '/data/_pc-dyn.jsonl';
 const tmpB = root + '/data/_pc-static.jsonl';
-function runLab(pP, pQ, out) {
+function runLab(pP, pQ, mode, out) {
   const env = Object.assign({}, process.env, { PAYOFF_P: String(pP), PAYOFF_Q: String(pQ) });
+  if (mode === 'value') env.PAYOFF_MODE = 'value'; else delete env.PAYOFF_MODE;
   execFileSync(process.execPath,
     [root + '/test/lab/lab.js', 'baseline', '--games=' + GAMES, '--cap=13', '--bots=' + BOTS, '--seed=' + SEED, '--out=' + out],
     { cwd: root, env, stdio: 'pipe', timeout: 900000 });
@@ -28,8 +29,10 @@ function mcnemar(a, b) {
   return { chi2, p: erfc(Math.sqrt(chi2 / 2)), better: a > b ? '动态' : '静态' };
 }
 for (const f of [tmpA, tmpB]) { try { fs.unlinkSync(f); } catch (e) {} }
-console.log('跑局中（A: p=' + PA + ' q=' + QA + '）...'); runLab(PA, QA, tmpA);
-console.log('跑局中（B: p=' + PB + ' q=' + QB + '）...'); runLab(PB, QB, tmpB);
+const MODE_A = process.env.PAYOFF_MODE_A || 'analytic';
+const MODE_B = process.env.PAYOFF_MODE_B || 'analytic';
+console.log('跑局中（A: p=' + PA + ' q=' + QA + ' mode=' + MODE_A + '）...'); runLab(PA, QA, MODE_A, tmpA);
+console.log('跑局中（B: p=' + PB + ' q=' + QB + ' mode=' + MODE_B + '）...'); runLab(PB, QB, MODE_B, tmpB);
 const A = load(tmpA), B = load(tmpB);
 let a = 0, b = 0, dynGood = 0, stGood = 0, n = 0;
 for (const k of Object.keys(A)) {
