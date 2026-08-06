@@ -56,7 +56,9 @@ function payoffFor(world, xIsWolf) {
  * 尺度：K 放大到与解析版（3/1.5）可比——保相对权重、调绝对尺度；margin 相对化不受影响。
  * 启用：PAYOFF_MODE=value；fail-open：模型缺失回退解析版 payoffFor。 */
 let _valueModel = null, _valueTried = false;
-const VALUE_PATH = path.join(__dirname, '..', '..', 'models', 'value-vote-v1.json');
+// v1.7.10：v2 替换启用（生产默认改 value-vote-v2.json；MODEL_VALUE_VOTE 可覆盖——评估用）
+// v1 AUC=0.3157 反向过时（当前代码数据），v2 AUC=0.7620 重拟合；生产 smart 档 rollout 不参与，替换零影响；simulate 档替换偏狼 +1.93pp（见 archive/lover-v2/README）
+const VALUE_PATH = process.env.MODEL_VALUE_VOTE || path.join(__dirname, '..', '..', 'models', 'value-vote-v2.json');
 function getValueModel() {
   if (_valueTried) return _valueModel;
   _valueTried = true;

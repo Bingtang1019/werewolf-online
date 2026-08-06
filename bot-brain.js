@@ -623,8 +623,41 @@ function smartVoteTarget(room, bot) {
   const lp = loverPartner(room, bot); // v1.6.3：狼恋人不投恋人（恋人互知，规则内）
   if (isWolf && lp && !lp.isWolf) pool = pool.filter(p => p.id !== lp.id);
   if (!pool.length) return null;
-  const t = concentratedPick(room, pool, p => (isWolf ? -wolfProb(room, bot, p.id) : wolfProb(room, bot, p.id)));
+  // v1.7.11（⑤）：第三方平衡接入 vGood（value-v2 好人胜率估值）——好人劣势（vGood<0.5）帮好人（投狼概率最高）、
+  // 好人优势（vGood>0.5）帮狼（投好人概率最高）；概率软化（T=0.15）避免 0.5 附近硬切抖动。此前 vGood 死数据未接入（1.7.6 功能未上线）
+  let scoreFn = p => (isWolf ? -wolfProb(room, bot, p.id) : wolfProb(room, bot, p.id));
+  // v1.7.11（⑤）：第三方平衡——vGood 接入默认关闭（THIRD_BALANCE=1 启用）。
+  // 实测（确定性版，无 RNG 分叉）：启用后局四 wolf 52.9→45.8（Δ−7.13pp，CI[-8.4,-5.8]）——帮弱者力度>帮强者，过度利好好人，
+  // 生产落带被破坏（局四翻 FAIL）。T/bias 回调无效（v2 sigmoid 输出双峰，中间区无决策）。
+  // 待平衡回调（改 vGood 计算分布或帮好人力度限制）后再默认启用。
+  if (myFaction === 'third' && process.env.THIRD_BALANCE === '1') {
+    const vGood = thirdBalanceV(room);
+    const T = parseFloat(process.env.THIRD_BALANCE_T || '0.15');
+    const bias = parseFloat(process.env.THIRD_BALANCE_BIAS || '0'); // >0 → pHelpGood 增大 → 更帮好人（狼更弱）
+    const pHelpGood = 1 / (1 + Math.exp((vGood - 0.5 - bias) / T));
+    // 确定性权重混合（不消耗 RNG，配对干净）
+    scoreFn = p => (2 * pHelpGood - 1) * wolfProb(room, bot, p.id);
+  }
+  const t = concentratedPick(room, pool, scoreFn);
   return t ? t.id : null;
+}
+/* v1.7.11（⑤）：第三方平衡——好人胜率估值 V(R,S,M)（value-v2 模型，fail-open 0.5）——1.7.6 死数据正式接入 */
+function thirdBalanceV(room) {
+  try {
+    const vm = getValueModelForBot();
+    if (!vm) return 0.5;
+    const alive = room.players.filter(p => p.alive && !p.leftGame);
+    let R = 0, S = 0, M = 0;
+    for (const q of alive) {
+      const rr = effRole(q);
+      if (rr === 'wolf' || rr === 'wolfBeauty') R++;
+      else if (rr === 'seer' || rr === 'witch' || rr === 'hunter' || rr === 'guard' || rr === 'dreamer') S++;
+      else if (rr === 'villager') M++;
+    }
+    const sig = x => 1 / (1 + Math.exp(-x));
+    const R2 = Math.max(1, R), S2 = Math.max(1, S), M2 = Math.max(1, M), N = R2 + S2 + M2;
+    return sig(vm.w[0] + vm.w[1] * R2 + vm.w[2] * S2 + vm.w[3] * M2 + vm.w[4] * N + vm.w[5] * R2 * S2 + vm.w[6] * R2 * M2 + vm.w[7] * S2 * M2);
+  } catch (e) { return 0.5; }
 }
 function decisionSmart(room, bot) {
   updateSmartMemory(room, bot);

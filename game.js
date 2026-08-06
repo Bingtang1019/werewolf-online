@@ -175,7 +175,7 @@ function campOf(room, p) {
 function typeOf(room, p) {
   if (!p || !p.role) return 'dyn';
   const r = effRole(p);
-  if (r === 'cupid') { const c = cupidCamp(room); return c === 'good' ? 'god' : (c === 'wolf' ? 'wolf' : 'dyn'); } // 1.7.4：第三方/未指定丘比特不计神（不进屠边）
+  if (r === 'cupid') { if (room.loverTest && room.loverTest.includes('dyn')) return 'dyn'; const c = cupidCamp(room); return c === 'good' ? 'god' : (c === 'wolf' ? 'wolf' : 'dyn'); } // A/B 注入：dyn 化（不计屠边） // 1.7.4：第三方/未指定丘比特不计神（不进屠边）
   return ROLE_INFO[r].type;
 }
 /* 1.7.4：查验按阵营口径（rules.md 三.13）——狼人阵营成员→'wolf'；好人阵营/第三方→'good'
@@ -759,7 +759,7 @@ function resolveNight(room) {
   const deaths = [];
   const die = (pid, by) => {
     const q = byId(room, pid);
-    if (q && q.alive && !deaths.includes(pid)) { if (room.loverTest === 'cupid-immortal' && q.role === 'cupid') return; q.alive = false; q.deadBy = by; deaths.push(pid); }
+    if (q && q.alive && !deaths.includes(pid)) { if (room.loverTest && room.loverTest.includes('immortal') && q.role === 'cupid') return; q.alive = false; q.deadBy = by; deaths.push(pid); }
   };
   const n = room.night;
   const guardT = n.guard.target;
@@ -790,7 +790,7 @@ function resolveNight(room) {
   }
   applyLoverChain(room, deaths, die, betray);
   room.nightDeaths = deaths;
-  if (room.loverTest === 'cupid-dead-n1' && room.nightNum === 1) { const cp = rolePlayer(room, 'cupid'); if (cp && cp.alive) { die(cp.id, 'lover_test'); room.nightDeaths = deaths; } } // A/B 注入（M3.5）：首夜丘比特必死 → 解绑全程解锁
+  if (room.loverTest && room.loverTest.includes('dead-n1') && room.nightNum === 1) { const cp = rolePlayer(room, 'cupid'); if (cp && cp.alive) { die(cp.id, 'lover_test'); room.nightDeaths = deaths; } } // A/B 注入（M3.5）：首夜丘比特必死 → 解绑全程解锁
   loverCore.trackCupidDeath(room, deaths); // v2 时序记录（丘比特死亡轮次，M3 敏感性分析）
   // v1.6.2：wolf_kill/deaths 事件提前到猎人判断之前推送（猎人开枪分支提前 return 曾导致这两条事件丢失）
   if (room.night && room.night.wolf && room.night.wolf.kill) pushEvent(room, 'wolf_kill', { kill: room.night.wolf.kill, saved: !deaths.includes(room.night.wolf.kill) });
@@ -820,7 +820,7 @@ function resolveShot(room, target) {
   const deaths = [];
   const die = (pid, by) => {
     const q = byId(room, pid);
-    if (q && q.alive && !deaths.includes(pid)) { if (room.loverTest === 'cupid-immortal' && q.role === 'cupid') return; q.alive = false; q.deadBy = by; deaths.push(pid); }
+    if (q && q.alive && !deaths.includes(pid)) { if (room.loverTest && room.loverTest.includes('immortal') && q.role === 'cupid') return; q.alive = false; q.deadBy = by; deaths.push(pid); }
   };
   if (target) {
     die(target, 'shoot');
@@ -997,7 +997,7 @@ function resolveExileVote(room) {
 }
 function exilePlayer(room, id) {
   const q = byId(room, id);
-  if (room.loverTest === 'cupid-immortal' && q.role === 'cupid') {
+  if (room.loverTest && room.loverTest.includes('immortal') && q.role === 'cupid') {
     q.deadBy = null;
     // 修复（M3.5）：豁免 = 放逐无效，视为无人出局直接入夜。
     // 此前直接 return → 无新定时器 + phase 停驻 'vote' → lab 虚拟时钟卡死兜底 → stall 数分钟/局
@@ -1015,7 +1015,7 @@ function exilePlayer(room, id) {
 }
 function afterExile(room) {
   const deaths = [];
-  const die = (pid, by) => { const q = byId(room, pid); if (q && q.alive && !deaths.includes(pid)) { if (room.loverTest === 'cupid-immortal' && q.role === 'cupid') return; q.alive = false; q.deadBy = by; deaths.push(pid); } };
+  const die = (pid, by) => { const q = byId(room, pid); if (q && q.alive && !deaths.includes(pid)) { if (room.loverTest && room.loverTest.includes('immortal') && q.role === 'cupid') return; q.alive = false; q.deadBy = by; deaths.push(pid); } };
   // 被放逐者本身也计入死亡列表，用于触发情侣殉情
   const exileAndCharm = room.exileDeaths.slice();
   for (const id of room.exileDeaths) {

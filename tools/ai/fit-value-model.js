@@ -29,9 +29,9 @@ function isG(r) { return ['seer', 'witch', 'hunter', 'guard', 'dreamer'].include
 function rebuildStates(rec) {
   // 1.7.4：roleKey=真实角色（英文，room-runner 已补）；role=中文文案不可用
   const roleOf = id => { const p = rec.players.find(x => x.id === id); return p ? p.roleKey : null; };
-  let R = rec.players.filter(p => isW(p.role)).length;
-  let S = rec.players.filter(p => isG(p.role)).length;
-  let M = rec.players.filter(p => p.role === 'villager').length;
+  let R = rec.players.filter(p => isW(p.roleKey)).length; // v1.7.10修正：1.7.4后 role 已中文化，初始计数须用 roleKey（原 p.role 会全零）
+  let S = rec.players.filter(p => isG(p.roleKey)).length;
+  let M = rec.players.filter(p => p.roleKey === 'villager').length;
   let N = rec.players.length;
   const dead = new Set();
   const samples = [];
