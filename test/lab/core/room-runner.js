@@ -25,6 +25,8 @@ async function runOneLabGame(cfg) {
   try {
     if (cfg.sampleFile) { room.labGameId = cfg.gameId; room.labSampleFile = cfg.sampleFile; } // vote 样本采集（game.js 钩子）
   if (cfg.loverMode) room.loverMode = cfg.loverMode; // v2（M1）：恋人机制模式（off/classic/v2），lab 可配
+  if (cfg.loverTest) room.loverTest = cfg.loverTest; // A/B 注入（M3.5）：'cupid-dead-n1' / 'cupid-immortal'
+  if (cfg.loverLocked) room.loverLocked = !!cfg.loverLocked; // A/B 注入（M3.5）：解绑禁用（G3）
     for (const [a, d] of [
       ['settings', { sheriff: false, winMode: cfg.winMode || 'edge', tieRule: 'pk', botMode: 'auto' }],
       ['setCounts', { counts: cfg.counts }],

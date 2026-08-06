@@ -55,9 +55,18 @@ function decideVote(room, bot, { protectLover = 'soft' } = {}) {
   }
   return { action: 'vote', data: { target: lead || null } };
 }
-/* v2（M1/M2）策略：付费护短——护短投票带保护标记（引擎结算公告“X在保护恋人”，狼队获知好恋人身份优先刀，代价端） */
+/* v2（M1/M2）策略：付费护短——护短投票带保护标记（引擎结算公告“X在保护恋人”，狼队获知好恋人身份优先刀，代价端）
+ * M3.5：人狼恋好恋人（被绑架方）丘比特死后 → 发起解绑（解除绑架：不再殉情拖累、自由投票）——bot 激活解绑机制的关键点
+ * 代价：解绑公告公开恋人身份（狼队获知优先刀）；好+好恋不解绑（殉情无害且护短有价值） */
 function decideVoteV2(room, bot) {
   const loverId = loverIdOf(room, bot);
+  const lover = loverId ? room.players.find(q => q.id === loverId) : null;
+  if (lover && isWolf(lover)) { // 人狼恋：恋人是狼（绑架关系）
+    const cupid = room.players.find(q => q.role === 'cupid');
+    if (!cupid || !cupid.alive) { // 丘比特已死 → 解绑解锁
+      if (!(room.loverV2 && room.loverV2.unbind && room.loverV2.unbind.used)) return { action: 'lover_unbind', data: {} }; // 未使用过 → 解绑
+    }
+  }
   const d = decideVote(room, bot, { protectLover: 'soft' });
   if (d && d.data && loverId) d.data.protectPartner = loverId;
   return d;

@@ -233,6 +233,8 @@ function createRoom(hostName) {
     roleCounts: defaultCounts(6),
     settings: { sheriff: true, winMode: 'edge', tieRule: 'pk', thief: false, botMode: 'auto' }, // botMode: 人机难度 'auto'简单AI | 'passive'挂机
     loverMode: 'classic', // v2（恋人权能系统）：'off'关闭恋人机制 | 'classic'现行规则（冻结行为，α9 零破坏）| 'v2'权能+解绑+恋人刀（loverCore 驱动）
+    loverTest: null, // A/B 注入（M3.5）：'cupid-dead-n1'首夜丘比特必死 / 'cupid-immortal'丘比特免疫一切死亡
+    loverLocked: false, // A/B 注入（M3.5）：解绑禁用（G3 对照：丘比特死但解绑锁定——分离解绑效应）
     loverV2: null, // v2：恋人机制状态（loverCore 管理：power/unbind/betrayUsed/timeline）
     players: [],
     messages: [],
@@ -757,7 +759,7 @@ function resolveNight(room) {
   const deaths = [];
   const die = (pid, by) => {
     const q = byId(room, pid);
-    if (q && q.alive && !deaths.includes(pid)) { q.alive = false; q.deadBy = by; deaths.push(pid); }
+    if (q && q.alive && !deaths.includes(pid)) { if (room.loverTest === 'cupid-immortal' && q.role === 'cupid') return; q.alive = false; q.deadBy = by; deaths.push(pid); }
   };
   const n = room.night;
   const guardT = n.guard.target;
@@ -788,6 +790,7 @@ function resolveNight(room) {
   }
   applyLoverChain(room, deaths, die, betray);
   room.nightDeaths = deaths;
+  if (room.loverTest === 'cupid-dead-n1' && room.nightNum === 1) { const cp = rolePlayer(room, 'cupid'); if (cp && cp.alive) { die(cp.id, 'lover_test'); room.nightDeaths = deaths; } } // A/B 注入（M3.5）：首夜丘比特必死 → 解绑全程解锁
   loverCore.trackCupidDeath(room, deaths); // v2 时序记录（丘比特死亡轮次，M3 敏感性分析）
   // v1.6.2：wolf_kill/deaths 事件提前到猎人判断之前推送（猎人开枪分支提前 return 曾导致这两条事件丢失）
   if (room.night && room.night.wolf && room.night.wolf.kill) pushEvent(room, 'wolf_kill', { kill: room.night.wolf.kill, saved: !deaths.includes(room.night.wolf.kill) });
@@ -817,7 +820,7 @@ function resolveShot(room, target) {
   const deaths = [];
   const die = (pid, by) => {
     const q = byId(room, pid);
-    if (q && q.alive && !deaths.includes(pid)) { q.alive = false; q.deadBy = by; deaths.push(pid); }
+    if (q && q.alive && !deaths.includes(pid)) { if (room.loverTest === 'cupid-immortal' && q.role === 'cupid') return; q.alive = false; q.deadBy = by; deaths.push(pid); }
   };
   if (target) {
     die(target, 'shoot');
@@ -994,6 +997,17 @@ function resolveExileVote(room) {
 }
 function exilePlayer(room, id) {
   const q = byId(room, id);
+  if (room.loverTest === 'cupid-immortal' && q.role === 'cupid') {
+    q.deadBy = null;
+    // 修复（M3.5）：豁免 = 放逐无效，视为无人出局直接入夜。
+    // 此前直接 return → 无新定时器 + phase 停驻 'vote' → lab 虚拟时钟卡死兜底 → stall 数分钟/局
+    pushEvent(room, 'exile_immune', { id: id, name: q.name }); // 对冲 resolveExileVote 已推送的 exile 事件
+    sysMsg(room, 'all', q.name + ' 被投票放逐但豁免（测试注入）');
+    room.votes = {};
+    if (checkWin(room)) { bump(room); return; }
+    beginNight(room);
+    return;
+  }
   q.alive = false; q.deadBy = 'exile';
   room.dayDeaths = [id];
   room.exileDeaths = [id];
@@ -1001,7 +1015,7 @@ function exilePlayer(room, id) {
 }
 function afterExile(room) {
   const deaths = [];
-  const die = (pid, by) => { const q = byId(room, pid); if (q && q.alive && !deaths.includes(pid)) { q.alive = false; q.deadBy = by; deaths.push(pid); } };
+  const die = (pid, by) => { const q = byId(room, pid); if (q && q.alive && !deaths.includes(pid)) { if (room.loverTest === 'cupid-immortal' && q.role === 'cupid') return; q.alive = false; q.deadBy = by; deaths.push(pid); } };
   // 被放逐者本身也计入死亡列表，用于触发情侣殉情
   const exileAndCharm = room.exileDeaths.slice();
   for (const id of room.exileDeaths) {

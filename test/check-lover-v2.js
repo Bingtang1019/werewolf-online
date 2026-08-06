@@ -116,6 +116,42 @@ function driveWolfKill(room, killer, kill) {
   Game.rooms.delete(room.id);
 }
 
+/* T9/T10（M3.5）：bot 解绑决策 + 恋人刀反制（favens v2 策略层） */
+const goodLover = require('../favens/goodLover.js');
+const wolfLover = require('../favens/wolfLover.js');
+const room9 = Game.debugRoom({ phase: 'vote', loverMode: 'v2', roles: [{ id: 'L', role: 'wolf' }, { id: 'a', role: 'villager' }, { id: 'cup', role: 'cupid' }, { id: 'v', role: 'villager' }], lovers: ['L', 'a'], cupidCamp: 'third', night: 0 });
+room9.loverV2 = { power: 'vengeance', unbind: { used: false, by: null }, timeline: {} };
+const botA = room9.players.find(q => q.id === 'a');
+const d1 = goodLover.decideVoteV2(room9, botA);
+ok(!d1 || d1.action !== 'lover_unbind', 'T9a 丘比特活着 → 好恋人不解绑');
+room9.players.find(q => q.id === 'cup').alive = false;
+const d2 = goodLover.decideVoteV2(room9, botA);
+ok(d2 && d2.action === 'lover_unbind', 'T9b 丘比特死后 → 人狼恋好恋人发起解绑（M3.5 激活点）');
+room9.loverV2.unbind.used = true;
+const d3 = goodLover.decideVoteV2(room9, botA);
+ok(!d3 || d3.action !== 'lover_unbind', 'T9c 解绑仅一次（已用不再发起）');
+Game.rooms.delete(room9.id);
+
+const roomA = Game.debugRoom({ phase: 'night', nightStep: 'wolf', loverMode: 'v2', roles: [{ id: 'L', role: 'wolf' }, { id: 'a', role: 'villager' }, { id: 'cup', role: 'cupid' }, { id: 'v', role: 'villager' }], lovers: ['L', 'a'], cupidCamp: 'third', night: 0 });
+roomA.loverV2 = { power: 'vengeance', unbind: { used: false, by: null }, timeline: {} };
+roomA.rng = { next: () => 0.1 }; // 强制走恋人刀分支
+roomA.players.find(q => q.id === 'cup').alive = false; // 丘比特死后（免疫期结束）
+const dA = wolfLover.decideNightV2(roomA, roomA.players.find(q => q.id === 'L'));
+ok(dA && dA.action === 'wolf_set' && dA.data.kill === 'a', 'T10a 丘比特死后 → 狼恋人 50% 恋人刀反制（不殉情+公告）');
+roomA.players.find(q => q.id === 'cup').alive = true;
+const dB = wolfLover.decideNightV2(roomA, roomA.players.find(q => q.id === 'L'));
+ok(!dB, 'T10b 丘比特活着 → 普通狼刀法（免疫期不反制）');
+Game.rooms.delete(roomA.id);
+
+/* T11（M3.5）：A/B 注入 G3——loverLocked 时解绑被拒（丘比特死后解绑仍锁定） */
+const roomL = Game.debugRoom({ phase: 'vote', loverMode: 'v2', roles: [{ id: 'L', role: 'wolf' }, { id: 'a', role: 'villager' }, { id: 'cup', role: 'cupid' }, { id: 'v', role: 'villager' }], lovers: ['L', 'a'], cupidCamp: 'third', night: 0 });
+roomL.loverV2 = { power: 'vengeance', unbind: { used: false, by: null }, timeline: {} };
+roomL.loverLocked = true; // G3 注入
+roomL.players.find(q => q.id === 'cup').alive = false; // 丘比特已死
+const dL = Game.handleAction(roomL.id, 'a', 'lover_unbind', {});
+ok(dL.error && dL.error.includes('锁定'), 'T11 loverLocked → 丘比特死后解绑仍被拒（G3 对照）');
+Game.rooms.delete(roomL.id);
+
 if (failures) { console.error(`\n${failures} 个断言失败`); process.exit(1); }
 console.log('\ncheck-lover-v2 全部通过 ✓');
 process.exit(0); // 摆盘房间的阶段性定时器仍挂着（房间已删），显式退出

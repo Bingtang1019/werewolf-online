@@ -33,11 +33,11 @@ function favensDecide(room, bot) {
     if (isCupid(bot)) return null; // 丘比特投票走普通（v2 无搅局）；权能选择在 cupid_pick 决策（bot-brain 已带）
     if (!isLoverMember(room, bot)) return null;
     if (isWolf(bot)) {
-      if (room.phase === 'night' && room.nightStep === 'wolf') return null; // v2 狼恋人：普通狼刀法（删模型继承）
-      if (room.phase === 'vote' || room.phase === 'pk_vote' || room.phase === 'sheriff_vote') return wolfLover.decideVoteV2(room, bot); // 保丘比特
+      if (room.phase === 'night' && room.nightStep === 'wolf') return wolfLover.decideNightV2(room, bot); // v2 夜间：普通狼刀法（删模型继承）+ M3.5 恋人刀反制
+      if (room.phase === 'vote' || room.phase === 'pk_vote' || room.phase === 'sheriff_vote') return wolfLover.decideVoteV2(room, bot); // 保丘比特（维持免疫期）
       return null;
     }
-    // 好恋人 v2：付费护短（保护标记 → 结算公告，狼队获知身份优先刀）
+    // 好恋人 v2：付费护短（保护标记 → 结算公告，狼队获知身份优先刀）+ M3.5 解绑（人狼恋丘比特死后激活）
     if (room.phase === 'vote' || room.phase === 'pk_vote' || room.phase === 'sheriff_vote') return goodLover.decideVoteV2(room, bot);
     return null;
   }

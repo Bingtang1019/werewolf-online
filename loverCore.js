@@ -27,6 +27,7 @@ const DAY_PHASES = ['day', 'morning', 'vote', 'speech', 'pk_speech', 'pk_vote', 
  * 博弈：丘比特存活 = 关系锁生效（免疫期）；丘比特死亡 = 解绑解锁 → 好恋人可反制绑架，狼恋人需防被解绑。 */
 function canUnbind(room, playerId) {
   if (!v2(room)) return { ok: false, msg: '仅 v2 模式可解绑' };
+  if (room.loverLocked) return { ok: false, msg: '本局解绑已锁定（A/B 注入：unbindLocked，G3 对照）' }; // M3.5：丘比特死但解绑禁用——分离解绑效应
   if (!room.lovers || !isLover(room, playerId)) return { ok: false, msg: '仅恋人成员可发起解绑' };
   const s = st(room);
   if (s.unbind.used) return { ok: false, msg: '本局解绑已使用' };

@@ -123,4 +123,15 @@ function decideVoteV2(room, bot) {
   if (cupid && d && d.data && d.data.target === cupid.id) return { action: 'vote', data: { target: null } }; // 弃票避险（保免疫）
   return d;
 }
-module.exports = { decideNightKill, decideVote, decideVoteV2, isThirdMember };
+/* v2 夜间（M2 删模型继承 → 普通狼刀法；M3.5 反制）：丘比特死后且人狼恋（好恋人仍活）→ 50% 恋人刀（背叛权：
+ * 不殉情 + 狼队公告恋人身份，先发制人防被好恋人解绑）；其余 → null（普通狼刀法） */
+function decideNightV2(room, bot) {
+  const loverId = loverIdOf(room, bot);
+  const lover = loverId ? room.players.find(q => q.id === loverId) : null;
+  const cupid = room.players.find(q => q.role === 'cupid');
+  if (lover && !isWolf(lover) && cupid && !cupid.alive) { // 人狼恋 + 丘比特死 → 免疫期结束，反制窗口
+    if (room.rng && room.rng.next() < 0.5) return { action: 'wolf_set', data: { kill: loverId, confirm: true } }; // 50% 恋人刀反制（公开=代价）
+  }
+  return null; // 其余 → 普通狼刀法
+}
+module.exports = { decideNightKill, decideNightV2, decideVote, decideVoteV2, isThirdMember };

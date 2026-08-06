@@ -45,6 +45,8 @@ function planTasks(cfg) {
           botLine: Array(Math.max(1, p.cap - 1)).fill(cfg.bots || 'smart'),
           name: p.name,
           ...(cfg.loverMode ? { loverMode: cfg.loverMode } : {}), // v2（M1）：恋人机制模式透传
+          ...(cfg.loverTest ? { loverTest: cfg.loverTest } : {}), // A/B 注入（M3.5）：'cupid-dead-n1' / 'cupid-immortal'
+          ...(cfg.loverLocked ? { loverLocked: cfg.loverLocked } : {}), // A/B 注入（M3.5）：解绑禁用（G3 对照）
         },
         full: !!cfg.fullEvents, // 默认摘要记录（无 events），配对只需 seed + winner
       });
