@@ -1250,17 +1250,24 @@ function addMessage(room, p, ch, text, marker) {
   room.messages.push({ id: uid(), ch, from: p ? p.id : null, name: p ? p.name : '系统', text, marker: marker || null, ts, day: room.dayNum, night: room.nightNum });
   if (room.messages.length > 500) room.messages.splice(0, room.messages.length - 500);
 }
+/* v1.7.6（丘比特规则补足）：情侣频道成员 = 情侣两人 + 丘比特（丘比特知情侣，可在情侣频道发言） */
+function isLoverParty(room, id) {
+  if (!id || !room) return false;
+  if (room.lovers && room.lovers.includes(id)) return true;
+  const cupid = rolePlayer(room, 'cupid');
+  return cupid && cupid.id === id;
+}
 function chatAccess(room, p, ch) {
   if (ch === 'all') return room.phase !== 'night'; // 全体频道夜间关闭
   if (ch === 'wolf') return p && isWolfRole(p) && room.phase === 'night'; // 狼人频道仅夜晚开放
-  if (ch === 'lover') return p && room.lovers && room.lovers.includes(p.id); // 情侣频道全天开放
+  if (ch === 'lover') return p && isLoverParty(room, p.id); // 情侣频道全天开放（含丘比特）
   return false;
 }
 // 查看历史消息的权限：全体消息始终可见，私密频道仅成员可见；狼人频道仅夜晚开放（白天连历史也不可见）
 function chatView(room, p, ch) {
   if (ch === 'all') return true;
   if (ch === 'wolf') return !!p && isWolfRole(p) && room.phase === 'night';
-  if (ch === 'lover') return !!p && room.lovers && room.lovers.includes(p.id);
+  if (ch === 'lover') return !!p && isLoverParty(room, p.id);
   return false;
 }
 /* 聊天发送间隔（毫秒），防刷屏：同一玩家两条消息至少间隔该时长；可用 CHAT_INTERVAL 覆盖（0=关闭） */
@@ -1815,8 +1822,9 @@ function viewFor(room, pid, chatSince) {
       isBot: !!q.isBot, isMe: q.id === pid, sheriff: q.id === room.sheriff, confirmed: q.confirmed,
       mood: q.mood || null,
     })),
-    my: { id: pid, name: me ? me.name : '', alive: me ? me.alive : false, isHost: room.host === pid, role: me ? roleText(room, me) : null, roleKey: me ? effRole(me) : null, camp: me ? ((effRole(me) === 'cupid' || me.role === 'thief') ? null : campText(room, me)) : null, mood: me ? (me.mood || null) : null },
-    myChannels: me ? (['all'].filter(() => room.phase !== 'night').concat(isWolfRole(me) && room.phase === 'night' ? ['wolf'] : []).concat(room.lovers && room.lovers.includes(me.id) ? ['lover'] : [])) : ['all'],
+    my: { id: pid, name: me ? me.name : '', alive: me ? me.alive : false, isHost: room.host === pid, role: me ? roleText(room, me) : null, roleKey: me ? effRole(me) : null, camp: me ? ((me.role === 'thief') ? null : campText(room, me)) : null, // v1.7.6：丘比特可得知自己当前阵营（cupidCamp）
+      mood: me ? (me.mood || null) : null },
+    myChannels: me ? (['all'].filter(() => room.phase !== 'night').concat(isWolfRole(me) && room.phase === 'night' ? ['wolf'] : []).concat(isLoverParty(room, me.id) ? ['lover'] : [])) : ['all'],
     phaseTimed: !!room.phaseDeadline,
     phaseDeadline: room.phaseDeadline,
     hunterDeadline: room.hunterDeadline || null, // 猎人开枪 30 秒超时（夜晚/白天共用）
@@ -1828,6 +1836,8 @@ function viewFor(room, pid, chatSince) {
       const cupid = rolePlayer(room, 'cupid');
       return { id: partnerId, name: partner ? partner.name : '', role: partner ? roleText(room, partner) : '', cupidName: cupid ? cupid.name : '' };
     })() : null,
+    // v1.7.6（丘比特规则补足）：丘比特知道情侣身份（两人）——白天也可查看
+    myCouple: (me && (() => { const c = rolePlayer(room, 'cupid'); return c && c.id === me.id; })() && room.lovers) ? room.lovers.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '', role: q ? roleText(room, q) : '' }; }) : null,
     // 预言家：查验记录任何阶段可见（白天也能翻看）
     seerHistory: (me && effRole(me) === 'seer') ? room.seerHistory.map(h => {
       const q = byId(room, h.target);

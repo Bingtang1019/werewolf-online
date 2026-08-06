@@ -531,6 +531,11 @@ function renderInfo() {
   if (view.myLover) {
     html += `<div class="info-box" style="border-color:var(--third)">💞 你的情侣：<b>${escapeHtml(view.myLover.name)}</b>（身份：${escapeHtml(view.myLover.role)}）${view.myLover.cupidName ? '　指认者：' + escapeHtml(view.myLover.cupidName) : ''}</div>`;
   }
+  // v1.7.6（丘比特规则补足）：丘比特知情侣身份（两人）——白天也可见
+  if (view.myCouple) {
+    const names = view.myCouple.map(c => `${escapeHtml(c.name)}（${escapeHtml(c.role)}）`).join(' 与 ');
+    html += `<div class="info-box" style="border-color:var(--third)">💞 你指定的情侣：${names}</div>`;
+  }
   // 预言家查验记录（任何阶段可见）
   if (view.seerHistory && view.seerHistory.length) {
     html += `<div class="info-box" style="border-color:var(--good)">🔮 查验记录：` +
