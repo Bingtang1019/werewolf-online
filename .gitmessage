@@ -1,7 +1,6 @@
-feat: v1.7.7 S3 - wolf clothing strategy balances werewolf-wolfBeauty config
+fix: v1.7.7 S3 production-safety - claimGod default 0 (per-config opt-in)
 
-- gridSearch: support custom config (wolfBeauty), probe 500g then confirm 3000g
-- bot-brain: WOLF_CLAIM_GOD default 0.25 (was 0); 3000g x2 seeds: wolf 49.6/49.8%
-- Step0 audit: good-bot has seer-claim arbitration (multi-claimers -> cred 0.35, cred<=0.4 skipped) but single claim still trusted (0.5) -> S3 clothing exploits model claims_god: wolf self-claiming god => good model sees low P(wolf) => wolf not voted
-- S3 effect: wolfBeauty config 34.8% -> 49.6-49.8% (+15pp, alpha7/alpha8 met on alpha10 joint line)
-- counterSeer has ~0 effect (few wolf-checked games)
+- bot-brain: WOLF_CLAIM_GOD default back to 0 (6p config already balanced 52.4%, clothing would break it)
+- wolfLover inherits claimGod via shared botTalk branch (confirmed)
+- alpha9: 6000 games frozen (49.6/49.8% two seeds, CI +-1.26pp); beta config pending (needs cupid config)
+- beta config candidates + t5 baselines listed (6 cupid presets)
