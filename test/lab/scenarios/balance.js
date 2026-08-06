@@ -7,11 +7,16 @@
  *   node test/lab/lab.js balance --games=3000 --presets=0,1,2        # 指定预设索引
  * report：每配置胜率（含第三方）+ 汇总（预设侧/随机侧/全局）。 */
 const path = require('path');
+const fs = require('fs');
 const { runOneLabGame } = require('../core/room-runner');
 const { createRecorder } = require('../core/recorder');
 const { createStreamStats } = require('../stats/report');
 const { PRESETS } = require('../presets');
 const { createRng } = require('../../../server/ai/rng.js');
+// v1.7.6：随机配置固化清单（data/random-presets-v2.json）——每轮复用同一份，消除“每轮随机配置不同”的混杂
+const ROOT = path.resolve(__dirname, '..', '..', '..');
+let RANDOM_PRESETS = null;
+try { RANDOM_PRESETS = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'random-presets-v2.json'), 'utf8')).random; } catch (e) { RANDOM_PRESETS = null; }
 
 /* 随机配置生成器（按现有规则随机）：人数 4-18，狼≥1、预言家1、丘比特可选（--cupid-only 强制含）、
  * 神职池（女巫/猎人/守卫/摄梦人）随机、狼美人可选、平民补足（≥1）、胜利规则（屠城/屠边）随机。 */
@@ -51,6 +56,7 @@ function planTasks(cfg) {
   const rec = cfg.out ? createRecorder(path.isAbsolute(cfg.out) ? cfg.out : path.join(ROOT, cfg.out)) : null;
   const seedBase = cfg.seed || 'bl';
   const tasks = [];
+  const noRandom = !!cfg.noRandom || !!cfg['no-random']; // v1.7.6：只跑预设配置（不做随机）
   for (let si = 0; si < usePresets.length; si++) {
     const p = usePresets[si];
     for (let g = 0; g < N; g++) {
@@ -58,8 +64,8 @@ function planTasks(cfg) {
       tasks.push({ id: gameId, gameId, seed: `${seedBase}-p${si}-${g}`, overrides: { cap: p.cap, counts: p.counts, winMode: p.winMode, botLine: Array(Math.max(1, p.cap - 1)).fill(cfg.bots || 'smart'), name: p.name }, full: !!cfg.out });
     }
   }
-  for (let rci = 0; rci < randCount; rci++) {
-    const rc = randomConfig(`${seedBase}-r${rci}`, { cupidOnly: !!cfg.cupidOnly });
+  for (let rci = 0; rci < randCount && !cfg.noRandom && !cfg['no-random']; rci++) { // v1.7.6：--no-random 跳过随机配置（只跑预设）
+    const rc = (RANDOM_PRESETS && RANDOM_PRESETS[rci]) ? Object.assign({}, RANDOM_PRESETS[rci], { random: true }) : randomConfig(`${seedBase}-r${rci}`, { cupidOnly: !!cfg.cupidOnly }); // v1.7.6：固化清单优先，回退随机生成
     for (let g = 0; g < RAND_N; g++) {
       const gameId = `bl-r${rci}-${g}`;
       tasks.push({ id: gameId, gameId, seed: `${seedBase}-r${rci}-${g}`, overrides: { cap: rc.cap, counts: rc.counts, winMode: rc.winMode, botLine: Array(Math.max(1, rc.cap - 1)).fill(cfg.bots || 'smart'), name: rc.name, random: true }, full: !!cfg.out });

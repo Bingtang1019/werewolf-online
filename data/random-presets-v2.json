@@ -1,0 +1,87 @@
+{
+  "version": 2,
+  "generated": "2026-08-06T10:33:39.455Z",
+  "random": [
+    {
+      "cap": 16,
+      "counts": {
+        "wolf": 4,
+        "seer": 1,
+        "villager": 6,
+        "cupid": 1,
+        "witch": 1,
+        "hunter": 1,
+        "guard": 1,
+        "dreamer": 1
+      },
+      "winMode": "city",
+      "name": "随机16人局"
+    },
+    {
+      "cap": 7,
+      "counts": {
+        "wolf": 2,
+        "seer": 1,
+        "villager": 2,
+        "cupid": 1,
+        "witch": 1
+      },
+      "winMode": "city",
+      "name": "随机7人局"
+    },
+    {
+      "cap": 11,
+      "counts": {
+        "wolf": 3,
+        "seer": 1,
+        "villager": 4,
+        "cupid": 1,
+        "witch": 1,
+        "dreamer": 1
+      },
+      "winMode": "edge",
+      "name": "随机11人局"
+    },
+    {
+      "cap": 18,
+      "counts": {
+        "wolf": 6,
+        "seer": 1,
+        "villager": 8,
+        "cupid": 1,
+        "witch": 1,
+        "dreamer": 1
+      },
+      "winMode": "edge",
+      "name": "随机18人局"
+    },
+    {
+      "cap": 17,
+      "counts": {
+        "wolf": 4,
+        "seer": 1,
+        "villager": 8,
+        "cupid": 1,
+        "witch": 1,
+        "hunter": 1,
+        "dreamer": 1
+      },
+      "winMode": "edge",
+      "name": "随机17人局"
+    },
+    {
+      "cap": 14,
+      "counts": {
+        "wolf": 5,
+        "seer": 1,
+        "villager": 4,
+        "cupid": 1,
+        "witch": 1,
+        "hunter": 1,
+        "guard": 1
+      },
+      "winMode": "edge",
+      "name": "随机14人局"
+    }
+  ]
+}
