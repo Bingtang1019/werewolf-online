@@ -11,14 +11,16 @@ const { createRng } = require('./server/ai/rng.js');
 if (!global.rng) global.rng = createRng(parseInt(process.env.SEED || '0', 10) || 12345); // 独立 require（单测）时回退默认种子
 let CUR_RNG = null; // 当前决策的显式 RNG（同步执行安全：Node 单线程，决策函数同步，房间间不会交错）
 function rng() { return CUR_RNG || global.rng; }
-/* v1.7.6：第三方平衡用——好人胜率估值 V(R,S,M)（value 模型 fail-open 0.5；只读公开翻牌量） */
+/* v1.7.6：第三方平衡用——好人胜率估值 V(R,S,M)（value 模型 fail-open 0.5；只读公开翻牌量）
+ * v1.7.10修复：'..' 路径错误（解析到 Desktop/models，从未加载成功，vGood 恒 fail-open 0.5）；默认模型同步 v2。
+ * 注：vGood 目前无消费点（死数据）——第三方真正接入 V 估值属“功能上线”，单独立项 */
 const fs = require('fs');
 const path = require('path');
 let _vModel = null, _vTried = false;
 function getValueModelForBot() {
   if (_vTried) return _vModel;
   _vTried = true;
-  try { _vModel = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'models', 'value-vote-v1.json'), 'utf8')); } catch (e) { _vModel = null; }
+  try { _vModel = JSON.parse(fs.readFileSync(path.join(__dirname, 'models', process.env.MODEL_VALUE_VOTE ? process.env.MODEL_VALUE_VOTE.split(/[\\/]/).pop() : 'value-vote-v2.json'), 'utf8')); } catch (e) { _vModel = null; }
   return _vModel;
 }
 /* v1.7.7（α3）：狼侧刀神分类器——models/wolf-god-v1.json（wolfTrain/adaboost 训练产物，fail-open） */
