@@ -1,11 +1,11 @@
 'use strict';
 /* 配置：默认值 < preset < CLI 三级合并 + 校验 */
 const PRESETS = {
-  smoke:    { games: 10,  cap: 8,  parallel: 4, winMode: 'edge' },
-  baseline: { games: 500, cap: 13, parallel: 8, winMode: 'edge' },
-  sample:   { games: 2000, cap: 13, parallel: 8, winMode: 'edge' },
-  paired:   { games: 400, cap: 13, parallel: 1, winMode: 'edge' },
-  deterministic: { games: 20, cap: 8, parallel: 1, winMode: 'edge' },
+  smoke:    { games: 10,  cap: 8,  parallel: 4, workers: 1, winMode: 'edge' },
+  baseline: { games: 500, cap: 13, parallel: 8, workers: 1, winMode: 'edge' },
+  sample:   { games: 2000, cap: 13, parallel: 8, workers: 1, winMode: 'edge' },
+  paired:   { games: 400, cap: 13, parallel: 1, workers: 1, winMode: 'edge' },
+  deterministic: { games: 20, cap: 8, parallel: 1, workers: 1, winMode: 'edge' },
 };
 /* 狼数阶梯：13 人局 = 3 狼 10 好（与 B1-3 验收先验对齐） */
 function defaultCounts(cap) {
@@ -43,6 +43,7 @@ function buildConfig(scenario, argv) {
   if (cfg.cap < 4 || cfg.cap > 18) throw new Error(`cap 越界: ${cfg.cap}`);
   if (cfg.parallel > 16) throw new Error('parallel 上限 16');
   if (cfg.games < 1) throw new Error('games 必须 ≥1');
+  if (!(cfg.workers === 'auto' || (Number.isInteger(cfg.workers) && cfg.workers >= 1 && cfg.workers <= 64))) throw new Error('workers 必须为 auto 或 1~64 整数');
   const sum = Object.values(cfg.counts).reduce((a, b) => a + b, 0);
   if (sum !== cfg.cap) throw new Error(`counts 总和 ${sum} != cap ${cfg.cap}`);
   if (cfg.botLine.length !== cfg.cap - 1) throw new Error(`botLine 长度 ${cfg.botLine.length} != cap-1 ${cfg.cap - 1}`);

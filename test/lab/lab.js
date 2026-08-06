@@ -14,6 +14,9 @@ process.env.NIGHT_TIMEOUT = '20';
 process.env.CHAT_INTERVAL = '0';
 const clock = require('../../server/clock');
 clock.setMode('virtual');
+const fs = require('fs');
+const path = require('path');
+const { runMPool } = require('./core/mpool');
 const scenarios = {
   baseline: require('./scenarios/baseline'),
   sample: require('./scenarios/sample'),
@@ -28,8 +31,42 @@ async function main() {
     process.exit(1);
   }
   const cfg = buildConfig(raw, process.argv.slice(3));
-  console.log(`[lab] scenario=${raw} games=${cfg.games} cap=${cfg.cap} parallel=${cfg.parallel} counts=${JSON.stringify(cfg.counts)}${cfg.seed ? ' seed=' + cfg.seed : ''}`);
-  await scenarios[scenario].run(cfg);
+  console.log(`[lab] scenario=${raw} games=${cfg.games} cap=${cfg.cap} parallel=${cfg.parallel} workers=${cfg.workers} counts=${JSON.stringify(cfg.counts)}${cfg.seed ? ' seed=' + cfg.seed : ''}`);
+  const s = scenarios[scenario];
+  if (cfg.workers > 1) { // v1.7.6：多进程分支（worker 独立 clock/全局 RNG，进程级并行是唯一正确的扩容方式）
+    if (!s.planTasks) { console.error('[lab] scenario 未实现 planTasks，无法多进程'); process.exit(1); }
+    const gen = s.planTasks(cfg);
+    const records = [];
+    let fin = 0;
+    const t0 = Date.now();
+    const onResult = (msg) => {
+      if (msg.type === 'done') { if (gen.rec && !gen.rec.has(msg.gameId)) gen.rec.write(msg.record); records.push(msg.record); }
+      else if (msg.type === 'fail') console.error('\n[lab:mp] 任务失败:', msg.id, msg.error);
+      fin++;
+      process.stderr.write(`\r[lab:mp] ${fin}/${gen.total}  (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+    };
+    await runMPool({ gen, cfg, onResult, workers: cfg.workers });
+    if (gen.rec) gen.rec.close();
+    // vote 样本合并：多 worker 各自写 sampleFile.<pid>，跑完统一追加到主文件
+    if (cfg.sampleFile && gen.sampleFile) {
+      const base = gen.sampleFile;
+      const dir = path.dirname(base);
+      const baseName = path.basename(base);
+      try {
+        const files = fs.readdirSync(dir).filter(f => f.startsWith(baseName + '.')).sort();
+        if (files.length) {
+          // 同步合并（异步 createWriteStream + process.exit 可能未 flush 丢数据）
+          let buf = '';
+          for (const f of files) { const p = path.join(dir, f); buf += fs.readFileSync(p, 'utf8'); try { fs.unlinkSync(p); } catch (e) {} }
+          fs.appendFileSync(base, buf);
+          console.log(`\n[sample] vote 样本已合并 ${files.length} 个 worker 文件 → ${base}`);
+        }
+      } catch (e) { console.error('[lab] vote 样本合并失败:', e.message); }
+    }
+    if (s.report) s.report(records, cfg);
+    process.exit(0);
+  }
+  await s.run(cfg);
   process.exit(0);
 }
 main().catch(e => { console.error('异常:', e.message); process.exit(1); });
