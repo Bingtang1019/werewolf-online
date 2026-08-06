@@ -132,8 +132,35 @@ function r12() {
   assert(room.cupidCamp === null, 'R12 未指定情侣 → cupidCamp=null（实际 ' + room.cupidCamp + '）');
   Game.rooms.delete(room.id);
 }
+/* R13 7b：毒梦游者无效但消耗（梦游者存活、毒药已标记消耗） */
+function r13() {
+  const room = Game.debugRoom({ phase: 'night', nightStep: 'witch', night: { dreamer: { target: 'v' }, witch: { save: false, poison: 'v', revealed: false } }, witchPots: { saveUsed: false, poisonUsed: true }, roles: [
+    { id: 'd', role: 'dreamer', alive: true }, { id: 'w', role: 'wolf', alive: true }, { id: 'v', role: 'villager', alive: true }, { id: 's', role: 'seer', alive: true },
+  ] });
+  for (let i = 0; i < 10 && room.phase === 'night'; i++) Game.handleAdvance(room.id, room.host);
+  const v = room.players.find(x => x.id === 'v');
+  assert(v.alive === true, 'R13 毒梦游者无效（梦游者存活，实际 alive=' + v.alive + '）');
+  assert(room.witchPots.poisonUsed === true, 'R13 毒药已消耗（poisonUsed=' + room.witchPots.poisonUsed + '）');
+  Game.rooms.delete(room.id);
+}
+/* R14 checkwin：丘比特属好人阵营 → 计神职参与屠边（存活时狼不能屠边，死亡后才触发） */
+function r14() {
+  const room = Game.debugRoom({ phase: 'vote', roles: [
+    { id: 's', role: 'seer', alive: true }, { id: 'cup', role: 'cupid', alive: true }, { id: 'w', role: 'wolf', alive: true },
+    { id: 'v', role: 'villager', alive: true }, { id: 'a', role: 'villager', alive: true },
+  ], cupidCamp: 'good', lovers: ['v', 'a'] });
+  room.players.find(x => x.id === 's').alive = false;
+  room.players.find(x => x.id === 's').deadBy = 'wolf';
+  const win = Game.checkWin(room);
+  assert(win === null, 'R14 丘比特（好人阵营·神职）存活 → 狼未屠边（checkWin=' + win + '）');
+  room.players.find(x => x.id === 'cup').alive = false;
+  room.players.find(x => x.id === 'cup').deadBy = 'shoot';
+  const win2 = Game.checkWin(room);
+  assert(win2 === 'wolf', 'R14 丘比特（神职）死亡 → 屠边狼胜（checkWin=' + win2 + '）');
+  Game.rooms.delete(room.id);
+}
 
-r1(); r2(); r3(); r4(); r5(); r6(); r7(); r8(); r9(); r10(); r11(); r12();
+r1(); r2(); r3(); r4(); r5(); r6(); r7(); r8(); r9(); r10(); r11(); r12(); r13(); r14();
 if (failures) { console.error('共 ' + failures + ' 处断言失败'); process.exit(1); }
-console.log('共 12 项规则断言全部通过');
+console.log('共 14 项规则断言全部通过');
 process.exit(0);

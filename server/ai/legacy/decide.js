@@ -41,7 +41,40 @@ function decideVote(world, state, rng) {
   }
   const pool = shuffleArr(state.filter(id => !(isWolf && teammates.includes(id))), rng); // 平局随机打破（无证据时避免固定投座位最小者）
   if (!pool.length) return { ranked: [], target: null };
-  const score = id => (isWolf ? -1 : 1) * scoreOf(id);
+  const score = id => {
+  const s = scoreOf(id);
+  if (isWolf) return -s; // 狼：投最不像狼的（混淆视线）
+  return s; // 好人：投最像狼的
+};
+// v1.7.6：第三方 kingmaker——谁强打谁（优势方高价值成员），维持好狼互耗、自己活到最后。
+//   狼恋人红线：白天绝不能投狼（狼队视角“自己人投自己人”=当场自爆）→ 伪装跟随狼队共识或弃票；
+//   好人恋人/丘比特：投优势方——好人优势投自称高价值神职者（借口“像狼”），狼优势投狼方。
+if (world.faction === 'third') {
+  const goodAlive = (world.godAlive || 0) + (world.villAlive || 0);
+  const wolfAlive = world.wolfAlive || 0;
+  const goodAdv = goodAlive >= wolfAlive;
+  if (world.isWolfLover) {
+    // 狼恋人：跟当前票型最高者（狼队共识目标，通常为好人），若非自己阵营；无票型则弃票
+    const counts = {};
+    for (const k of Object.keys(world.votes || {})) { const t = world.votes[k]; if (t && pool.includes(t)) counts[t] = (counts[t] || 0) + 1; }
+    let best = null, bestN = 0;
+    for (const k of Object.keys(counts)) if (counts[k] > bestN) { bestN = counts[k]; best = k; }
+    return { ranked: pool.map(id => ({ id, score: scoreOf(id) })).sort((a, b) => b.score - a.score), target: best };
+  }
+  if (goodAdv) {
+    // 好人优势 → 投自称高价值神职者（女巫>预言家>猎人>守卫>摄梦人），无则投最像好人者（P(wolf)低）
+    const claims = world.roleClaims || {};
+    const val = { '女巫': 5, '预言家': 4, '猎人': 3, '守卫': 2, '摄梦人': 1 };
+    let best = null, bestV = -1;
+    for (const id of pool) { const r = claims[id]; if (r && (val[r] || 0) > bestV) { bestV = val[r] || 0; best = id; } }
+    if (best) return { ranked: pool.map(id => ({ id, score: scoreOf(id) })).sort((a, b) => b.score - a.score), target: best };
+    const sorted = pool.map(id => ({ id, score: -scoreOf(id) })).sort((a, b) => b.score - a.score);
+    return { ranked: sorted, target: sorted.length ? sorted[0].id : null };
+  }
+  // 狼优势 → 投狼方（P(wolf) 高）——丘比特/好人恋人可以投狼（借口“像狼”，不暴露）
+  const sorted = pool.map(id => ({ id, score: scoreOf(id) })).sort((a, b) => b.score - a.score);
+  return { ranked: sorted, target: sorted.length ? sorted[0].id : null };
+}
   // 跟票集中（防分票）：嫌疑前二且已有人投 → 跟票
   const votes = world.votes || {};
   const counts = {};

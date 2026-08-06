@@ -53,7 +53,13 @@ function unitTests() {
   // 丘比特
   const cupidRoom = mkRoom([], ['C1', 'L']); // 丘比特在情侣中（自连）
   cupidRoom.players.push({ id: 'C1', name: '丘比特', role: 'cupid', alive: true, isBot: false });
-  assert(factionOf(cupidRoom, cupidRoom.players[5]) === 'third', 'U1 丘比特自连 → third');
+  // v1.7.6：丘比特可得知自己当前阵营——factionOf 直接读 cupidCamp（首轮=好人、重选=当前阵营）
+  cupidRoom.cupidCamp = null; // 未指定 → 按好人
+  assert(factionOf(cupidRoom, cupidRoom.players[5]) === 'good', 'U1 丘比特未指定（cupidCamp=null）→ good（实际 ' + factionOf(cupidRoom, cupidRoom.players[5]) + '）');
+  cupidRoom.cupidCamp = 'third';
+  assert(factionOf(cupidRoom, cupidRoom.players[5]) === 'third', 'U1 丘比特属第三方（cupidCamp=third）→ third（实际 ' + factionOf(cupidRoom, cupidRoom.players[5]) + '）');
+  cupidRoom.cupidCamp = 'wolf';
+  assert(factionOf(cupidRoom, cupidRoom.players[5]) === 'wolf', 'U1 丘比特属狼人阵营（cupidCamp=wolf）→ wolf（实际 ' + factionOf(cupidRoom, cupidRoom.players[5]) + '）');
   // U2 狼 bot 夜晚不刀狼队友（v1.6.2 公平化：狼不避让恋人——恋人关系对狼不可见，可刀好人恋人）
   const r2 = mkRoom([], 'night', ['L', 'G']);
   const d2 = createBotDecision(r2, r2.players[0]);

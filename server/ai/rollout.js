@@ -32,6 +32,16 @@ function payoffFor(world, xIsWolf) {
   const R = Math.max(1, wolfAlive), S = Math.max(1, godAlive), M = Math.max(1, villAlive);
   const R0 = Math.max(1, wolfInit), S0 = Math.max(1, godInit), M0 = Math.max(1, villInit);
   const pGod = S / (S + M), pVill = M / (S + M);
+  if (faction === 'third') {
+    // v1.7.6：第三方价值函数（V 模型学不了——第三方胜局=0 无样本；A-3 纪律：等胜率>0 攒样本再 fit）
+    //   thirdValue = 10×thirdAlive − 3×godAlive − 2×max(goodAlive, wolfAlive)；payoff = thirdValue(放逐后) − 现在
+    //   语义：神职是好人引擎（重罚）、强阵营是威胁（削优势方有益=维持好狼互耗）
+    const T = Math.max(1, world.thirdAlive || 1);
+    const tv = (r, s, m, t) => 10 * t - 3 * s - 2 * Math.max(r, s + m);
+    const cur = tv(R, S, M, T);
+    if (!xIsWolf) return (S / (S + M)) * (tv(R, S - 1, M, T) - cur) + (M / (S + M)) * (tv(R, S, M - 1, T) - cur); // 放逐好人（神/民加权）
+    return tv(R - 1, S, M, T) - cur; // 放逐狼
+  }
   if (faction === 'wolf') {
     if (!xIsWolf) return pVill * 3 * Math.pow(M0 / M, q) + pGod * 3 * Math.pow(S0 / S, q);
     return -1.5 * Math.pow(R0 / R, p);
@@ -56,6 +66,7 @@ function getValueModel() {
 function valuePayoff(world, xIsWolf) {
   const m = getValueModel();
   if (!m) return payoffFor(world, xIsWolf);
+  if (world.faction === 'third') return payoffFor(world, xIsWolf); // v1.7.6：V 模型是好人视角，第三方用 thirdValue 启发式
   const sig = x => 1 / (1 + Math.exp(-x));
   const V = (R, S, M, N) => sig(m.w[0] + m.w[1] * R + m.w[2] * S + m.w[3] * M + m.w[4] * N + m.w[5] * R * S + m.w[6] * R * M + m.w[7] * S * M);
   const R = Math.max(1, world.wolfAlive), S = Math.max(1, world.godAlive), M = Math.max(1, world.villAlive);

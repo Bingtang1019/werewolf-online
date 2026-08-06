@@ -11,6 +11,16 @@ const { createRng } = require('./server/ai/rng.js');
 if (!global.rng) global.rng = createRng(parseInt(process.env.SEED || '0', 10) || 12345); // 独立 require（单测）时回退默认种子
 let CUR_RNG = null; // 当前决策的显式 RNG（同步执行安全：Node 单线程，决策函数同步，房间间不会交错）
 function rng() { return CUR_RNG || global.rng; }
+/* v1.7.6：第三方平衡用——好人胜率估值 V(R,S,M)（value 模型 fail-open 0.5；只读公开翻牌量） */
+const fs = require('fs');
+const path = require('path');
+let _vModel = null, _vTried = false;
+function getValueModelForBot() {
+  if (_vTried) return _vModel;
+  _vTried = true;
+  try { _vModel = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'models', 'value-vote-v1.json'), 'utf8')); } catch (e) { _vModel = null; }
+  return _vModel;
+}
 /* ================================================================
    bot-brain.js - 人机决策模块（v1.4.0，适配自开源补丁）
    级别（每个 bot 独立，bot.botLevel；未设置时按房间 botMode 映射：
@@ -43,15 +53,9 @@ function factionOf(room, p) {
   const isW = r === 'wolf' || r === 'wolfBeauty';
   const L = room.lovers;
   if (r === 'cupid') {
-    if (!L || !L[0]) return 'third';
-    if (L.includes(p.id)) return 'third'; // 自连一律第三方
-    const a = byId(room, L[0]), b = byId(room, L[1]);
-    if (!a || !b) return 'third';
-    const wa = effRole(a) === 'wolf' || effRole(a) === 'wolfBeauty';
-    const wb = effRole(b) === 'wolf' || effRole(b) === 'wolfBeauty';
-    if (wa && wb) return 'wolf';
-    if (!wa && !wb) return 'good';
-    return 'third';
+    // v1.7.6（丘比特规则补足）：丘比特可得知自己当前阵营——直接读引擎 cupidCamp（首轮=好人、重选=当前阵营、未指定=null→好人）
+    const c = room.cupidCamp;
+    return c === 'wolf' ? 'wolf' : c === 'third' ? 'third' : 'good';
   }
   if (L && L.includes(p.id)) {
     const partner = byId(room, L.find(id => id !== p.id));
@@ -201,9 +205,20 @@ function decisionEasy(room, bot) {
           const claimedSeer = aliveOthers(room, bot).find(q => mem.claims[q.id] === 'seer' && (!lp || lp.isWolf || q.id !== lp.id));
           let target = claimedSeer;
           if (!target) {
-            // 1.7.0（B1-1）：间接方案——decideNightKill 刀“最像好人”的非队友（argmin P(wolf)）；恋人保护在决策层之上
-            const nk = decideNightKill(buildVoteWorld(room, bot), aliveOthers(room, bot).map(p => p.id), rng());
-            target = nk.target ? byId(room, nk.target) : null;
+            // v1.7.6：第三方狼恋人夜刀——永不刀狼（狼队频道执行=自爆）；刀好人神职（价值序：女巫>预言家>猎人>守卫>摄梦人），伪装正常狼人
+            const world = buildVoteWorld(room, bot);
+            if (factionOf(room, bot) === 'third') {
+              const val = { '女巫': 5, '预言家': 4, '猎人': 3, '守卫': 2, '摄梦人': 1 };
+              const claims = world.roleClaims || {};
+              const pool = aliveOthers(room, bot).filter(q => campOf(q) !== 'wolf' && factionOf(room, q) !== 'third' && (!lp || lp.isWolf || q.id !== lp.id));
+              let t2 = null, bestV = -1;
+              for (const q of pool) { const r = claims[q.id]; if (r && (val[r] || 0) > bestV) { bestV = val[r] || 0; t2 = q; } }
+              if (!t2 && pool.length) t2 = pool.slice().sort((a, b) => (world.scores[a.id] || 0.5) - (world.scores[b.id] || 0.5))[0];
+              target = t2;
+            } else {
+              const nk = decideNightKill(world, aliveOthers(room, bot).map(p => p.id), rng());
+              target = nk.target ? byId(room, nk.target) : null;
+            }
             if (target && lp && !lp.isWolf && target.id === lp.id) target = null;
           }
           data.kill = target ? target.id : null;
@@ -507,10 +522,39 @@ function buildVoteWorld(room, bot) {
   const wolfInit = (rc.wolf || 0) + (rc.wolfBeauty || 0);
   const godInit = (rc.seer || 0) + (rc.witch || 0) + (rc.hunter || 0) + (rc.guard || 0) + (rc.dreamer || 0);
   const villInit = rc.villager || 0;
-  const eff = p => (p.role === 'thief' && p.pickedRole) ? p.pickedRole : p.role;
-  const deadWolf = room.players.filter(q => !q.alive && (eff(q) === 'wolf' || eff(q) === 'wolfBeauty')).length;
-  const deadGod = room.players.filter(q => !q.alive && ['seer', 'witch', 'hunter', 'guard', 'dreamer'].includes(eff(q))).length;
-  const deadVill = room.players.filter(q => !q.alive && eff(q) === 'villager').length;
+  const eff2 = p => (p.role === 'thief' && p.pickedRole) ? p.pickedRole : p.role;
+  const deadWolf = room.players.filter(q => !q.alive && (eff2(q) === 'wolf' || eff2(q) === 'wolfBeauty')).length;
+  const deadGod = room.players.filter(q => !q.alive && ['seer', 'witch', 'hunter', 'guard', 'dreamer'].includes(eff2(q))).length;
+  const deadVill = room.players.filter(q => !q.alive && eff2(q) === 'villager').length;
+  const wolfAlive = Math.max(0, wolfInit - deadWolf);
+  const godAlive = Math.max(0, godInit - deadGod);
+  const villAlive = Math.max(0, villInit - deadVill);
+  // v1.7.6：第三方策略公开量——自称神职者（信息战/神职优先目标）、狼恋人标记（投狼=自爆红线）、第三方存活数
+  const roleClaims = {};
+  for (const m of room.messages) {
+    if (m.ch === 'all' && m.from && m.text) {
+      const mm = m.text.match(/我是(女巫|预言家|猎人|守卫|摄梦人)/);
+      if (mm && !roleClaims[m.from]) roleClaims[m.from] = mm[1];
+    }
+  }
+  const myFaction = factionOf(room, bot);
+  const thirdAlive = myFaction === 'third' ? (() => {
+    let n = 0;
+    if (room.lovers) for (const id of room.lovers) { const q = byId(room, id); if (q && q.alive) n++; }
+    const cup = room.players.find(q => effRole(q) === 'cupid');
+    if (cup && cup.alive && (!room.lovers || !room.lovers.includes(cup.id))) n++;
+    return n;
+  })() : 0;
+  // v1.7.6：第三方平衡用——好人胜率估值 V(R,S,M)（value 模型，fail-open 0.5）
+  let vGood = 0.5;
+  try {
+    const vm = getValueModelForBot();
+    if (vm) {
+      const sig = x => 1 / (1 + Math.exp(-x));
+      const R = Math.max(1, wolfAlive), S = Math.max(1, godAlive), M = Math.max(1, villAlive), N = R + S + M;
+      vGood = sig(vm.w[0] + vm.w[1] * R + vm.w[2] * S + vm.w[3] * M + vm.w[4] * N + vm.w[5] * R * S + vm.w[6] * R * M + vm.w[7] * S * M);
+    }
+  } catch (e) {}
   return {
     faction: factionOf(room, bot),
     teammates: room.players.filter(p => p.alive && isWolfRole(p)).map(p => p.id),
@@ -519,9 +563,13 @@ function buildVoteWorld(room, bot) {
     sellTarget: sellWolfBeauty(room, bot),
     allVoters: room.players.filter(p => p.alive && !p.leftGame).map(p => p.id), // 1.7.0（B1-5）：rollout 模拟投票者
     me: bot.id,
+    vGood, // 1.7.6：第三方平衡用（好人胜率估值）
+    roleClaims, // 1.7.6：公开自称神职者（{id: 角色}）——第三方神职优先目标
+    isWolfLover: myFaction === 'third' && isWolfRole(bot), // 1.7.6：第三方狼恋人（投狼/刀狼=狼队自爆红线）
+    thirdAlive, // 1.7.6：第三方存活数（bot 视角：情侣+丘比特）
     // 1.7.4（动态 payoff）：公开量 + 曲率参数（env 可配，lab 参数纪律：每版记录）
     //   默认 p=1,q=0：进度侧保留（配对 34:9，p=0.0003 显著，好人+6.3pp）；容错侧回退（28:26，p=0.89 不显著）
-    wolfAlive: Math.max(0, wolfInit - deadWolf), godAlive: Math.max(0, godInit - deadGod), villAlive: Math.max(0, villInit - deadVill),
+    wolfAlive, godAlive, villAlive,
     wolfInit, godInit, villInit,
     payoffP: parseFloat(process.env.PAYOFF_P || '1'),
     payoffQ: parseFloat(process.env.PAYOFF_Q || '0'),
@@ -621,9 +669,20 @@ function decisionSmart(room, bot) {
             }
           }
           if (!target) {
-            // 1.7.0（B1-1）：间接方案——decideNightKill 刀“最像好人”的非队友（enemies 已排除队友+恋人，走纯接口）；兜底保留恋人保护
-            const nk = decideNightKill(buildVoteWorld(room, bot), enemies.map(p => p.id), rng());
-            target = nk.target ? byId(room, nk.target) : null;
+            const world = buildVoteWorld(room, bot);
+            if (factionOf(room, bot) === 'third') {
+              // v1.7.6：第三方狼恋人夜刀——永不刀狼（狼队自爆红线）；刀好人神职（价值序），enemies 已排除队友+恋人
+              const val = { '女巫': 5, '预言家': 4, '猎人': 3, '守卫': 2, '摄梦人': 1 };
+              const claims = world.roleClaims || {};
+              const pool = enemies.filter(q => factionOf(room, q) !== 'third');
+              let t2 = null, bestV = -1;
+              for (const q of pool) { const r = claims[q.id]; if (r && (val[r] || 0) > bestV) { bestV = val[r] || 0; t2 = q; } }
+              if (!t2 && pool.length) t2 = pool.slice().sort((a, b) => (world.scores[a.id] || 0.5) - (world.scores[b.id] || 0.5))[0];
+              target = t2;
+            } else {
+              const nk = decideNightKill(world, enemies.map(p => p.id), rng());
+              target = nk.target ? byId(room, nk.target) : null;
+            }
             if (!target) target = lp && !lp.isWolf ? null : pick(aliveOthers(room, bot));
           }
           data.kill = target ? target.id : null;
@@ -910,6 +969,21 @@ function botTalk(room, bot, level) {
       ]));
     }
     if (level === 'smart' && myRole === 'cupid') {
+      if (factionOf(room, bot) === 'third') {
+        // v1.7.6（P3）：第三方丘比特信息战——带节奏指向自称高价值神职者（不暴露第三方）；不亮“我是丘比特”
+        const claims = {};
+        for (const m of room.messages) if (m.ch === 'all' && m.from && m.text) { const mm = m.text.match(/我是(女巫|预言家|猎人|守卫|摄梦人)/); if (mm && !claims[m.from]) claims[m.from] = mm[1]; }
+        const val = { '女巫': 5, '预言家': 4, '猎人': 3, '守卫': 2, '摄梦人': 1 };
+        let t2 = null, bestV = -1;
+        for (const id of Object.keys(claims)) { const p = byId(room, id); if (p && p.alive && (val[claims[id]] || 0) > bestV) { bestV = val[claims[id]] || 0; t2 = p; } }
+        if (t2) return chat(pick(['我觉得' + t2.name + '发言很怪，像狼', '今天先出' + t2.name + '吧，它嫌疑最大']));
+        const counts = {};
+        for (const k of Object.keys(room.votes || {})) { const tv = room.votes[k]; if (tv) counts[tv] = (counts[tv] || 0) + 1; }
+        let lead = null, leadN = 0;
+        for (const k of Object.keys(counts)) if (counts[k] > leadN) { leadN = counts[k]; lead = k; }
+        if (lead) { const p2 = byId(room, lead); if (p2) return chat(pick(['' + p2.name + '的票有点多了，大家都跟？', '先别急着出' + p2.name + '，再听听'])); }
+        return chat(pick(['我今天没头绪，先看投票', '今晚的线索不多，明天再盘']));
+      }
       if (rng().next() < 0.5) return chat(pick([
         '我是丘比特，情侣是谁我就不说了 💘',
         '丘比特在此，别乱投我，情侣是好人组合',
