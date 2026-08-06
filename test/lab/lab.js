@@ -5,9 +5,15 @@
  * 依赖方向（单向）：scenario → core → game.js；stats 谁都不依赖；core 不 import stats。
  */
 const { buildConfig } = require('./core/config');
+// v1.7.1：实验室统一虚拟时间（墙钟不随游戏流逝，驱动靠 tickNext 推时钟）
+// v1.7.2（A-4）：fast pace env 必须在此设置（require game.js 之前）——虚拟时间下阶段超时/bot 延迟都按虚拟毫秒计，
+// 不设小值则一局虚拟时间轻松超时被误判 stall；发言限流同样关闭
+process.env.BOT_DELAY_MS = '100';
+process.env.PHASE_TIMEOUT = '30';
+process.env.NIGHT_TIMEOUT = '20';
+process.env.CHAT_INTERVAL = '0';
 const clock = require('../../server/clock');
-clock.setMode('virtual'); // v1.7.1：实验室统一虚拟时间（墙钟不随游戏流逝，驱动靠 tickNext 推时钟）
-process.env.CHAT_INTERVAL = '0'; // 虚拟模式下发言限流也是虚拟的，跑量时关闭
+clock.setMode('virtual');
 const scenarios = {
   baseline: require('./scenarios/baseline'),
   sample: require('./scenarios/sample'),

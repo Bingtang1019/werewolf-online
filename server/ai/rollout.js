@@ -39,7 +39,8 @@ function rolloutVote(world, state, rng, { worlds = 64 } = {}) {
       const p = clamp(sc[x] == null ? 0.3 : sc[x], 0.05, 0.95);
       if (r.next() < p) wolfSet.add(x);
     }
-    // 2) 模拟其他玩家投票（不含 me）
+    // 2) 模拟其他玩家投票（不含 me）——v1.7.2（B-2）：好人分支加入"跟票集中"（优先投已有票的高分候选），
+    //    与现实 decideVote 的 concentratedPick 一致（否则模拟比现实更"理性"，平票边缘的 payoff 估计失真）
     const counts = {};
     for (const voter of allVoters) {
       let pick = null;
@@ -47,8 +48,14 @@ function rolloutVote(world, state, rng, { worlds = 64 } = {}) {
         let bv = Infinity;
         for (const c of pool) { if (teammates.includes(c)) continue; const s = sc[c] == null ? 0.5 : sc[c]; if (s < bv) { bv = s; pick = c; } }
       } else {
+        let lead = null, leadN = 0;
+        for (const k of Object.keys(counts)) if (counts[k] > leadN) { leadN = counts[k]; lead = k; } // 当前最高票
         let bv = -Infinity;
-        for (const c of pool) { const s = sc[c] == null ? 0.5 : sc[c]; if (s > bv) { bv = s; pick = c; } }
+        for (const c of pool) { const s = sc[c] == null ? 0.5 : sc[c]; if (s > bv) bv = s; }
+        const top = [];
+        for (const c of pool) { const s = sc[c] == null ? 0.5 : sc[c]; if (Math.abs(s - bv) < 1e-9) top.push(c); }
+        if (lead && top.includes(lead)) pick = lead;          // 已有票的高分候选 → 跟票（防分票）
+        else if (top.length) pick = top[r.int(top.length)];   // 否则最高分（平局 rng 打破）
       }
       if (pick) counts[pick] = (counts[pick] || 0) + 1;
     }

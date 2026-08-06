@@ -1523,15 +1523,11 @@ function applyAction(room, p, action, data) {
     default: res = dayAction(room, p, action, data); break;
   }
   if (res && res.ok) {
-    // 1.7.0（B1-8）：决策动作日志（L2-lite）——确定性验证/回放数据源；mood 等纯展示动作不记
-    if (action !== 'mood') {
-      if (!room.actionLog) room.actionLog = [];
-      room.actionLog.push({ n: room.actionLog.length + 1, phase: room.phase, step: room.nightStep || null, actor: p.seat, action, data: data === undefined ? null : data }); // actor 记座位号（玩家 id 随机，确定性对比需要）
-      if (room.actionLog.length > 5000) room.actionLog.splice(0, room.actionLog.length - 5000);
-    }
-    // 1.7.0（B1-2）：vote 样本采集钩子（lab 平台）——只采好人 bot 的投票决策时刻特征；label 用真实身份（训练侧）；
-    // 特征只含公开信息（features.js）；批量落盘防单条 append 开销；采集失败绝不影响对局
-    if (action === 'vote' && room.labSampleFile && p.isBot && !isWolfRole(p) && data && data.target) {
+    // 1.7.0（B1-2）vote 样本采集钩子（lab 平台）——只采好人 bot 在正式投票阶段（phase==='vote'）的决策时刻特征；
+    // v1.7.2（A-2b）：采集移到 actionLog.push 之前——保证 bot_prev_same 读到的是"上轮投票"（推理时 buildVoteWorld 在决策前，actionLog 同样不含本次）；
+    // v1.7.2（B-4）：仅 phase==='vote' 采集，排除竞选/平票投票（day1 无信息时刻的噪声样本）；
+    // label 用真实身份（训练侧）；特征只含公开信息（features.js）；批量落盘防单条 append 开销；采集失败绝不影响对局
+    if (action === 'vote' && room.phase === 'vote' && room.labSampleFile && p.isBot && !isWolfRole(p) && data && data.target) {
       const f = voteFeatures(room, p.id, data.target);
       if (f) {
         const by = byId(room, data.target);
@@ -1539,6 +1535,12 @@ function applyAction(room, p, action, data) {
         room.labSampleBuf.push(JSON.stringify({ gameId: room.labGameId || 'x', day: room.dayNum || 0, botId: p.id, candId: data.target, features: f, label: by ? (isWolfRole(by) ? 1 : 0) : 0 }));
         if (room.labSampleBuf.length >= 500) flushLabSamples(room);
       }
+    }
+    // 1.7.0（B1-8）：决策动作日志（L2-lite）——确定性验证/回放数据源；mood 等纯展示动作不记
+    if (action !== 'mood') {
+      if (!room.actionLog) room.actionLog = [];
+      room.actionLog.push({ n: room.actionLog.length + 1, phase: room.phase, step: room.nightStep || null, actor: p.seat, action, data: data === undefined ? null : data }); // actor 记座位号（玩家 id 随机，确定性对比需要）
+      if (room.actionLog.length > 5000) room.actionLog.splice(0, room.actionLog.length - 5000);
     }
     autoAdvance(room);
   }

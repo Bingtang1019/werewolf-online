@@ -251,6 +251,8 @@ function decisionEasy(room, bot) {
     let t = res.target ? byId(room, res.target) : null;
     const lp = loverPartner(room, bot); // v1.6.3：狼恋人不投恋人
     if (t && lp && !lp.isWolf && t.id === lp.id) t = null;
+    // v1.7.2（B-1）：第三方（人狼恋狼恋人/丘比特）不投自己阵营（恋人互知，规则内；与 simulate 档统一）
+    if (t && world.faction === 'third' && factionOf(room, t) === 'third') t = null;
     // v1.6.4（A2-4）：不确定性表达——置信度低时小概率偏离最优（随机/跟风），高置信才准；被公开查杀/卖狼目标不波动
     if (t) {
       const conf = confidenceOf(bot, t.id);
@@ -266,7 +268,9 @@ function decisionEasy(room, bot) {
     const world = buildVoteWorld(room, bot); // 1.7.0（B1-1）
     const res = decideVote(world, [...(room.pkTied || [])], rng());
     const lp = loverPartner(room, bot);
-    const target = res.target && lp && !lp.isWolf && res.target === lp.id ? null : res.target;
+    let target = res.target && lp && !lp.isWolf && res.target === lp.id ? null : res.target;
+    // v1.7.2（B-1）：第三方不投自己阵营（与 vote 分支统一）
+    if (target && world.faction === 'third' && factionOf(room, byId(room, target)) === 'third') target = null;
     return { action: 'vote', data: { target } };
   }
   if (room.phase === 'hunter_shot') {
@@ -293,7 +297,9 @@ function updateBelief(room, bot, targetId, evidence) {
   if (!bot.botMemory.beliefs) initBeliefs(room, bot);
   const b = bot.botMemory.beliefs[targetId];
   if (!b) return;
-  const LR = { check_wolf: 19, check_good: 0.05, killed_by_wolf: 0.1, voted_out_wolf: 1.2, voted_out_good: 0.8, silver_water: 0.05, guard_protected: 0.7 }[evidence] || 1;
+  // v1.7.2（A-1）：放逐结算的票型反推方向修正——狼不投狼队友（除卖狼），故：
+  // 放逐狼 → 投他的人≈全是好人 → 嫌疑应显著降低（0.4）；放逐好人 → 投他的人混着狼（狼 argmin 精准投好人）→ 嫌疑应升高（2.5）
+  const LR = { check_wolf: 19, check_good: 0.05, killed_by_wolf: 0.1, voted_out_wolf: 0.7, voted_out_good: 1.4, silver_water: 0.05, guard_protected: 0.7 }[evidence] || 1;
   const odds = (b.wolf / Math.max(b.good, 0.01)) * LR;
   b.wolf = odds / (1 + odds);
   b.good = 1 - b.wolf;

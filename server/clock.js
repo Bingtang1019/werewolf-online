@@ -42,6 +42,7 @@ class VirtualClock {
     this._now = target;
   }
   sleep(ms) { return new Promise(r => this.setTimeout(r, ms)); }
+  clearAll() { this._q = []; } // v1.7.2（A-4）：清空队列（跑量场景每局 finally 清理残留定时器，防队列线性膨胀）
 }
 
 let impl = real;
@@ -54,6 +55,7 @@ const clock = {
   tickNext: () => (impl !== real ? impl.tickNext() : false),
   tick: ms => { if (impl !== real) impl.tick(ms); },
   hasNext: () => (impl !== real ? impl.hasNext() : false),
+  clearAll: () => { if (impl !== real) impl.clearAll(); },
   sleep: ms => (impl !== real ? impl.sleep(ms) : new Promise(r => setTimeout(r, ms))),
 };
 module.exports = clock;

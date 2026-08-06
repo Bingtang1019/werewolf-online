@@ -182,9 +182,31 @@ const avgPGood = negProbs.reduce((s, p) => s + p, 0) / (negProbs.length || 1);
 console.log(`\n--- 三件套验收（留出集 ${test.length} 条）---`);
 console.log(`Brier = ${brier.toFixed(4)}（要求 <0.22）${brier < 0.22 ? '✔' : '✗'}`);
 console.log(`AUC = ${a.toFixed(4)}（要求 >0.6）${a > 0.6 ? '✔' : '✗'}`);
-console.log(`avgPWolf - avgPGood = ${(avgPWolf - avgPGood).toFixed(4)}（要求 >0.2）${avgPWolf - avgPGood > 0.2 ? '✔' : '✗'}`);
-const pass = brier < 0.22 && a > 0.6 && (avgPWolf - avgPGood) > 0.2;
-if (!pass) { console.error('验收未达标——调特征/样本量，不输出模型'); process.exit(1); }
+console.log(`avgPWolf - avgPGood = ${(avgPWolf - avgPGood).toFixed(4)}（v1.7.2 起为报告项，非硬门槛——旧 0.2 门槛对应 A-2 修复前的自举假模型）`);
+// v1.7.2（A-3）：分层 AUC——剥离生态内信号（被投票/被查杀）后的真实判别力，验收可信度依据
+const layers = {
+  '全样本': rows => rows,
+  '无查杀无票信息(checked=0&voted=0)': rows => rows.filter(r => r.features[3] === 0 && r.features[5] === 0),
+  '有查杀信息(checked>0)': rows => rows.filter(r => r.features[3] > 0),
+  '有票信息(voted>0)': rows => rows.filter(r => r.features[5] > 0),
+};
+const layerAUC = {};
+console.log('\n--- 分层 AUC（留出集，A-3 生态内信号剥离）---');
+for (const [name, f] of Object.entries(layers)) {
+  const sub = f(test);
+  if (sub.length < 20) { console.log(`${name}: 样本不足（${sub.length}）`); continue; }
+  const subScores = sub.map(r => adaboostScore(stumps, r.features));
+  const subProbs = subScores.map(s => plattProb(platt.A, platt.B, s));
+  const subY = sub.map(r => r.label);
+  layerAUC[name] = auc(subProbs, subY);
+  console.log(`${name}: AUC=${layerAUC[name].toFixed(4)}（n=${sub.length}）`);
+}
+// v1.7.2（A-3）：验收门槛更新——全样本 AUC + 无查杀无票信息 AUC（泛化核心） + 有查杀信息 AUC（跟随公开查验，合法信息流）；
+// avgP 差值因 A-2 修复后语义变化（旧 0.2 门槛对应自举假象）降为报告项。
+const noInfo = layerAUC['无查杀无票信息(checked=0&voted=0)'];
+const ckInfo = layerAUC['有查杀信息(checked>0)'];
+const pass = brier < 0.22 && a > 0.6 && noInfo > 0.6 && ckInfo > 0.6;
+if (!pass) { console.error('验收未达标（Brier<0.22 且 全样本AUC>0.6 且 无信息AUC>0.6 且 有查杀AUC>0.6）——调特征/样本量，不输出模型'); process.exit(1); }
 const model = {
   schema: 'adaboost-vote@1', features: FEATURE_NAMES, stumps, platt,
   metrics: { brier: +brier.toFixed(4), auc: +a.toFixed(4), avgPWolf: +avgPWolf.toFixed(4), avgPGood: +avgPGood.toFixed(4) },

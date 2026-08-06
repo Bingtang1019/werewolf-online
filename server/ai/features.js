@@ -7,7 +7,7 @@
  * ========================================================================= */
 const FEATURE_NAMES = [
   'seat_norm',    // 候选座位归一化（0..1）
-  'ring_dist',    // 候选与 bot 的座位环距离（归一化 0..0.5）
+  'ring_dist',    // 候选与 bot 的座位环距离（归一化 0..1，v1.7.2 分母改 total/2）
   'talk_count',   // 候选白天发言次数（0..1 归一）
   'checked_wolf', // 候选被公开"查杀"声明次数
   'checked_good', // 候选被公开"金水"声明次数
@@ -32,7 +32,7 @@ function voteFeatures(room, botId, candId) {
   // 位置
   const seatNorm = (cand.seat - 1) / Math.max(1, total - 1);
   const rawDist = Math.abs(bot.seat - cand.seat);
-  const ringDist = Math.min(rawDist, total - rawDist) / Math.max(1, total);
+  const ringDist = Math.min(rawDist, total - rawDist) / Math.max(1, total / 2); // v1.7.2（C）：分母 total/2，值域 0..1（此前只到 0.46）
   // 发言（白天频道）
   const msgs = room.messages || [];
   let talkCount = 0;
@@ -49,10 +49,10 @@ function voteFeatures(room, botId, candId) {
       if (m.text.includes('金水') && m.text.includes(cand.name)) checkedGood++;
     }
   }
-  // 投票
+  // 投票（v1.7.2 A-2：排除 bot 自己刚投的一票——训练时 room.votes 已含本次，推理时不含，排除后两边一致）
   const votes = room.votes || {};
   let votesAgainst = 0;
-  for (const k of Object.keys(votes)) if (votes[k] === candId) votesAgainst++;
+  for (const k of Object.keys(votes)) if (k !== botId && votes[k] === candId) votesAgainst++;
   const lv = room.lastVoteResult;
   const prevVotes = lv && lv.totals ? (lv.totals[candId] || 0) : 0;
   // 1.7.0（B1-3 加强）：
@@ -61,13 +61,15 @@ function voteFeatures(room, botId, candId) {
   for (const m of msgs) {
     if (m.ch === 'all' && m.from !== botId && m.text && m.text.includes(cand.name) && /(怀疑|别信|投|出)/.test(m.text)) accused++;
   }
-  // 对跳预言家：候选自称过预言家，且白天另有他人也声称预言家
+  // 对跳预言家（v1.7.2 B-3：只统计"声称自己是预言家"者——"预言家快出来带队"不算声称）
   const seerClaimers = new Set();
-  for (const m of msgs) if (m.ch === 'all' && m.text && m.text.includes('预言家')) seerClaimers.add(m.from);
+  for (const m of msgs) if (m.ch === 'all' && m.text && (m.text.includes('我是预言家') || m.text.includes('我跳预言家') || m.text.includes('跳预'))) seerClaimers.add(m.from);
   const counterSeer = (claimsSeer > 0 && seerClaimers.size > 1) ? 1 : 0;
-  // 当前最高票（相对票数）
+  // 当前最高票（v1.7.2 C：O(n) 计数后取 max；排除自己票与 votes_against 一致）
+  const voteCounts = {};
+  for (const k of Object.keys(votes)) { if (k === botId) continue; const t = votes[k]; if (!t) continue; voteCounts[t] = (voteCounts[t] || 0) + 1; }
   let maxVotes = 0;
-  for (const k of Object.keys(votes)) { let c = 0; for (const k2 of Object.keys(votes)) if (votes[k2] === votes[k]) c++; if (c > maxVotes) maxVotes = c; }
+  for (const k of Object.keys(voteCounts)) if (voteCounts[k] > maxVotes) maxVotes = voteCounts[k];
   const voteLead = votesAgainst > 0 && votesAgainst >= maxVotes ? 1 : 0;
   // bot 上一轮是否投过候选（actionLog：L2-lite 公开日志）
   const lastVoteLog = (room.actionLog || []).filter(a => a.action === 'vote' && a.actor === bot.seat);
