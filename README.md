@@ -140,6 +140,9 @@ node test/check-resume.js           # 快照恢复定时器重挂（hunter_shot/
 node test/check-debug.js            # 游戏事件流 /api/debug（night_start/night_step/wolf_kill 等）
 node test/check-invariants.js       # 引擎不变式自检 + 快照回滚（正常不误报/破坏触发/回滚链）
 node test/check-balance-lab.js      # 蒙特卡洛平衡实验室（工具：--games/--cap/--counts/--bots/--winMode 批量自动对局输出胜率）
+node tools/ai/model-validate.js     # 模型配对验收（同 seed 逐局「带模型 vs LAB_NO_MODEL」McNemar，默认 100 局，--quick 跑 50 局）
+node tools/ai/vote-direction-stats.js # 投票方向统计（放逐狼/好人的投票者身份分布——A-1 LR 方向验证，默认 200 局）
+node tools/ai/eval-vote-auc.js      # 跨配置 AUC（模型在带模型 bot 生态下的判别力——生态内过拟合检测）
 node test/check-version-sync.js     # 版本串同步检查（package.json/页脚/sw.js CACHE/README/更新公告 五处一致）
 node test/check-bot-lover.js        # 狼恋人逻辑专项（不刀/不魅惑/不投恋人、狼频道引导、白天辩护）
 node test/check-docs.js             # 文档-代码一致性（版本总览表结构/已知事项与实现双向一致/版本标签齐全）
