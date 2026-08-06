@@ -22,12 +22,13 @@ const scenarios = {
   sample: require('./scenarios/sample'),
   deterministic: require('./scenarios/deterministic'),
   paired: require('./scenarios/paired'),
+  matrix: require('./scenarios/matrix'), // v1.7.6 第二部分：配置矩阵扫描
 };
 async function main() {
   const raw = process.argv[2];
   const scenario = raw === 'smoke' ? 'baseline' : raw; // smoke = baseline 的冒烟 preset（PRESETS.smoke）
   if (!raw || !scenarios[scenario]) {
-    console.error(`用法: node test/lab/lab.js <smoke|baseline|sample|deterministic|paired> [--key=value ...]\n  例: node test/lab/lab.js baseline --games=500 --cap=13 --parallel=8`);
+    console.error(`用法: node test/lab/lab.js <smoke|baseline|sample|deterministic|paired|matrix> [--key=value ...]\n  例: node test/lab/lab.js baseline --games=500 --cap=13 --parallel=8`);
     process.exit(1);
   }
   const cfg = buildConfig(raw, process.argv.slice(3));
@@ -36,11 +37,16 @@ async function main() {
   if (cfg.workers > 1) { // v1.7.6：多进程分支（worker 独立 clock/全局 RNG，进程级并行是唯一正确的扩容方式）
     if (!s.planTasks) { console.error('[lab] scenario 未实现 planTasks，无法多进程'); process.exit(1); }
     const gen = s.planTasks(cfg);
-    const records = [];
+    const { createStreamStats } = require('./stats/report');
+    const stream = s.streamable ? createStreamStats() : null; // v1.7.6 第二部分：流式场景 O(1) 内存（万局不存全量 records）
+    const records = stream ? null : [];
     let fin = 0;
     const t0 = Date.now();
     const onResult = (msg) => {
-      if (msg.type === 'done') { if (gen.rec && !gen.rec.has(msg.gameId)) gen.rec.write(msg.record); records.push(msg.record); }
+      if (msg.type === 'done') {
+        if (gen.rec && !gen.rec.has(msg.gameId)) gen.rec.write(msg.record);
+        if (stream) stream.add(msg.record); else records.push(msg.record);
+      }
       else if (msg.type === 'fail') console.error('\n[lab:mp] 任务失败:', msg.id, msg.error);
       fin++;
       process.stderr.write(`\r[lab:mp] ${fin}/${gen.total}  (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
@@ -63,7 +69,7 @@ async function main() {
         }
       } catch (e) { console.error('[lab] vote 样本合并失败:', e.message); }
     }
-    if (s.report) s.report(records, cfg);
+    if (s.report) s.report(stream || records, cfg);
     process.exit(0);
   }
   await s.run(cfg);

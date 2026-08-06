@@ -22,8 +22,9 @@ function planTasks(cfg) {
     },
   };
 }
-function report(records, cfg) {
-  console.log(`\n[sample] 已落盘 ${(records || []).length} 局 → ${cfg.out || 'data/lab-records.jsonl'}`);
+function report(statsOrRecords, cfg) {
+  const n = Array.isArray(statsOrRecords) ? statsOrRecords.length : statsOrRecords.result().total;
+  console.log(`\n[sample] 已落盘 ${n} 局 → ${cfg.out || 'data/lab-records.jsonl'}`);
   if (cfg.sampleFile) console.log(`[sample] vote 样本 → ${cfg.sampleFile}`);
 }
 async function run(cfg) {
@@ -38,4 +39,4 @@ async function run(cfg) {
   gen.rec.close();
   report([], cfg);
 }
-module.exports = { run, planTasks, report };
+module.exports = { run, planTasks, report, streamable: true }; // streamable：多进程分支用流式统计

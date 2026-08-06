@@ -22,8 +22,9 @@ function planTasks(cfg) {
     },
   };
 }
-function report(records, cfg) {
-  const s = summarize(records);
+function report(statsOrRecords, cfg) {
+  // v1.7.6 第二部分：兼容 records 数组（单进程）与流式 stats 对象（多进程万局 O(1) 内存）
+  const s = Array.isArray(statsOrRecords) ? summarize(statsOrRecords) : statsOrRecords.result();
   console.log('\n--- 阵营胜率（95% Wilson CI）---');
   for (const [c, v] of Object.entries(s.camps)) {
     console.log(`${c.padEnd(6)} ${(v.pct * 100).toFixed(1)}% (${v.wins}/${v.n})  [${(v.ci[0] * 100).toFixed(1)}%, ${(v.ci[1] * 100).toFixed(1)}%]`);
@@ -47,4 +48,4 @@ async function run(cfg) {
   if (gen.rec) gen.rec.close();
   report(records, cfg);
 }
-module.exports = { run, planTasks, report };
+module.exports = { run, planTasks, report, streamable: true }; // streamable：多进程分支用流式统计（万局 O(1) 内存）

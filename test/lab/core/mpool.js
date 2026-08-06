@@ -59,10 +59,13 @@ function runWorker() {
 function runMPool({ gen, cfg, onResult, workers = 'auto', taskTimeoutMs = 120000, maxRetry = 2 }) {
   return new Promise((resolve) => {
     const poolSize = workers === 'auto' ? Math.max(1, os.cpus().length - 1) : Math.max(1, Number(workers) || 1);
+    // v1.7.6 第二部分：CONCURRENCY_PER_WORKER——每 worker 可多 in-flight（真实模式跑局交错收益）；虚拟模式强制 1（clock 进程内单例，并发串房）
+    let conc = 1;
+    try { const clock = require('../../../server/clock'); conc = clock.isVirtual() ? 1 : Math.max(1, Number(cfg.conc) || 1); } catch (e) { conc = 1; }
     const total = gen.total;
     const pending = [];
     const retries = new Map();    // taskId -> 已重试次数
-    const inflight = new Map();   // worker -> {task, sentAt}
+    const inflight = new Map();   // worker -> [{task, sentAt}]（支持 conc 个 in-flight）
     const crashReason = new Map();// worker -> 崩溃原因（超时等）
     const pool = new Set();
     let done = 0, exhausted = 0, finished = false;
@@ -84,10 +87,12 @@ function runMPool({ gen, cfg, onResult, workers = 'auto', taskTimeoutMs = 120000
       resolve();
     };
     const dispatch = (w) => {
-      if (inflight.has(w)) return;
+      const list = inflight.get(w);
+      if (list && list.length >= conc) return;
       const it = take();
       if (!it) return;
-      inflight.set(w, { task: it.task, sentAt: Date.now() });
+      if (!list) inflight.set(w, []);
+      inflight.get(w).push({ task: it.task, sentAt: Date.now() });
       w.send({ type: 'task', v: 1, cfg, task: it.task });
     };
     const requeue = (task, why) => {
@@ -101,22 +106,27 @@ function runMPool({ gen, cfg, onResult, workers = 'auto', taskTimeoutMs = 120000
       pool.add(w);
       w.on('message', (msg) => {
         if (msg.type === 'ready') { dispatch(w); return; }
-        const cur = inflight.get(w);
-        const task = cur ? cur.task : null;
+        const list = inflight.get(w) || [];
+        const cur = list.find(x => x.task.id === msg.id) || null;
         if (msg.type === 'done') {
-          inflight.delete(w); done++;
+          list.splice(list.indexOf(cur), 1); if (!list.length) inflight.delete(w);
+          done++;
           onResult(msg);
           dispatch(w); tryFinish();
         } else if (msg.type === 'fail') {
-          inflight.delete(w);
-          if (task) requeue(task, `fail: ${msg.error}`);
+          list.splice(list.indexOf(cur), 1); if (!list.length) inflight.delete(w);
+          if (cur) requeue(cur.task, `fail: ${msg.error}`);
           dispatch(w); tryFinish();
         }
       });
       w.on('exit', (code) => {
         pool.delete(w);
-        const cur = inflight.get(w);
-        if (cur) { inflight.delete(w); requeue(cur.task, crashReason.get(w) || `worker 崩溃(${code})`); }
+        const list = inflight.get(w);
+        if (list && list.length) {
+          inflight.delete(w);
+          const why = crashReason.get(w) || `worker 崩溃(${code})`;
+          for (const x of list) requeue(x.task, why);
+        }
         crashReason.delete(w);
         refill();
         if (!finished && pending.length) spawn(); // 还有任务则重建
@@ -127,8 +137,8 @@ function runMPool({ gen, cfg, onResult, workers = 'auto', taskTimeoutMs = 120000
     // wall-clock 超时：进程内 guard 兜不住死循环，靠杀进程 + seed 决定论重跑
     const timer = setInterval(() => {
       const now = Date.now();
-      for (const [w, cur] of inflight) {
-        if (now - cur.sentAt > taskTimeoutMs) { crashReason.set(w, `wall-clock 超时 ${taskTimeoutMs}ms`); w.kill('SIGKILL'); }
+      for (const [w, list] of inflight) {
+        if (list.some(x => now - x.sentAt > taskTimeoutMs)) { crashReason.set(w, `wall-clock 超时 ${taskTimeoutMs}ms`); w.kill('SIGKILL'); }
       }
     }, 5000);
     for (let i = 0; i < poolSize; i++) spawn();

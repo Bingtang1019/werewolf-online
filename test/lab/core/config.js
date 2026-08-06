@@ -6,6 +6,7 @@ const PRESETS = {
   sample:   { games: 2000, cap: 13, parallel: 8, workers: 1, winMode: 'edge' },
   paired:   { games: 400, cap: 13, parallel: 1, workers: 1, winMode: 'edge' },
   deterministic: { games: 20, cap: 8, parallel: 1, workers: 1, winMode: 'edge' },
+  matrix:   { games: 50, caps: '8,13', parallel: 8, workers: 1, winMode: 'edge' }, // v1.7.6 第二部分：配置矩阵扫描
 };
 /* 狼数阶梯：13 人局 = 3 狼 10 好（与 B1-3 验收先验对齐） */
 function defaultCounts(cap) {
@@ -36,17 +37,18 @@ function buildConfig(scenario, argv) {
     else if (v === 'false') cfg[toCamel(k)] = false;
     else cfg[toCamel(k)] = v;
   }
-  if (!cfg.counts) cfg.counts = defaultCounts(cfg.cap);
-  if (!cfg.botLine) cfg.botLine = Array(Math.max(1, cfg.cap - 1)).fill('smart'); // 默认全 smart（paired 等 scenario 自行覆盖）
-  if (cfg.bots) cfg.botLine = Array(Math.max(1, cfg.cap - 1)).fill(cfg.bots); // --bots=<level> 快捷：全 bot 用同一档（baseline/sample/deterministic）
+  if (!cfg.counts && typeof cfg.cap === 'number') cfg.counts = defaultCounts(cfg.cap); // matrix 等无 cap 的 preset 由 planTasks 的 overrides 提供
+  if (!cfg.botLine && typeof cfg.cap === 'number' && cfg.cap >= 2) cfg.botLine = Array(Math.max(1, cfg.cap - 1)).fill('smart'); // 默认全 smart（paired 等 scenario 自行覆盖）
+  if (cfg.bots && typeof cfg.cap === 'number') cfg.botLine = Array(Math.max(1, cfg.cap - 1)).fill(cfg.bots); // --bots=<level> 快捷：全 bot 用同一档
   // 校验
-  if (cfg.cap < 4 || cfg.cap > 18) throw new Error(`cap 越界: ${cfg.cap}`);
   if (cfg.parallel > 16) throw new Error('parallel 上限 16');
   if (cfg.games < 1) throw new Error('games 必须 ≥1');
-  if (!(cfg.workers === 'auto' || (Number.isInteger(cfg.workers) && cfg.workers >= 1 && cfg.workers <= 64))) throw new Error('workers 必须为 auto 或 1~64 整数');
-  const sum = Object.values(cfg.counts).reduce((a, b) => a + b, 0);
-  if (sum !== cfg.cap) throw new Error(`counts 总和 ${sum} != cap ${cfg.cap}`);
-  if (cfg.botLine.length !== cfg.cap - 1) throw new Error(`botLine 长度 ${cfg.botLine.length} != cap-1 ${cfg.cap - 1}`);
+  if (typeof cfg.cap === 'number') {
+    if (cfg.cap < 4 || cfg.cap > 18) throw new Error(`cap 越界: ${cfg.cap}`);
+    const sum = Object.values(cfg.counts || {}).reduce((a, b) => a + b, 0);
+    if (sum !== cfg.cap) throw new Error(`counts 总和 ${sum} != cap ${cfg.cap}`);
+    if (cfg.botLine && cfg.botLine.length !== cfg.cap - 1) throw new Error(`botLine 长度 ${cfg.botLine.length} != cap-1 ${cfg.cap - 1}`);
+  }
   return cfg;
 }
 module.exports = { buildConfig, PRESETS, defaultCounts, parseCounts };
