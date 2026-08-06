@@ -3,7 +3,7 @@
  * 狼人杀项目·代码自检工具（v1.6.3）
  * 用法：
  *   node tools/selfcheck.js            # 静态自检（语法/版本串/死代码/重复case/遗留标记/文档-代码一致）
- *   node tools/selfcheck.js --tests    # 静态自检 + 跑全部自动化测试（约 5~8 分钟）
+ *   node tools/selfcheck.js --tests    # 静态自检 + 全量自动化测试（v1.7.9 起并行执行，约 1~3 分钟）
  *   node tools/selfcheck.js --quick    # 只做快速自检（语法 + 版本串 + 已知事项），适合每次改完跑
  * 退出码：0=全部通过；1=存在问题
  * 说明：未使用标识符检测为“宽松启发式”——只报告最可能的冗余，
@@ -141,23 +141,16 @@ for (const f of core) {
   }
 }
 
-/* ---------- 8. 全量测试（可选） ---------- */
+/* ---------- 8. 全量测试（可选，v1.7.9 并行执行器） ---------- */
 if (RUN_TESTS) {
   console.log('\n[8] 全量自动化测试（--tests）');
-  const testDir = path.join(root, 'test');
-  const tests = fs.readdirSync(testDir).filter(f => f.endsWith('.js') && f !== '_harness-dom.js');
-  let pass = 0;
-  for (const t of tests) {
-    const start = Date.now();
-    try {
-      execFileSync(process.execPath, [path.join(testDir, t)], { stdio: 'pipe', timeout: 150000 });
-      pass++;
-      console.log(`    PASS ${t} (${Date.now() - start}ms)`);
-    } catch (e) {
-      bad(`测试失败 ${t}`);
-    }
+  try {
+    // v1.7.9：并行执行器（进程级隔离 + 快照独占 + 超时/重试 + 输出收集），替换原串行 for 循环
+    execFileSync(process.execPath, [path.join(root, 'tools', 'parallel-tests.js')], { stdio: 'inherit', timeout: 900000 });
+    ok('全量测试通过（并行）');
+  } catch (e) {
+    bad('全量测试未全部通过（详见上方并行执行器输出）');
   }
-  console.log(`    测试 ${pass}/${tests.length} 通过`);
 }
 
 /* ---------- 汇总 ---------- */

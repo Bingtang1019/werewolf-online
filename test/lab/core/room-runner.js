@@ -24,6 +24,7 @@ async function runOneLabGame(cfg) {
   const t0 = Date.now();
   try {
     if (cfg.sampleFile) { room.labGameId = cfg.gameId; room.labSampleFile = cfg.sampleFile; } // vote 样本采集（game.js 钩子）
+  if (cfg.loverMode) room.loverMode = cfg.loverMode; // v2（M1）：恋人机制模式（off/classic/v2），lab 可配
     for (const [a, d] of [
       ['settings', { sheriff: false, winMode: cfg.winMode || 'edge', tieRule: 'pk', botMode: 'auto' }],
       ['setCounts', { counts: cfg.counts }],
@@ -72,11 +73,13 @@ async function runOneLabGame(cfg) {
     });
     const fk = (room.events || []).find(e => e.type === 'wolf_kill' && e.night === 1);
     const firstKill = fk ? { id: fk.data.kill, camp: roles.find(x => x.id === fk.data.kill) ? roles.find(x => x.id === fk.data.kill).camp : '?' } : null;
+    // v2（M1）：恋人机制元数据（M3 时序敏感性分析：丘比特死亡轮次 / 解绑 / 权能）
+    const lv = room.loverMode === 'v2' && room.loverV2 ? { power: room.loverV2.power, unbindUsed: room.loverV2.unbind.used, unbindNight: room.loverV2.timeline.unbindNight, cupidDeadNight: room.loverV2.timeline.cupidDeadNight } : null;
     return {
       schema: 'lab.game-record@1', gameId: cfg.gameId, seed: cfg.seed, scenario: cfg.scenario || 'lab',
       startedAt: new Date(t0).toISOString(), durMs: Date.now() - t0,
-      config: { cap: cfg.cap, counts: cfg.counts, botLine: line, winMode: cfg.winMode || 'edge', name: cfg.name || null },
-      result: { winner: room.endInfo ? room.endInfo.winner : null, timeout: false, error: null },
+      config: { cap: cfg.cap, counts: cfg.counts, botLine: line, winMode: cfg.winMode || 'edge', name: cfg.name || null, loverMode: room.loverMode },
+      result: { winner: room.endInfo ? room.endInfo.winner : null, timeout: false, error: null, ...(lv ? { loverMeta: lv } : {}) },
       players,
       events: (room.events || []).map(e => ({
         i: 0, t: e.type, night: e.night || 0,

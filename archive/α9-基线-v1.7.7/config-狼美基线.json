@@ -1,0 +1,29 @@
+{
+  "id": "α9-基线",
+  "version": "v1.7.7",
+  "frozen": "2026-08-06",
+  "preset": "十二人局三·狼美",
+  "cap": 12,
+  "counts": {
+    "wolf": 3,
+    "wolfBeauty": 1,
+    "seer": 1,
+    "dreamer": 1,
+    "guard": 1,
+    "witch": 1,
+    "villager": 4
+  },
+  "winMode": "edge",
+  "claimGod": "0.25",
+  "seeds": [
+    "s3c",
+    "a8v"
+  ],
+  "n": 6000,
+  "result": {
+    "s3c": "49.6%",
+    "a8v": "49.8%",
+    "ci_pp": "±1.26"
+  },
+  "repro": "WOLF_CLAIM_GOD=0.25 node test/lab/lab.js balance --games=3000 --presets=9 --no-random=1 --seed=<s3c|a8v>"
+}

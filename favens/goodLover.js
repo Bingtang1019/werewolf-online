@@ -55,4 +55,11 @@ function decideVote(room, bot, { protectLover = 'soft' } = {}) {
   }
   return { action: 'vote', data: { target: lead || null } };
 }
-module.exports = { decideVote, getBeliefs };
+/* v2（M1/M2）策略：付费护短——护短投票带保护标记（引擎结算公告“X在保护恋人”，狼队获知好恋人身份优先刀，代价端） */
+function decideVoteV2(room, bot) {
+  const loverId = loverIdOf(room, bot);
+  const d = decideVote(room, bot, { protectLover: 'soft' });
+  if (d && d.data && loverId) d.data.protectPartner = loverId;
+  return d;
+}
+module.exports = { decideVote, decideVoteV2, getBeliefs };

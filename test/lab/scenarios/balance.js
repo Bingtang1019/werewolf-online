@@ -106,7 +106,7 @@ async function run(cfg) {
     if (gen.rec && !gen.rec.has(r.gameId)) gen.rec.write(r);
     st.add(r);
   }
-  if (gen.rec) gen.rec.close();
+  if (gen.rec) await gen.rec.close(); // v1.7.9：flush 后再 report/exit
   report(st, cfg);
 }
 module.exports = { run, planTasks, report, streamable: true, randomConfig };

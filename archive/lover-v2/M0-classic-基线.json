@@ -1,0 +1,19 @@
+{
+  "milestone": "M0",
+  "title": "classic 6 配置基线冻结（favens v2 对照口径）",
+  "date": "2026-08-07",
+  "method": "lab pool 场景，同 seed 池（favens-pool），pool-report 配对（Wilson CI ⊂ [45,55] 落带判定）",
+  "claimGod口径": "有狼美配置（局四/局八/十五人）0.1，局八 v2 对照取 0（c1 定档微调）；无狼美配置（局五/六/七）0（纪律默认）",
+  "baselines": [
+    { "config": "局四·丘比特", "preset": 10, "claimGod": "0.1", "file": "beta0a.jsonl", "n": 10000, "wolf": 52.12, "ci": [51.1, 53.1], "band": "PASS", "note": "α9 唯一已平衡丘比特配置" },
+    { "config": "局五·丘比特", "preset": 11, "claimGod": "0", "file": "b7-11-ctl.jsonl", "n": 3000, "wolf": 36.33, "ci": [34.6, 38.1], "band": "FAIL", "note": "狼过弱（好人碾压）——α 后继" },
+    { "config": "局六·丘比特", "preset": 12, "claimGod": "0", "file": "b7-12-ctl.jsonl", "n": 3000, "wolf": 33.87, "ci": [32.2, 35.6], "band": "FAIL", "note": "狼过弱——α 后继" },
+    { "config": "局七·丘比特", "preset": 13, "claimGod": "0", "file": "b7-13-ctl.jsonl", "n": 3000, "wolf": 39.17, "ci": [37.4, 40.9], "band": "FAIL", "note": "狼过弱——α 后继" },
+    { "config": "局八·丘比特", "preset": 14, "claimGod": "0.1", "file": "b7-14-ctl.jsonl", "n": 3000, "wolf": 53.4, "ci": [51.6, 55.2], "band": "FAIL", "note": "0.1 口径上界出带 0.2pp" },
+    { "config": "局八·丘比特（v2对照口径）", "preset": 14, "claimGod": "0", "file": "b7-14-cg0-ctl.jsonl", "n": 3000, "wolf": 46.2, "ci": [44.4, 48.0], "band": "FAIL", "note": "c1 定档口径：下界出带 0.6pp（狼略弱），favens 恰好拉回" },
+    { "config": "十五人·丘比特", "preset": 15, "claimGod": "0.1", "file": "b7-15-ctl.jsonl", "n": 3000, "wolf": 44.9, "ci": [43.1, 46.7], "band": "FAIL", "note": "狼略弱 0.1pp" }
+  ],
+  "v2对照口径": "局四/十五人 claimGod=0.1，局八 claimGod=0（b7-14-cg0-ctl），局五/六/七 claimGod=0",
+  "结论": "6 配置中仅局四 classic 落带；局五/六/七基线狼过弱（33~39%）为 α9 单配置冻结遗留；局八/十五人擦边。v2 机制（解绑/权能/恋人刀）将在此基线上验证净效应（M3 验收：6 配置 v2 全落带 [45,55] 且丘比特时序敏感 ≤5pp）",
+  "复现": "node test/lab/lab.js pool --preset=N --seed-groups=100 --per-group=100 --seed-base=favens-pool --out=<file> （局四 10000 局 / 其余 3000 局）"
+}

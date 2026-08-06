@@ -1,0 +1,10 @@
+{
+  "note": "α9 冻结基线的 seed 池记录",
+  "seedBase": [
+    "s3c",
+    "a8v"
+  ],
+  "seedFormat": "${seedBase}-p${presetIdx}-${g}",
+  "rng": "FNV-1a(seed串) → 全局RNG → 房间RNG（room-runner seedHash）",
+  "determinism": "同 seed 双跑 actionLog 逐字节一致（v1.7.0 显式RNG）"
+}

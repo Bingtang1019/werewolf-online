@@ -790,7 +790,8 @@ async function scenario6() {
   // 丘比特不知道情侣身份（无法确定自己阵营）
   const cupidV = await state(room, cupid);
   assert(!cupidV.myLover, '丘比特不知道情侣身份（无 myLover 信息）');
-  assert(cupidV.my.camp === null, '丘比特无法确定自己的阵营');
+  // v1.7.6（丘比特规则补足）：丘比特可得知自己当前阵营——人狼恋 = 第三方
+  assert(cupidV.my.camp === '第三方', '丘比特应知自己为第三方（v1.7.6：丘比特可知当前阵营，人狼恋=第三方）');
   // 狼人杀 v2，女巫救 → 平安夜；预言家查验
   for (const w of wolves) { await act(room, w, 'wolf_set', { kill: v2 }); await act(room, w, 'wolf_set', { confirm: true }); }
 

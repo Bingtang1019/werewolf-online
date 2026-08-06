@@ -24,12 +24,13 @@ const scenarios = {
   paired: require('./scenarios/paired'),
   matrix: require('./scenarios/matrix'), // v1.7.6 第二部分：配置矩阵扫描
   balance: require('./scenarios/balance'), // v1.7.6：预设+随机比例预测（第三方胜率）
+  pool: require('./scenarios/pool'), // v1.7.9：固定 seed 池配对（β 方法论——Δ 与配对 CI，配对分析见 stats/pool-report.js）
 };
 async function main() {
   const raw = process.argv[2];
   const scenario = raw === 'smoke' ? 'baseline' : raw; // smoke = baseline 的冒烟 preset（PRESETS.smoke）
   if (!raw || !scenarios[scenario]) {
-    console.error(`用法: node test/lab/lab.js <smoke|baseline|sample|deterministic|paired|matrix|balance> [--key=value ...]\n  例: node test/lab/lab.js balance --games=3000 --cupid-only=1 --workers=8`);
+    console.error(`用法: node test/lab/lab.js <smoke|baseline|sample|deterministic|paired|matrix|balance|pool> [--key=value ...]\n  例: node test/lab/lab.js balance --games=3000 --cupid-only=1 --workers=8\n      node test/lab/lab.js pool --preset=10 --out=test/lab/data/pool/x.jsonl --workers=14（固定 seed 池配对）`);
     process.exit(1);
   }
   const cfg = buildConfig(raw, process.argv.slice(3));
@@ -53,7 +54,7 @@ async function main() {
       process.stderr.write(`\r[lab:mp] ${fin}/${gen.total}  (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
     };
     await runMPool({ gen, cfg, onResult, workers: cfg.workers });
-    if (gen.rec) gen.rec.close();
+    if (gen.rec) await gen.rec.close(); // v1.7.9：flush 完成后再 exit（异步写盘抢跑会丢末条）
     // vote 样本合并：多 worker 各自写 sampleFile.<pid>，跑完统一追加到主文件
     if (cfg.sampleFile && gen.sampleFile) {
       const base = gen.sampleFile;

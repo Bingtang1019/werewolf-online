@@ -16,7 +16,9 @@ function createRecorder(file) {
     write(rec) { ws.write(JSON.stringify(rec) + '\n'); done.add(rec.gameId); },
     has(id) { return done.has(id); },
     size: () => done.size,
-    close() { ws.end(); },
+    // v1.7.9：close 返回 finish promise——lab.js/scenario 必须 await 后再 process.exit，
+    // 否则异步写盘未 flush 会被 exit 抢跑，万局约丢最后 1 条（goodlover 跑实测 9999/10000）
+    close() { return new Promise(res => { ws.once('finish', res); ws.once('error', res); ws.end(); }); },
   };
 }
 module.exports = { createRecorder };

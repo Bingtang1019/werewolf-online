@@ -47,9 +47,11 @@ function decideVote(room, bot) {
     return { action: 'vote', data: { target: t || lead } };
   }
   if (c === 'wolf') {
-    // 帮狼：投票型最高的好人（搅浑 / 帮狼节奏）——v1.7.8 参数化：FAVENS_CUPID_WOLF=0 时弃票（控 favens 狼侧偏移，β1 归因：丘比特帮狼贡献 +7.5pp）
-    if (process.env.FAVENS_CUPID_WOLF === '0') return { action: 'vote', data: { target: null } };
-    return { action: 'vote', data: { target: lead || null } };
+    // 帮狼：投“非情侣最高嫌疑”（修正 v1.7.8：弃票=丘比特退出投票→好人少一票反而利好狼）
+    // 最高嫌疑 = 自称神职者优先（嫌疑代理），否则票型最高非情侣——丘比特参与投票但不投情侣
+    let t = null;
+    for (const q of pool) if (claims.has(q.id)) { t = q.id; break; }
+    return { action: 'vote', data: { target: t || lead } };
   }
   // 人狼恋（third）：搅局——公开计数近似优势方（狼数 vs 好人存活数），削优势方
   const wolfAlive = room.players.filter(q => q.alive && isWolf(q)).length;

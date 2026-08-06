@@ -1500,7 +1500,12 @@ function createBotDecision(room, bot) {
         if (room.nightNum === 1) {
           const a = pick(alivePlayers(room));
           const b = pick(alivePlayers(room).filter(q => q.id !== (a && a.id)));
-          return (a && b) ? { action: 'cupid_pick', data: { ids: [a.id, b.id] } } : null;
+          if (!a || !b) return null;
+          if (room.loverMode === 'v2') { // v2（M1/M2）：权能槽二选一——人狼恋→复仇（殉情常态，宣言反制绑架）；同阵营→守护（保命价值最高）；丘比特知情侣身份（v1.7.6）
+            const power = (isWolfRole(a) !== isWolfRole(b)) ? 'vengeance' : 'guard';
+            return { action: 'cupid_pick', data: { ids: [a.id, b.id], power } };
+          }
+          return { action: 'cupid_pick', data: { ids: [a.id, b.id] } };
         }
         return { action: 'cupid_pick', data: { ids: null } }; // 挂机：放弃重选
       }

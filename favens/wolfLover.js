@@ -48,12 +48,15 @@ function loverIdOf(room, bot) {
   return room.lovers && room.lovers.includes(bot.id) ? room.lovers.find(id => id !== bot.id) : null;
 }
 
-/* 夜间刀人：刀神底座 + 红线过滤（恋人 + 第三方成员）→ 次优 */
+/* 夜间刀人：刀神底座 + 红线过滤（恋人 + 第三方成员）→ 次优
+ * v1.7.9（c1 实验）：FAVENS_WOLF_NIGHT_REDLINE=0 → 红线 off（狼恋人可刀恋人/第三方，含魅惑池同步放开）
+ *   判读：off 利好狼 → 红线在保护好人（保留）；off 利好好人 → 红线实现有问题（刀恋人=殉情自爆本应利好狼） */
 function decideNightKill(room, bot) {
   const model = loadWolfGod();
   const loverId = loverIdOf(room, bot);
   const cands = room.players.filter(q => q.alive && q.id !== bot.id && !isWolf(q));
-  const safe = cands.filter(q => q.id !== loverId && !isThirdMember(room, q));
+  const redline = process.env.FAVENS_WOLF_NIGHT_REDLINE !== '0';
+  const safe = redline ? cands.filter(q => q.id !== loverId && !isThirdMember(room, q)) : cands.slice();
   let pick = null;
   const claims = claimsMap(room);
   if (model) {
@@ -75,6 +78,14 @@ function decideNightKill(room, bot) {
     pick = t || (safe.length ? safe[room.rng ? room.rng.int(safe.length) : Math.floor(Math.random() * safe.length)] : null);
   }
   const data = { kill: pick ? pick.id : null, confirm: true };
+  // v1.7.9（c1 验证钩子，env 门控，生产零影响）：统计狼恋人刀恋人/第三方频率
+  if (process.env.FAVENS_WOLF_TRACE === '1') {
+    const g = global.__wlTrace = global.__wlTrace || { total: 0, loverKill: 0, thirdKill: 0, nullKill: 0 };
+    g.total++;
+    if (!pick) g.nullKill++;
+    if (pick && pick.id === loverId) g.loverKill++;
+    if (pick && isThirdMember(room, pick)) g.thirdKill++;
+  }
   // 狼美魅惑保护：魅惑目标 ≠ 恋人/第三方成员（且 ≠ 刀目标）
   if (bot.role === 'wolfBeauty') {
     const charmPool = safe.filter(q => q.id !== (pick && pick.id));
@@ -88,8 +99,12 @@ function decideNightKill(room, bot) {
 
 /* 白天投票：红线（永不投狼=自爆 + 不投恋人）+ 跟票（狼队共识目标，伪装跟随）
  * v1.7.8 参数化：FAVENS_WOLF_VOTE_ABSTAIN=1 → 狼恋人弃票（控 favens 狼侧偏移，β1 归因） */
+/* 白天投票：红线（永不投狼=自爆 + 不投恋人）+ 跟票（狼队共识目标，伪装跟随）
+ * v1.7.8 参数化：FAVENS_WOLF_VOTE_ABSTAIN=1 → 全弃票；FAVENS_WOLF_VOTE_PROB=p → 跟票概率（其余弃票） */
 function decideVote(room, bot) {
   if (process.env.FAVENS_WOLF_VOTE_ABSTAIN === '1') return { action: 'vote', data: { target: null } };
+  const prob = process.env.FAVENS_WOLF_VOTE_PROB != null ? Math.min(1, Math.max(0, parseFloat(process.env.FAVENS_WOLF_VOTE_PROB))) : 1;
+  if (room.rng && room.rng.next() > prob) return { action: 'vote', data: { target: null } };
   const loverId = loverIdOf(room, bot);
   const counts = {};
   for (const k of Object.keys(room.votes || {})) {
@@ -101,4 +116,11 @@ function decideVote(room, bot) {
   for (const k of Object.keys(counts)) if (counts[k] > n) { n = counts[k]; best = k; }
   return { action: 'vote', data: { target: best } }; // 票型最高且非狼非恋人；无则弃票
 }
-module.exports = { decideNightKill, decideVote, isThirdMember };
+/* v2（M1/M2）策略：保丘比特——投票避开丘比特（维持狼恋人免疫期=丘比特存活期）；其余复用 v1 跟票 */
+function decideVoteV2(room, bot) {
+  const d = decideVote(room, bot);
+  const cupid = room.players.find(q => q.role === 'cupid' && q.alive);
+  if (cupid && d && d.data && d.data.target === cupid.id) return { action: 'vote', data: { target: null } }; // 弃票避险（保免疫）
+  return d;
+}
+module.exports = { decideNightKill, decideVote, decideVoteV2, isThirdMember };

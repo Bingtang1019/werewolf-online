@@ -11,6 +11,7 @@
 const crypto = require('crypto');
 const fs = require('fs'); // 1.7.0（B1-2）：样本采集钩子（lab 平台）
 const { createBotDecision, botWolfChat, resetBotPerGame, injectGrudge } = require('./bot-brain'); // v1.4.0：人机三档决策（idle/easy/smart）
+const loverCore = require('./loverCore.js'); // v2（M1）：恋人机制引擎核心（解绑/权能/恋人刀，仅 loverMode==='v2' 触达）
 const { voteFeatures } = require('./server/ai/features.js'); // 1.7.0（B1-2）：vote 特征（训练/推理共用，只含公开信息）
 const { createRng } = require('./server/ai/rng.js');
 const clock = require('./server/clock'); // v1.7.1：可注入时钟（真实/虚拟），所有定时器与时间戳一律经此模块 // 1.7.0（B1-8）：显式可注入 RNG
@@ -58,6 +59,10 @@ function checkInvariants(room) {
   if (room.phase === 'reveal' && (!room.reveal || typeof room.reveal !== 'object')) return 'reveal';
   if (room.lastVoteResult !== null && room.lastVoteResult !== undefined && typeof room.lastVoteResult !== 'object') return 'vote-result';
   return null;
+}
+/* v2（M1）：系统公告消息入消息流（marker='系统'，全频道或狼频道可见；事件流 lover_* 双写） */
+function sysMsg(room, ch, text) {
+  room.messages.push({ id: uid(), ch, from: null, name: '系统', text, marker: '系统', ts: clock.now(), day: room.dayNum });
 }
 /* v1.6.0：游戏事件流（环形缓冲 200 条）——运维勘查 + 上帝视角回放的数据源 */
 function pushEvent(room, type, data) {
@@ -227,6 +232,8 @@ function createRoom(hostName) {
     playerCap: 6,
     roleCounts: defaultCounts(6),
     settings: { sheriff: true, winMode: 'edge', tieRule: 'pk', thief: false, botMode: 'auto' }, // botMode: 人机难度 'auto'简单AI | 'passive'挂机
+    loverMode: 'classic', // v2（恋人权能系统）：'off'关闭恋人机制 | 'classic'现行规则（冻结行为，α9 零破坏）| 'v2'权能+解绑+恋人刀（loverCore 驱动）
+    loverV2: null, // v2：恋人机制状态（loverCore 管理：power/unbind/betrayUsed/timeline）
     players: [],
     messages: [],
     winner: null, endInfo: null,
@@ -621,6 +628,7 @@ function nightAction(room, p, action, data) {
   switch (action) {
     case 'cupid_pick': {
       if (step !== 'cupid' || p.role !== 'cupid') return { error: '操作不合法' };
+      if (room.loverMode === 'off') return { error: '本局已关闭恋人机制' }; // v2（M1）：off 三态
       const ids = data.ids;
       // 情侣殉情后丘比特可重新指定情侣，也可放弃重选（首夜必须指定）
       if (ids === null || ids === undefined) {
@@ -633,6 +641,10 @@ function nightAction(room, p, action, data) {
       }
       if (!Array.isArray(ids) || ids.length !== 2 || ids[0] === ids[1]) return { error: '请选择两名不同的玩家' };
       for (const id of ids) { const q = byId(room, id); if (!q || !q.alive) return { error: '玩家不存在或已出局' }; }
+      if (room.loverMode === 'v2') {
+        const rp = loverCore.grantPower(room, data.power); // v2：权能槽二选一（守护/复仇），真人/bot 必选
+        if (!rp.ok) return { error: rp.msg };
+      }
       room.lovers = [ids[0], ids[1]].sort();
       n.cupid.pick = [ids[0], ids[1]];
       room.cupidCamp = computeCupidCamp(room); // 按新情侣整体阵营更新丘比特阵营
@@ -756,15 +768,27 @@ function resolveNight(room) {
   const dreamer = rolePlayer(room, 'dreamer');
   if (kill) {
     const guarded = kill === guardT, dreamed = kill === dreamT, saved = wSave;
-    if (!dreamed) {
+    const loverGuard = loverCore.applyGuard(room, kill); // v2 守护：恋人被狼刀 → 挡刀（狼队收到“刀被挡”，暴露恋人位置）
+    if (loverGuard) {
+      pushEvent(room, 'lover_guard', { target: kill, name: byId(room, kill) ? byId(room, kill).name : '' });
+      sysMsg(room, 'wolf', '刀被挡了——你的目标被恋人守护');
+      sysMsg(room, 'all', '昨夜有人挡下了狼刀');
+    } else if (!dreamed) {
       if (guarded && saved) { const q = byId(room, kill); q.deadNote = '同守同救（狼刀+守护+解药）'; die(kill, 'wolf'); }
       else if (!guarded && !saved) { die(kill, 'wolf'); }
     }
   }
   if (wPoison && wPoison !== dreamT) die(wPoison, 'poison');
   if (dreamT && dreamer && !dreamer.alive && dreamer.deadBy !== 'left') die(dreamT, 'dream'); // 摄梦人离开≠死亡，不带走梦游者
-  applyLoverChain(room, deaths, die);
+  const betray = deaths.includes(kill) && loverCore.betrayalKill(room, kill); // v2 恋人刀：狼恋人投刀自己的恋人且致死 → 不殉情 + 狼队公告身份（被挡/未死不触发）
+  if (betray) {
+    pushEvent(room, 'lover_betray', betray);
+    sysMsg(room, 'wolf', betray.wolfLoverName + ' 刀了恋人 ' + (byId(room, betray.killId) ? byId(room, betray.killId).name : '') + '（背叛，不殉情）');
+    sysMsg(room, 'all', '狼队发生了背叛：' + betray.wolfLoverName + ' 刀了自己的恋人');
+  }
+  applyLoverChain(room, deaths, die, betray);
   room.nightDeaths = deaths;
+  loverCore.trackCupidDeath(room, deaths); // v2 时序记录（丘比特死亡轮次，M3 敏感性分析）
   // v1.6.2：wolf_kill/deaths 事件提前到猎人判断之前推送（猎人开枪分支提前 return 曾导致这两条事件丢失）
   if (room.night && room.night.wolf && room.night.wolf.kill) pushEvent(room, 'wolf_kill', { kill: room.night.wolf.kill, saved: !deaths.includes(room.night.wolf.kill) });
   pushEvent(room, 'deaths', { deaths: deaths.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '', by: q ? q.deadBy : '' }; }) });
@@ -798,6 +822,7 @@ function resolveShot(room, target) {
   if (target) {
     die(target, 'shoot');
     applyLoverChain(room, deaths, die);
+    loverCore.trackCupidDeath(room, deaths); // v2 时序记录（丘比特被枪杀）
     // 狼美人被猎人枪杀不能带走被魅惑者（仅被放逐时才触发魅惑）
   }
   // v1.6.2：枪杀/殉情死亡批次入事件流（night 分支与此前 deaths 事件分两批；day 分支与放逐批次分离）
@@ -813,12 +838,28 @@ function resolveShot(room, target) {
     beginNight(room);
   }
 }
-function applyLoverChain(room, deaths, die) {
+function applyLoverChain(room, deaths, die, betray) {
   if (!room.lovers || !room.lovers[0]) return;
   const [a, b] = room.lovers;
-  // 情侣二人中一方死亡 → 另一方殉情（链只涉及两人，一次判定即可；die 内部已判活/去重）
-  if (deaths.includes(a)) die(b, 'lover');
-  if (deaths.includes(b)) die(a, 'lover');
+  const initial = deaths.slice(); // 初始死亡快照（被刀/被票/被枪杀）；殉情追加的死亡不再二次触发宣言/链
+  if (initial.includes(a)) {
+    if (betray && a === betray.killId && b === betray.wolfLoverId) return; // v2 恋人刀：不殉情（背叛方存活）
+    const decl = loverCore.vengeanceDeclare(room, b); // v2 复仇：殉情方临死真相宣言
+    if (decl) {
+      pushEvent(room, 'lover_reveal', decl);
+      sysMsg(room, 'all', decl.declarerName + '（恋人）临死宣言：我的恋人是 ' + decl.partnerName + '');
+    }
+    die(b, 'lover');
+  }
+  if (initial.includes(b)) {
+    if (betray && b === betray.killId && a === betray.wolfLoverId) return;
+    const decl = loverCore.vengeanceDeclare(room, a);
+    if (decl) {
+      pushEvent(room, 'lover_reveal', decl);
+      sysMsg(room, 'all', decl.declarerName + '（恋人）临死宣言：我的恋人是 ' + decl.partnerName + '');
+    }
+    die(a, 'lover');
+  }
 }
 /* ---------------------------- 早晨 / 白天 ---------------------------- */
 function beginMorning(room) {
@@ -923,6 +964,12 @@ function computeVotes(room, useSheriffWeight) {
 function allAliveVoted(room) { return room.players.filter(p => p.alive).every(p => room.votes.hasOwnProperty(p.id)); }
 
 function resolveExileVote(room) {
+  if (room.loverMode === 'v2' && room.loverV2 && room.loverV2.protectBy) { // v2 付费护短：结算公告“X在保护恋人”（狼队获知身份，优先刀）
+    const pb = byId(room, room.loverV2.protectBy);
+    pushEvent(room, 'lover_protect', { by: pb ? pb.id : null, name: pb ? pb.name : '' });
+    sysMsg(room, 'all', (pb ? pb.name : '某人') + ' 在保护恋人（护短公开）');
+    room.loverV2.protectBy = null;
+  }
   const res = computeVotes(room, true);
   room.lastVoteResult = {
     kind: 'vote', totals: res.totals, max: res.max,
@@ -965,6 +1012,7 @@ function afterExile(room) {
     }
   }
   applyLoverChain(room, exileAndCharm, die);
+  loverCore.trackCupidDeath(room, exileAndCharm); // v2 时序记录（丘比特被票死）
   room.dayDeaths = room.dayDeaths.concat(deaths);
   // v1.6.2：放逐死亡批次入事件流（放逐者 + 魅惑带走 + 殉情；猎人枪杀批次由 resolveShot 推送）
   const exileDead = [...new Set(exileAndCharm.concat(deaths))];
@@ -1091,6 +1139,13 @@ function checkWin(room) {
 
 /* ---------------------------- 白天动作 ---------------------------- */
 function dayAction(room, p, action, data) {
+  if (action === 'lover_unbind') { // v2（M1）：白天任一恋人宣言解绑（丘比特死后解锁，一次性；公告=身份公开代价）
+    const r2 = loverCore.unbind(room, p.id);
+    if (!r2.ok) return { error: r2.msg };
+    pushEvent(room, 'lover_unbind', { by: r2.by, byId: r2.byId });
+    sysMsg(room, 'all', r2.by + ' 解除了情侣关系（恋人身份公开）');
+    return { ok: true };
+  }
   switch (room.phase) {
     case 'morning':
       return { error: '等待房主继续' };
@@ -1157,6 +1212,7 @@ function dayAction(room, p, action, data) {
       if (action !== 'vote') return { error: '未知操作' };
       if (!p.alive) return { error: '你已出局，无法投票' }; // 规则（rules.md 三.10）：已出局玩家不得投票
       if (room.votes.hasOwnProperty(p.id)) return { error: '你已投票（平票前不能改票）' };
+      if (room.loverMode === 'v2' && data && data.protectPartner) loverCore.markProtect(room, p.id); // v2：护短标记（结算公告）
       const target = data.target || null;
       if (target) { const t = byId(room, target); if (!t || !t.alive) return { error: '玩家不存在或已出局' }; }
       room.votes[p.id] = target;
@@ -1477,6 +1533,8 @@ function debugRoom(opts = {}) {
   room.nightStep = opts.nightStep || null;
   room.votes = opts.votes || {};
   room.lovers = opts.lovers || null;
+  room.loverMode = opts.loverMode || 'classic'; // v2（M1）：恋人权能模式三态
+  room.loverV2 = opts.loverV2 || null; // v2：loverCore 状态（测试/恢复可预置）
   room.cupidCamp = opts.cupidCamp || null; // 1.7.4：摆盘可指定丘比特阵营（默认 null）
   room.sheriff = opts.sheriff || null;
   room.witchPots = Object.assign({ saveUsed: false, poisonUsed: false }, opts.witchPots);
@@ -1853,6 +1911,8 @@ function viewFor(room, pid, chatSince) {
     })() : null,
     // v1.7.6（丘比特规则补足）：丘比特知道情侣身份（两人）——白天也可查看
     myCouple: (me && (() => { const c = rolePlayer(room, 'cupid'); return c && c.id === me.id; })() && room.lovers) ? room.lovers.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '', role: q ? roleText(room, q) : '' }; }) : null,
+    // v2（M1）：恋人机制视图（解绑按钮点亮 / 权能展示；classic 返回 loverMode 标记）
+    lover: loverCore.viewState(room, pid),
     // 预言家：查验记录任何阶段可见（白天也能翻看）
     seerHistory: (me && effRole(me) === 'seer') ? room.seerHistory.map(h => {
       const q = byId(room, h.target);

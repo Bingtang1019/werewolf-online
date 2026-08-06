@@ -536,6 +536,14 @@ function renderInfo() {
     const names = view.myCouple.map(c => `${escapeHtml(c.name)}（${escapeHtml(c.role)}）`).join(' 与 ');
     html += `<div class="info-box" style="border-color:var(--third)">💞 你指定的情侣：${names}</div>`;
   }
+  // v2（M1/M4）：恋人机制（解绑按钮——丘比特死后点亮，恋人白天可发起，一次性；公告=身份公开代价）
+  if (view.lover && view.lover.loverMode === 'v2' && view.lover.inLovers) {
+    const powerTxt = view.lover.power === 'guard' ? '🛡️守护（每晚挡一次狼刀，挡刀时狼队获知）' : view.lover.power === 'vengeance' ? '💥复仇（殉情方临死宣言恋人身份）' : '';
+    if (powerTxt) html += `<div class="info-box" style="border-color:var(--third)">恋人权能：${powerTxt}</div>`;
+    html += `<div class="info-box" style="border-color:var(--third)">💞 恋人关系${view.lover.cupidDead ? '（丘比特已出局，可解除关系）' : '（丘比特在世，关系锁定中）'}
+      ${view.lover.canUnbind ? `<button class="danger" onpointerdown="act('lover_unbind',{})">解除情侣关系（身份公开）</button>` : ''}
+      ${view.lover.unbindUsed ? '<span class="tip-text">本局已解除</span>' : ''}</div>`;
+  }
   // 预言家查验记录（任何阶段可见）
   if (view.seerHistory && view.seerHistory.length) {
     html += `<div class="info-box" style="border-color:var(--good)">🔮 查验记录：` +
@@ -784,6 +792,13 @@ function renderNight() {
         const pickTip = `<div class="tip-text">已选：${picked || '—'}　（点已选玩家可取消，点第三人可替换）</div>`;
         if (view.nightNum === 1) {
           html += `<div class="panel-desc">选择两名玩家成为情侣（可包含自己），点选两名玩家后确认：</div>`;
+          if (view.lover && view.lover.loverMode === 'v2') {
+            html += `<div class="btn-row">
+              <button class="${draft.power === 'guard' ? 'primary' : ''}" onpointerdown="draft.power='guard';renderPanel()">🛡️ 守护</button>
+              <button class="${draft.power === 'vengeance' ? 'primary' : ''}" onpointerdown="draft.power='vengeance';renderPanel()">💥 复仇</button>
+              <span class="tip-text">守护：每晚挡狼刀（暴露恋人）｜复仇：殉情方宣言恋人身份</span>
+            </div>`;
+          }
           html += pickTip;
           html += `<div class="btn-row"><button class="primary" onpointerdown="doCupidPick()" ${draft.target && draft.target2 ? '' : 'disabled'}>确定情侣</button></div>`;
           if (!draft.target || !draft.target2) html += `<div class="tip-text">在左侧玩家列表中点选两名玩家</div>`;
@@ -1081,7 +1096,9 @@ function renderChat() {
         const icon = (t.indexOf('狼') >= 0 || t.indexOf('刀') >= 0 || t.indexOf('杀') >= 0) ? '🐺'
           : t.indexOf('枪') >= 0 ? '🔫' : t.indexOf('毒') >= 0 ? '🧪' : t.indexOf('放逐') >= 0 ? '⚖️'
           : t.indexOf('警') >= 0 ? '👮' : t.indexOf('盗') >= 0 ? '🃏' : t.indexOf('殉情') >= 0 ? '💔'
-          : (t.indexOf('情侣') >= 0 || t.indexOf('丘比特') >= 0 || t.indexOf('魅') >= 0) ? '💘' : '🛎️';
+          : (t.indexOf('情侣') >= 0 || t.indexOf('丘比特') >= 0 || t.indexOf('魅') >= 0) ? '💘'
+        : t.indexOf('解除') >= 0 ? '💔'
+        : '🛎️';
         return `<div class="chat-sys">${icon} ${escapeHtml(m.text)}</div>`;
       }
       const mine = !!(m.from && m.from === me);
@@ -1174,7 +1191,12 @@ function doThiefPick() {
 }
 function doCupidPick() {
   if (!draft.target || !draft.target2) return toast('请选择两名玩家');
-  return act('cupid_pick', { ids: [draft.target, draft.target2] });
+  const data = { ids: [draft.target, draft.target2] };
+  if (view.lover && view.lover.loverMode === 'v2') { // v2：权能槽二选一（必选）
+    if (!draft.power) return toast('请先选择权能（守护/复仇）');
+    data.power = draft.power;
+  }
+  return act('cupid_pick', data);
 }
 function doPick(action, kind) {
   const target = draft.target;
