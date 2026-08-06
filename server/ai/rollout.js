@@ -67,16 +67,17 @@ function rolloutVote(world, state, rng, { worlds = 64 } = {}) {
       let top = null, topN = 0;
       for (const k of Object.keys(c)) if (c[k] > topN) { topN = c[k]; top = k; }
       if (!top) continue;
-      if (top === x) { if (wolfSet.has(x)) score[x] += 2; else score[x] -= 1; } // 放逐狼收益 +2 / 误放逐好人损失 -1（不对称：好人不冒险）
+      if (top === x) { if (wolfSet.has(x)) score[x] += 3; else score[x] -= 1.5; } // v1.7.2（4-②）：payoff 含身份揭示价值——放逐狼+3（票型变强证据喂给 A-1 票型推理）/误放逐好人-1.5（信息污染）；过度风险厌恶被缓解
     }
   }
-  // 返回得分最高候选（平局用 rng 打破——派生 RNG 保证确定性）
-  let best = null, bs = -Infinity;
+  // 返回得分最高候选（平局用 rng 打破——派生 RNG 保证确定性）；margin=top1-top2（回退阈值用）
+  let best = null, bs = -Infinity, second = -Infinity;
   for (const x of pool) {
     const s = score[x];
-    if (s > bs || (s === bs && r.next() < 0.5)) { bs = s; best = x; }
+    if (s > bs) { second = bs; bs = s; best = x; }
+    else if (s > second) second = s;
   }
-  return best;
+  return { target: best, margin: best ? bs - second : 0 };
 }
 
 module.exports = { rolloutVote };

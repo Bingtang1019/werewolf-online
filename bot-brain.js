@@ -299,7 +299,7 @@ function updateBelief(room, bot, targetId, evidence) {
   if (!b) return;
   // v1.7.2（A-1）：放逐结算的票型反推方向修正——狼不投狼队友（除卖狼），故：
   // 放逐狼 → 投他的人≈全是好人 → 嫌疑应显著降低（0.4）；放逐好人 → 投他的人混着狼（狼 argmin 精准投好人）→ 嫌疑应升高（2.5）
-  const LR = { check_wolf: 19, check_good: 0.05, killed_by_wolf: 0.1, voted_out_wolf: 0.7, voted_out_good: 1.4, silver_water: 0.05, guard_protected: 0.7 }[evidence] || 1;
+  const LR = { check_wolf: 19, check_good: 0.05, killed_by_wolf: 0.1, voted_out_wolf: 0.7, voted_out_good: 1.0, silver_water: 0.05, guard_protected: 0.7 }[evidence] || 1;
   const odds = (b.wolf / Math.max(b.good, 0.01)) * LR;
   b.wolf = odds / (1 + odds);
   b.good = 1 - b.wolf;
@@ -1254,8 +1254,10 @@ function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRol
     let resTarget = null;
     if (useRollout) {
       const rv = rolloutVote(world, state, rng());
-      if (process.env.LAB_DEBUG_ROLLOUT === '1') console.log('[rollout-dbg] scores=' + JSON.stringify(Object.fromEntries(Object.entries(world.scores).map(([k, v]) => [k, +v.toFixed(2)]))) + ' rv=' + rv);
-      resTarget = rv || decideVote(world, state, rng()).target;
+      if (process.env.LAB_DEBUG_ROLLOUT === '1') console.log('[rollout-dbg] scores=' + JSON.stringify(Object.fromEntries(Object.entries(world.scores).map(([k, v]) => [k, +v.toFixed(2)]))) + ' rv=' + (rv && rv.target));
+      // v1.7.2（4-①）：rollout 得分差距 <ε 时回退 decideVote 的跟票目标——低信息局（无查杀/票数接近）
+      // 64 世界采样噪声大，rollout 可能与公众票型冲突 → 分票 → 狼渔利；跟票在低信息时是防分票的正确策略
+      resTarget = (rv && rv.margin >= 2 && rv.target) ? rv.target : decideVote(world, state, rng()).target;
     } else {
       resTarget = decideVote(world, state, rng()).target;
     }

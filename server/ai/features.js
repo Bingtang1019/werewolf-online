@@ -20,6 +20,8 @@ const FEATURE_NAMES = [
   'counter_seer',   // 候选自称预言家且白天有人对跳（预言家对跳是最强狼信号之一）
   'vote_lead',      // 候选当前是否最高票（跟随公众压力信号）
   'bot_prev_same',  // bot 上一轮是否投过候选（行为一致性——狼更易被重复针对）
+  // v1.7.2（4-③）：被"可信预言家声称者"查杀（credibility>=0.6）——跟随可信查验是最强信息流，白拿 bot-brain 已算好的 credibility
+  'checked_by_trusted',
 ];
 
 function voteFeatures(room, botId, candId) {
@@ -75,6 +77,16 @@ function voteFeatures(room, botId, candId) {
   const lastVoteLog = (room.actionLog || []).filter(a => a.action === 'vote' && a.actor === bot.seat);
   const prevTarget = lastVoteLog.length ? (lastVoteLog[lastVoteLog.length - 1].data || {}).target : null;
   const botPrevSame = prevTarget === candId ? 1 : 0;
+  // v1.7.2（4-③）：查杀声明的来源可信度（bot 自己的 seerClaims——公开推理产物，非真相）
+  const seerClaims = (bot.botMemory && bot.botMemory.seerClaims) || {};
+  let checkedByTrusted = 0;
+  for (const m of msgs) {
+    if (m.ch !== 'all' || !m.text || m.from === botId || m.from === candId) continue;
+    if (m.text.includes('查杀') && m.text.includes(cand.name)) {
+      const cred = seerClaims[m.from] ? (seerClaims[m.from].credibility || 0) : 0;
+      if (cred >= 0.6) { checkedByTrusted = 1; break; }
+    }
+  }
   return [
     seatNorm,
     ringDist,
@@ -89,6 +101,7 @@ function voteFeatures(room, botId, candId) {
     counterSeer,
     voteLead,
     botPrevSame,
+    checkedByTrusted,
   ];
 }
 
