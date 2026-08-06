@@ -30,3 +30,6 @@ rooms.json
 rooms.json.bak
 rooms.json.tmp
 data/
+
+# 内部工作清单（不公开）
+工作清单.md
