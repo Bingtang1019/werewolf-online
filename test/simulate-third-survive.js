@@ -50,7 +50,7 @@ async function scenario9() {
   const v1 = villagers[0], X = villagers[1] || villagers[0];
   assert(!!w1 && !!cupid && !!witch && !!hunter && villagers.length >= 2, '角色在场');
 
-  // 丘比特自连平民 X（第三方 = 丘比特 + X）
+  // 丘比特自连平民 X——1.7.4 新判定表：自连好+好 → 好人阵营（丘比特计神职），不产生第三方
   const cv = await state(room, cupid);
   eq(cv.nightStep, 'cupid', '丘比特睁眼');
   await act(room, cupid, 'cupid_pick', { ids: [cupid, X] });
@@ -84,19 +84,19 @@ async function scenario9() {
   v = await state(room, A.playerId);
   eq(v.lastVoteResult && v.lastVoteResult.result, 'tie', '白天投票平票');
   eq(v.phase, 'night', '平票无人出局，进入第二晚');
-  // 夜2：狼刀女巫 + 女巫毒狼 同归于尽 → 只剩第三方（丘比特+平民X）
+  // 夜2：狼刀女巫 + 女巫毒狼（w1 普通狼）同归于尽 → 狼人阵营全灭 → 好人胜（自连平民属好人阵营）
   const wv2 = await state(room, w1);
   if (wv2.nightStep === 'wolf') { await act(room, w1, 'wolf_set', { kill: witch }); await act(room, w1, 'wolf_set', { confirm: true }); }
   v = await state(room, A.playerId);
   if (v.nightStep === 'witch') await act(room, witch, 'witch_act', { poison: w1 });
   v = await state(room, A.playerId);
   eq(v.phase, 'ended', '游戏结束');
-  eq(v.winner, 'third', '第三方阵营获胜（活到最后）');
+  eq(v.winner, 'good', '好人阵营获胜（自连平民属好人阵营，狼全灭即胜）');
   const end = await state(room, A.playerId);
   const alive = end.players.filter(p => p.alive);
-  eq(alive.length, 2, '只剩 2 人存活');
+  eq(alive.length, 2, '剩 2 人存活（丘比特+情侣平民，好人阵营）');
   assert(alive.some(p => p.id === cupid) && alive.some(p => p.id === X), '存活者为丘比特与情侣平民');
-  assert(end.endInfo && end.endInfo.text === '第三方阵营获胜（丘比特阵营）', '结算信息正确');
+  assert(end.endInfo && end.endInfo.text === '好人阵营获胜', '结算信息正确');
   console.log('  场景9 完成');
 }
 

@@ -16,7 +16,7 @@ const eq = (a, b, msg) => assert(a === b, `${msg} (期望 ${JSON.stringify(b)},�
 async function api(p, body) { const res = await fetch(BASE + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }); return res.json(); }
 async function act(room, me, action, data) { const r = await api('/api/action', { room, me, action, data: data || {} }); if (r.error) throw new Error(`action ${action} 失败: ${r.error}`); return r.view; }
 async function state(room, me) { return (await (await fetch(`${BASE}/api/state?room=${room}&me=${me}`)).json()); }
-async function rolesOf(room, ids) { const m = {}; for (const id of ids) { const v = await state(room, id); m[id] = v.my.role; } return m; }
+async function rolesOf(room, ids) { const m = {}; for (const id of ids) { const v = await state(room, id); m[id] = v.my.roleKey; } return m; } // 1.7.4：用 roleKey（翻牌口径分离后中文 role 会混淆狼美人）
 async function doAdvance(room, me) { const r = await api('/api/advance', { room, me }); if (r.error) throw new Error('advance 失败: ' + r.error); return r.view; }
 
 async function scenario8() {
@@ -39,11 +39,11 @@ async function scenario8() {
   v = await state(room, A.playerId);
   eq(v.phase, 'night', '进入第一晚');
   const roles = await rolesOf(room, ids);
-  const wolves = ids.filter(id => roles[id] === '狼人');
-  const beauty = ids.find(id => roles[id] === '狼美人');
-  const hunter = ids.find(id => roles[id] === '猎人');
+  const wolves = ids.filter(id => roles[id] === 'wolf');
+  const beauty = ids.find(id => roles[id] === 'wolfBeauty');
+  const hunter = ids.find(id => roles[id] === 'hunter');
   const w1 = wolves[0], w2 = wolves[1];
-  const villagers = ids.filter(id => roles[id] === '平民');
+  const villagers = ids.filter(id => roles[id] === 'villager');
   const v1 = villagers[0], v2 = villagers[1];
   assert(!!beauty && !!hunter && wolves.length === 2, '角色在场');
 

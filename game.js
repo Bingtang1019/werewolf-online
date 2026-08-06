@@ -134,24 +134,32 @@ function byId(room, id) { return room.players.find(p => p.id === id) || null; }
 function rolePlayer(room, key) { return room.players.find(p => effRole(p) === key) || null; }
 function expandCounts(c) { const arr = []; for (const k in c) { for (let i = 0; i < (c[k] || 0); i++) arr.push(k); } return arr; }
 function effRole(p) { return p.role; } // v1.6.2：pickedRole 从未被赋值（盗贼选牌即替换 role），简化
-// 丘比特阵营：开局默认为第三方；情侣指定/重选时按情侣整体阵营计算并记忆；
-// 情侣死亡后、重新指认前保持当前阵营不变。
+// 丘比特阵营：开局 null（未指定，按无阵营处理，rules.md 三·新增）；情侣指定/重选时按判定表计算并记忆；
+// 情侣死亡后、重新指认前保持当前阵营不变；放弃重选后按原阵营继续。
 function cupidCamp(room) {
-  return room.cupidCamp || 'third';
+  return room.cupidCamp || null;
 }
-// 根据当前情侣计算丘比特阵营（情侣=双好→good，双狼→wolf，一好一狼→third）
+/* 判定表（rules.md 三·新增）：丘比特身份（首轮=好人；重选=当前阵营）+ 情侣身份组合
+ * 好+好→good（丘比特计神职）；狼+狼→wolf（丘比特属狼人阵营）；好+狼→third；第三方+任意→third */
 function computeCupidCamp(room) {
   const L = room.lovers;
-  if (!L || !L[0]) return room.cupidCamp || 'third';
-  const [a, b] = L;
+  if (!L || !L[0]) return room.cupidCamp || null; // 无情侣：保持当前（未指定=null，指认前死亡按无阵营）
   const cupid = rolePlayer(room, 'cupid');
   const cupidId = cupid ? cupid.id : null;
-  const pa = byId(room, a), pb = byId(room, b);
-  if (a === cupidId || b === cupidId) return 'third'; // 自连一律第三方（丘比特本质为第三方）
-  const ca = campOf(room, pa), cb = campOf(room, pb);
-  if (ca === 'wolf' && cb === 'wolf') return 'wolf';
-  if (ca !== cb) return 'third';
-  return 'good';
+  // 参与判定的两人：丘比特在情侣中（自连）=丘比特+被连者；否则=情侣两人
+  const pair = (L[0] === cupidId || L[1] === cupidId) ? [cupidId, L.find(id => id !== cupidId)] : L;
+  const campOfId = id => {
+    if (id === cupidId) return room.cupidCamp || 'good'; // 丘比特：首轮=好人，重选=当前阵营
+    const q = byId(room, id);
+    if (!q || !q.role) return 'dyn';
+    if (thirdFaction(room).includes(id)) return 'third'; // 已是第三方成员（如人狼恋狼恋人）
+    return campOf(room, q);
+  };
+  const c1 = campOfId(pair[0]), c2 = campOfId(pair[1]);
+  if (c1 === 'third' || c2 === 'third') return 'third'; // 第三方+任意→第三方
+  if (c1 === 'wolf' && c2 === 'wolf') return 'wolf';
+  if (c1 === 'good' && c2 === 'good') return 'good';
+  return 'third'; // 好+狼（或 dyn 参与）→ 第三方
 }
 function campOf(room, p) {
   if (!p || !p.role) return 'dyn';
@@ -162,14 +170,23 @@ function campOf(room, p) {
 function typeOf(room, p) {
   if (!p || !p.role) return 'dyn';
   const r = effRole(p);
-  if (r === 'cupid') { const c = cupidCamp(room); return c === 'good' ? 'god' : (c === 'wolf' ? 'wolf' : 'third'); }
+  if (r === 'cupid') { const c = cupidCamp(room); return c === 'good' ? 'god' : (c === 'wolf' ? 'wolf' : 'dyn'); } // 1.7.4：第三方/未指定丘比特不计神（不进屠边）
   return ROLE_INFO[r].type;
+}
+/* 1.7.4：查验按阵营口径（rules.md 三.13）——狼人阵营成员→'wolf'；好人阵营/第三方→'good'
+ * 第三方成员（人狼恋狼恋人、第三方丘比特）显示『好（非狼）』；丘比特属狼人阵营显示『狼人』 */
+function checkCamp(room, p) {
+  if (!p || !p.role) return 'dyn';
+  if (effRole(p) === 'cupid') return cupidCamp(room) === 'wolf' ? 'wolf' : 'good';
+  if (isWolfRole(p)) return thirdFaction(room).includes(p.id) ? 'good' : 'wolf'; // 狼恋人第三方→好；普通狼→狼
+  return 'good';
 }
 function isWolfRole(p) { return effRole(p) === 'wolf' || effRole(p) === 'wolfBeauty'; }
 function roleText(room, p) {
   if (!p.role) return null;
-  // 盗贼选定新角色后即丧失盗贼身份，翻牌/展示显示所选角色
-  return ROLE_INFO[effRole(p)].name;
+  const r = effRole(p);
+  if (r === 'wolfBeauty') return '狼人'; // 1.7.4：翻牌口径（rules.md 三.13）——狼恋人翻牌『狼人』（职业牌不显示狼美人）
+  return ROLE_INFO[r].name;
 }
 function campText(room, p) {
   const c = campOf(room, p);
@@ -215,7 +232,7 @@ function createRoom(hostName) {
     winner: null, endInfo: null,
     // 游戏运行时字段
     center: null, lovers: null, sheriff: null,
-    cupidCamp: 'third', // 丘比特阵营：开局默认第三方
+    cupidCamp: null, // 丘比特阵营：开局 null（1.7.4 判定表：未指定按无阵营处理）
     loversConfirm: false,
     seerHistory: [], guardLast: null,
     witchPots: { saveUsed: false, poisonUsed: false },
@@ -343,7 +360,7 @@ function startGame(room) {
   room.dayNum = 0; room.nightNum = 0; room.nightStep = null;
   room.winner = null; room.endInfo = null;
   room.center = null; room.lovers = null; room.sheriff = null;
-  room.cupidCamp = 'third'; // 丘比特阵营：开局默认第三方
+  room.cupidCamp = null; // 丘比特阵营：开局 null（1.7.4 判定表）
   room.loversConfirm = false;
   room.seerHistory = []; room.guardLast = null;
   room.witchPots = { saveUsed: false, poisonUsed: false };
@@ -676,8 +693,7 @@ function nightAction(room, p, action, data) {
       const t = byId(room, data.target);
       if (!t || !t.alive) return { error: '玩家不存在或已出局' };
       if (t.id === p.id) return { error: '不能查验自己' };
-      const c = campOf(room, t);
-      const result = c === 'wolf' ? 'wolf' : 'good';
+      const result = checkCamp(room, t); // 1.7.4：查验按阵营口径（第三方→好）
       n.seer.target = t.id;
       room.seerHistory.push({ target: t.id, result, night: room.nightNum });
       markActed(room, step, p.id);
@@ -976,8 +992,18 @@ function resolveSheriffVote(room) {
     result: res.tie ? 'tie' : (res.winner ? 'elected' : 'none'),
     exiled: res.winner, tied: res.tied || null,
   };
+  // 1.7.4：警长竞选平票同样适用 PK 规则（rules.md 三.3）——平票者 PK 再投，得票最多者当选；再平票无人当选
+  if (res.tie && res.tied && res.tied.length) { room.pkTied = res.tied; beginSheriffPkVote(room); return; }
   if (res.winner && !res.tie) room.sheriff = res.winner;
   startDiscuss(room);
+}
+function beginSheriffPkVote(room) {
+  if (checkGameEnd(room)) return; // v1.6.4（A2-1）
+  room.phase = 'pk_vote';
+  room.pkIsSheriff = true; // 1.7.4：警长 PK——当选而非放逐
+  room.votes = {};
+  bump(room);
+  schedulePhase(room, 'pk_vote', () => resolvePkVote(room)); // 超时未投视为弃票
 }
 
 /* ---------------------------- 胜负判定 ---------------------------- */
@@ -1196,6 +1222,17 @@ function beginPkVote(room) {
 }
 function resolvePkVote(room) {
   const res = computeVotes(room, true);
+  if (room.pkIsSheriff) { // 1.7.4：警长 PK——得票最多当选，再平票无人当选
+    room.pkIsSheriff = null;
+    room.lastVoteResult = {
+      kind: 'sheriff_pk', totals: res.totals, max: res.max,
+      result: res.tie ? 'tie' : (res.winner ? 'elected' : 'none'),
+      exiled: res.winner, tied: res.tied || null,
+    };
+    if (res.winner && !res.tie) room.sheriff = res.winner;
+    startDiscuss(room);
+    return;
+  }
   room.lastVoteResult = {
     kind: 'pk', totals: res.totals, max: res.max,
     result: res.tie ? 'tie' : (res.winner ? 'exile' : 'none'),
@@ -1384,7 +1421,7 @@ function rematch(room) {
   room.dayNum = 0; room.nightNum = 0; room.nightStep = null;
   room.winner = null; room.endInfo = null;
   room.center = null; room.lovers = null; room.sheriff = null;
-  room.cupidCamp = 'third'; // 丘比特阵营：开局默认第三方
+  room.cupidCamp = null; // 丘比特阵营：开局 null（1.7.4 判定表）
   room.loversConfirm = false;
   room.seerHistory = []; room.guardLast = null;
   room.witchPots = { saveUsed: false, poisonUsed: false };
@@ -1433,6 +1470,7 @@ function debugRoom(opts = {}) {
   room.nightStep = opts.nightStep || null;
   room.votes = opts.votes || {};
   room.lovers = opts.lovers || null;
+  room.cupidCamp = opts.cupidCamp || null; // 1.7.4：摆盘可指定丘比特阵营（默认 null）
   room.sheriff = opts.sheriff || null;
   room.witchPots = Object.assign({ saveUsed: false, poisonUsed: false }, opts.witchPots);
   room.guardLast = opts.guardLast || null;
@@ -1967,6 +2005,7 @@ function resumeRoom(room) {
 module.exports = {
   debugRoom,
   ROLE_INFO, rooms, createRoom, joinRoom, handleAction, handleChat, handleAdvance, handleLeave, handleKick, viewFor, resumeRoom,
+  checkWin, // 1.7.4：导出供规则测试/实验室直接判定
   // v1.6.1：钩子用 setter 导出（CommonJS 值导出会让外部赋值不生效）
   setOnChange(fn) { onChange = fn; },
   setOnBroken(fn) { onBroken = fn; },
