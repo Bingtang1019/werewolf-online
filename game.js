@@ -233,6 +233,7 @@ function createRoom(hostName) {
     roleCounts: defaultCounts(6),
     settings: { sheriff: true, winMode: 'edge', tieRule: 'pk', thief: false, botMode: 'auto' }, // botMode: 人机难度 'auto'简单AI | 'passive'挂机
     loverMode: 'classic', // v2（恋人权能系统）：'off'关闭恋人机制 | 'classic'现行规则（冻结行为，α9 零破坏）| 'v2'权能+解绑+恋人刀（loverCore 驱动）
+    presetKey: null, // v3（分层价值模型）：配置标识（4p/6p/8p/9a/9d/12a/12b/12d/15p）——rollout payoff 的 local/α/payoffScale 路由键
     loverTest: null, // A/B 注入（M3.5）：'cupid-dead-n1'首夜丘比特必死 / 'cupid-immortal'丘比特免疫一切死亡
     loverLocked: false, // A/B 注入（M3.5）：解绑禁用（G3 对照：丘比特死但解绑锁定——分离解绑效应）
     loverV2: null, // v2：恋人机制状态（loverCore 管理：power/unbind/betrayUsed/timeline）

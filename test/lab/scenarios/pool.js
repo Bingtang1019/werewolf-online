@@ -31,6 +31,8 @@ function planTasks(cfg) {
   const presetIdx = cfg.preset != null ? Number(cfg.preset) : 10; // 默认局四（十二人局四·丘比特，β 测量配置）
   const p = PRESETS[presetIdx];
   if (!p) throw new Error(`pool: preset ${presetIdx} 不存在（0..${PRESETS.length - 1}）`);
+  // v3（v1.7.12）：presetKey 自动路由——已训 9 配置用精确标签，未训配置用 cap 级聚合标签（rollout payoff 路由键，A-2 保证命中）
+  const PRESET_TAG = { 0: '4p', 1: '6p', 2: '8p', 3: '9a', 6: '9d', 7: '12a', 8: '12b', 10: '12d', 15: '15p' };
   const rec = cfg.out ? createRecorder(path.isAbsolute(cfg.out) ? cfg.out : path.join(ROOT, cfg.out)) : null;
   const total = groups * perGroup; // n 由池规格决定（勿传 --games，smoke 预设默认 10 会干扰）
   const tasks = [];
@@ -45,6 +47,7 @@ function planTasks(cfg) {
           botLine: Array(Math.max(1, p.cap - 1)).fill(cfg.bots || 'smart'),
           name: p.name,
           ...(cfg.loverMode ? { loverMode: cfg.loverMode } : {}), // v2（M1）：恋人机制模式透传
+          ...(cfg.presetKey ? { presetKey: cfg.presetKey } : { presetKey: PRESET_TAG[presetIdx] || p.cap + 'p' }), // v3：配置标识（自动路由：已训→精确标签，未训→cap 级）
           ...(cfg.loverTest ? { loverTest: cfg.loverTest } : {}), // A/B 注入（M3.5）：'cupid-dead-n1' / 'cupid-immortal'
           ...(cfg.loverLocked ? { loverLocked: cfg.loverLocked } : {}), // A/B 注入（M3.5）：解绑禁用（G3 对照）
         },

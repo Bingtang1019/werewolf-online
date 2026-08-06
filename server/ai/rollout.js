@@ -65,25 +65,57 @@ function getValueModel() {
   try { _valueModel = JSON.parse(fs.readFileSync(VALUE_PATH, 'utf8')); } catch (e) { _valueModel = null; }
   return _valueModel;
 }
+
+/* v1.7.12（v3）：分层 LSTD 价值模型 payoff——V_c(s) = α·local + (1−α)·global，payoff = ΔV × payoffScale[config]
+ * 启用：PAYOFF_MODE=value + VALUE_MODEL=v3（默认 v3）；v2 对照/回退：VALUE_MODEL=v2（旧 sigmoid+K 路径）
+ * v3 训练：9 配置分层采集 16998 局，pre-only holdout AUC 0.838（v1 0.262 → v2 0.775 → v3 0.838，修复后口径）
+ * 纪律：configKey 未知 → 纯 global（local 缺失自动回退，见 value-model.value）；A-2 断言在 lab 启动时校验已知 key */
+const valueModel = require('./value-model');
 function valuePayoff(world, xIsWolf) {
+  if (process.env.VALUE_MODEL !== 'v2') return valuePayoffV3(world, xIsWolf); // 默认 v3（v1.7.12 接入）
   const m = getValueModel();
   if (!m) return payoffFor(world, xIsWolf);
   if (world.faction === 'third') return payoffFor(world, xIsWolf); // v1.7.6：V 模型是好人视角，第三方用 thirdValue 启发式
   const sig = x => 1 / (1 + Math.exp(-x));
   const V = (R, S, M, N) => sig(m.w[0] + m.w[1] * R + m.w[2] * S + m.w[3] * M + m.w[4] * N + m.w[5] * R * S + m.w[6] * R * M + m.w[7] * S * M);
   const R = Math.max(1, world.wolfAlive), S = Math.max(1, world.godAlive), M = Math.max(1, world.villAlive);
-  const N = world.wolfAlive + world.godAlive + world.villAlive; // 存活总数（狼/神/民三分，不 clamp）
+  const N = world.wolfAlive + world.godAlive + world.villAlive;
   const dG = V(Math.max(0, R - 1), S, M, Math.max(0, N - 1)) - V(R, S, M, N);
   const dV = V(R, Math.max(0, S - 1), M, Math.max(0, N - 1)) - V(R, S, M, N);
   const dM = V(R, S, Math.max(0, M - 1), Math.max(0, N - 1)) - V(R, S, M, N);
   const pGod = S / (S + M), pVill = M / (S + M);
   const K = m.K || 1;
   if (world.faction === 'wolf') {
-    if (!xIsWolf) return K * (pGod * -dV + pVill * -dM); // 放逐好人 → 好人胜率降 → 狼收益
-    return K * -dG; // 误投队友 → 狼少 → 好人胜率升 → 狼代价
+    if (!xIsWolf) return K * (pGod * -dV + pVill * -dM);
+    return K * -dG;
   }
   if (xIsWolf) return K * dG;
   return -K * (pGod * dV + pVill * dM);
+}
+
+/* v3 payoff：分层 LSTD 值函数（无 sigmoid，期望回报标度；第三方仍走 thirdValue 启发式——V 无第三方样本） */
+function valuePayoffV3(world, xIsWolf) {
+  const m = valueModel.loadV3();
+  if (!m) return payoffFor(world, xIsWolf);
+  if (world.faction === 'third') return payoffFor(world, xIsWolf);
+  const cfg = world.configKey;
+  if (!cfg) return payoffFor(world, xIsWolf); // 无配置（生产真人局无 preset）→ 明确解析版，非静默
+  if (!m.local[cfg]) throw new Error(`[v3] unknown configKey "${cfg}" — 训练/推理不匹配（A-2 纪律，禁止静默 fallback）`);
+  const R = Math.max(0, world.wolfAlive), S = Math.max(0, world.godAlive), M = Math.max(0, world.villAlive);
+  const cap = world.wolfInit + world.godInit + world.villInit;
+  const N = Math.max(0, cap - R - S - M);
+  const base = { R, S, M, N, cap, wolf0: world.wolfInit, god0: world.godInit, vill0: world.villInit };
+  const next = (dR, dS, dM) => ({ R: Math.max(0, R - dR), S: Math.max(0, S - dS), M: Math.max(0, M - dM), N: N + 1, cap, wolf0: world.wolfInit, god0: world.godInit, vill0: world.villInit });
+  const dG = valueModel.payoff(base, next(1, 0, 0), cfg); // 放逐狼 → 好人胜率升 → V 升 → 正
+  const dV = valueModel.payoff(base, next(0, 1, 0), cfg);
+  const dM = valueModel.payoff(base, next(0, 0, 1), cfg);
+  const pGod = S / (S + M || 1), pVill = M / (S + M || 1);
+  if (world.faction === 'wolf') {
+    if (!xIsWolf) return pGod * -dV + pVill * -dM; // 放逐好人 → 好人胜率降 → 狼收益
+    return -dG; // 误投队友
+  }
+  if (xIsWolf) return dG;
+  return -(pGod * dV + pVill * dM);
 }
 
 /**

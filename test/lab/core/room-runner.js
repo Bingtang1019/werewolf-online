@@ -25,6 +25,7 @@ async function runOneLabGame(cfg) {
   try {
     if (cfg.sampleFile) { room.labGameId = cfg.gameId; room.labSampleFile = cfg.sampleFile; } // vote 样本采集（game.js 钩子）
   if (cfg.loverMode) room.loverMode = cfg.loverMode; // v2（M1）：恋人机制模式（off/classic/v2），lab 可配
+  if (cfg.presetKey) room.presetKey = cfg.presetKey; // v3：配置标识（rollout payoff 路由键）
   if (cfg.loverTest) room.loverTest = cfg.loverTest; // A/B 注入（M3.5）：'cupid-dead-n1' / 'cupid-immortal'
   if (cfg.loverLocked) room.loverLocked = !!cfg.loverLocked; // A/B 注入（M3.5）：解绑禁用（G3）
     for (const [a, d] of [
@@ -80,7 +81,7 @@ async function runOneLabGame(cfg) {
     return {
       schema: 'lab.game-record@1', gameId: cfg.gameId, seed: cfg.seed, scenario: cfg.scenario || 'lab',
       startedAt: new Date(t0).toISOString(), durMs: Date.now() - t0,
-      config: { cap: cfg.cap, counts: cfg.counts, botLine: line, winMode: cfg.winMode || 'edge', name: cfg.name || null, loverMode: room.loverMode },
+      config: { cap: cfg.cap, counts: cfg.counts, botLine: line, winMode: cfg.winMode || 'edge', name: cfg.name || null, loverMode: room.loverMode, presetKey: room.presetKey || null },
       result: { winner: room.endInfo ? room.endInfo.winner : null, timeout: false, error: null, ...(lv ? { loverMeta: lv } : {}) },
       players,
       events: (room.events || []).map(e => ({
