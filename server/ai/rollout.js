@@ -99,7 +99,11 @@ function valuePayoffV3(world, xIsWolf) {
   if (!m) return payoffFor(world, xIsWolf);
   if (world.faction === 'third') return payoffFor(world, xIsWolf);
   const cfg = world.configKey;
-  if (!cfg) return payoffFor(world, xIsWolf); // 无配置（生产真人局无 preset）→ 明确解析版，非静默
+  if (!cfg) return payoffFor(world, xIsWolf); // 防御：房间无 cap/preset → 解析版
+  if (!m.local[cfg]) {
+    if (world.hasPreset) throw new Error(`[v3] unknown configKey "${cfg}" — lab 训练/推理不匹配（A-2）`);
+    return payoffFor(world, xIsWolf); // 生产未训 cap（如 '10p'）→ 显式降级解析版（可用性优先，非静默）
+  }
   if (!m.local[cfg]) throw new Error(`[v3] unknown configKey "${cfg}" — 训练/推理不匹配（A-2 纪律，禁止静默 fallback）`);
   const R = Math.max(0, world.wolfAlive), S = Math.max(0, world.godAlive), M = Math.max(0, world.villAlive);
   const cap = world.wolfInit + world.godInit + world.villInit;

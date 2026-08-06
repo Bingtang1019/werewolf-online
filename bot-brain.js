@@ -599,7 +599,8 @@ function buildVoteWorld(room, bot) {
     sellTarget: sellWolfBeauty(room, bot),
     allVoters: room.players.filter(p => p.alive && !p.leftGame).map(p => p.id), // 1.7.0（B1-5）：rollout 模拟投票者
     me: bot.id,
-    configKey: room.presetKey || null, // v3：分层价值模型路由键（9 配置 tag）；null → payoff 用 global-only
+    configKey: room.presetKey || (room.cap ? room.cap + 'p' : null), // v1.7.14：cap 级 fallback（生产真人局无 preset → '12p' 等路由到 cap 聚合 local）；A-2 双轨：lab（presetKey 存在）未知 key 抛错，生产（无 preset）cap fallback + 未训 cap 显式降级解析版（可用性优先，注释写明非静默）
+    hasPreset: !!room.presetKey, // v1.7.14：A-2 双轨判定（lab preset 标签 / 生产 cap fallback）
     vGood, // 1.7.6：第三方平衡用（好人胜率估值）
     roleClaims, // 1.7.6：公开自称神职者（{id: 角色}）——第三方神职优先目标
     isWolfLover: myFaction === 'third' && isWolfRole(bot), // 1.7.6：第三方狼恋人（投狼/刀狼=狼队自爆红线）
