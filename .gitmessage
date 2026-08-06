@@ -1,7 +1,7 @@
-feat: v1.7.7 alpha3-5 wolf-side training pipeline
+feat: v1.7.7 S3 - wolf clothing strategy balances werewolf-wolfBeauty config
 
-- wolfTrain/: adaboost (binned stumps, fromJSON rebuilds predict fn), features (reuse voteFeatures 13d), collector (kill+control sampling, debiased), kill.js (god-prioritized night kill, fail-open argmin), rollout.js (night-kill sim), train.js (loop), gridSearch.js (S3 params)
-- game.js: wolf_set kill sample hook (kill + up to 3 random controls, room rng)
-- bot-brain.js: loadWolfGodModel (models/wolf-god-v1.json), buildWolfKillWorld, wolf kill integration (2 sites), S3 params (WOLF_CLAIM_GOD / WOLF_COUNTER_SEER)
-- lab: matrix/balance planTasks return sampleFile for worker merge
-- result: S1 god-classifier AUC 0.89 but balance effect ~0 (77.6% vs 77.0% baseline; god-kill negated by witch/guard defense)
+- gridSearch: support custom config (wolfBeauty), probe 500g then confirm 3000g
+- bot-brain: WOLF_CLAIM_GOD default 0.25 (was 0); 3000g x2 seeds: wolf 49.6/49.8%
+- Step0 audit: good-bot has seer-claim arbitration (multi-claimers -> cred 0.35, cred<=0.4 skipped) but single claim still trusted (0.5) -> S3 clothing exploits model claims_god: wolf self-claiming god => good model sees low P(wolf) => wolf not voted
+- S3 effect: wolfBeauty config 34.8% -> 49.6-49.8% (+15pp, alpha7/alpha8 met on alpha10 joint line)
+- counterSeer has ~0 effect (few wolf-checked games)

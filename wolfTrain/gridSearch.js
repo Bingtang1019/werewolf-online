@@ -18,24 +18,24 @@ function gridCombos() {
   return grid;
 }
 
-function evalCombo(combo, games = 3000) {
+function evalCombo(combo, games = 3000, config = '') {
   const env = Object.assign({}, process.env, {
     BOT_DELAY_MS: '100', PHASE_TIMEOUT: '30', NIGHT_TIMEOUT: '20', CHAT_INTERVAL: '0',
     WOLF_CLAIM_GOD: String(combo.claimGod),   // botTalk 狼分支穿衣服概率
     WOLF_COUNTER_SEER: String(combo.counterSeer), // botTalk 狼分支对跳概率
   });
-  const out = execFileSync(process.execPath, [
-    path.join(ROOT, 'test/lab/lab.js'), 'balance',
-    '--presets=7', '--no-random=1', '--games=' + games, '--seed=gs', '--workers=8',
-  ], { cwd: ROOT, env, stdio: 'pipe', encoding: 'utf8', timeout: 120000 });
-  const m = out.match(/wolf ([\d.]+)%/);
+  const args = config
+    ? [path.join(ROOT, 'test/lab/lab.js'), 'matrix', '--matrix=' + config, '--games=' + games, '--seed=gs', '--workers=8']
+    : [path.join(ROOT, 'test/lab/lab.js'), 'balance', '--presets=7', '--no-random=1', '--games=' + games, '--seed=gs', '--workers=8'];
+  const out = execFileSync(process.execPath, args, { cwd: ROOT, env, stdio: 'pipe', encoding: 'utf8', timeout: 120000 });
+  const m = out.match(/wolf ([\.\d]+)%/);
   return m ? parseFloat(m[1]) / 100 : null;
 }
 
-async function gridSearch({ games = 3000 } = {}) {
+async function gridSearch({ games = 3000, config = '' } = {}) {
   const results = [];
   for (const combo of gridCombos()) {
-    const wolfRate = evalCombo(combo, games);
+    const wolfRate = evalCombo(combo, games, config);
     results.push({ ...combo, wolfRate });
     console.log(`[S3] claimGod=${combo.claimGod} counterSeer=${combo.counterSeer} → wolf ${(wolfRate * 100).toFixed(1)}%`);
   }

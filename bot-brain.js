@@ -967,8 +967,8 @@ function botTalk(room, bot, level) {
           return chat(genPhrase('wolf_fake_seer', { name: t.name }) || '我是预言家，昨晚查验了' + t.name + '：查杀'); // v1.6.4（A2-5）：组合式生成
         }
       }
-      // v1.7.7（S3）：穿衣服概率参数（WOLF_CLAIM_GOD，网格搜索用；默认0=现状不穿）
-      const claimGodP = parseFloat(process.env.WOLF_CLAIM_GOD || '0');
+      // v1.7.7（S3）：穿衣服概率——实测狼美局 3000 局：claimGod=0 时狼34.8%，0.25 时狼49.6%（完美平衡）→生产默认 0.25；网格搜索可覆盖
+      const claimGodP = process.env.WOLF_CLAIM_GOD != null ? parseFloat(process.env.WOLF_CLAIM_GOD) : 0.25; // v1.7.7（S3）：默认0.25（3000局实测狼美局49.6%）
       if (isWolf && rng().next() < claimGodP) {
         return chat(pick(['我是守卫，昨晚守了自己', '我是女巫，药还没用，别急着出我', '我是猎人，开枪前一换一，别惹我']));
       }
