@@ -1,6 +1,0 @@
-fix: v1.7.7 S3 production-safety - claimGod default 0 (per-config opt-in)
-
-- bot-brain: WOLF_CLAIM_GOD default back to 0 (6p config already balanced 52.4%, clothing would break it)
-- wolfLover inherits claimGod via shared botTalk branch (confirmed)
-- alpha9: 6000 games frozen (49.6/49.8% two seeds, CI +-1.26pp); beta config pending (needs cupid config)
-- beta config candidates + t5 baselines listed (6 cupid presets)

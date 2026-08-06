@@ -1467,6 +1467,16 @@ function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRol
 const LEVEL_MAP = { easy: 'smart', smart: 'simulate', simulate: 'simulate_v2' };
 function createBotDecision(room, bot) {
   CUR_RNG = (room && room.rng) || global.rng; // 1.7.0（B1-8）：本决策随机流 = 房间 RNG（同步决策，无需恢复）
+  // v1.7.8（β）：favens 模式——恋人/丘比特 bot 走神眷者路由（干预效应测量；conditionOn 抛错→回退普通策略+invalid 计数）
+  if (process.env.FAVENS === '1' && room && room.players && bot && room.players.some(q => q.id === bot.id && (q.role === 'cupid' || (room.lovers && room.lovers.includes(bot.id))))) {
+    try {
+      const f = require('./favens/index.js');
+      const d = f.favensDecide(room, bot);
+      if (d) return d;
+    } catch (e) {
+      room.favensInvalid = (room.favensInvalid || 0) + 1; // invalid：剔除胜率统计，汇总上报
+    }
+  }
   const level = bot.botLevel || (room.settings.botMode === 'passive' ? 'idle' : 'easy');
   const eff = LEVEL_MAP[level] || level; // 1.7.0（B1-1②）：阶梯平移——easy←现smart、smart←现simulate、simulate←新simulate(+rollout)
   if (room.phase === 'reveal') {
