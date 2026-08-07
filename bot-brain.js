@@ -533,23 +533,57 @@ function sellWolfBeauty(room, bot) {
   return wb.id;
 }
 /* 1.7.0（B1-1）：构造纯策略 world——只含公开信息 + bot 自己信念（B1-7 纪律①②：绝不读真实身份）；三档共用，B1-5 rollout 同源 */
+/* 1.7.16：adaboost 校准层（isotonic）——漂移修复（排序保留、校准桶修正），fail-open（表缺失→原 mp）
+ * 表：models/adaboost-vote-v1-iso.json（PAVA 保序阶梯，完整精度；查询=二分"最后一个 pMin≤p"右连续 + 间隙线性插值） */
+let _voteIso = null, _voteIsoTried = false;
+function isoVote(p) {
+  // v1.7.16：LAB_NO_ISO——v1 原始池（漂移态 adaboost，鲁棒性矩阵用；生产不设）
+  if (process.env.LAB_NO_ISO === '1') return null;
+  try {
+    if (!_voteIsoTried) {
+      _voteIsoTried = true;
+      const raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'models', 'adaboost-vote-v1-iso.json'), 'utf8'));
+      if (raw && Array.isArray(raw.table) && raw.table.length) _voteIso = raw.table;
+    }
+    if (!_voteIso || !_voteIso.length || typeof p !== 'number' || !isFinite(p)) return null;
+    const table = _voteIso;
+    let lo = 0, hi = table.length - 1, ans = -1;
+    while (lo <= hi) { const mid = (lo + hi) >> 1; if (table[mid].pMin <= p) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+    if (ans < 0) return table[0].cal;
+    if (p <= table[ans].pMax) return table[ans].cal;
+    if (ans + 1 < table.length) { const a = table[ans], b = table[ans + 1]; return a.cal + (p - a.pMax) / (b.pMin - a.pMax) * (b.cal - a.cal); }
+    return table[ans].cal;
+  } catch (e) { return null; }
+}
 function buildVoteWorld(room, bot) {
   const b = bot.botMemory || {};
   const beliefs = b.beliefs || {};
   const suspicion = b.suspicion || {};
   const model = getVoteModel(); // 1.7.0（B1-4）：fail-open——模型缺失/损坏回退纯信念；仅好人侧注入（狼侧用模型会反向增强）
-  const useModel = !!model && factionOf(room, bot) === 'good';
+  if (process.env.LAB_AUDIT_VOTE === '1') global._voteAuditSeq = (global._voteAuditSeq || 0) + 1; // 1.7.15：审计——每次投票决策一个时刻 id
+  const useModel = (process.env.VOTE_MODEL_MODE || 'v2') !== 'heuristic' && !!model && factionOf(room, bot) === 'good'; // v1.7.16：生产默认 v2
   const scores = {};
   for (const p of room.players) {
     if (p.id === bot.id || !p.alive) continue;
     let s = beliefs[p.id] ? beliefs[p.id].wolf : Math.min(1, (suspicion[p.id] || 0) / 100); // smart/simulate 用信念，easy 用关键词嫌疑（归一化到 0..1）
     // 1.7.0（B1-4）：每轮投票前动态似然——模型 P(wolf) 混合（0.6 信念 + 0.4 模型；不改 beliefs 防累积饱和）
+    let f = null, mp = null;
     if (useModel) {
-      const f = voteFeatures(room, bot.id, p.id);
+      f = voteFeatures(room, bot.id, p.id);
       if (f) {
-        const mp = modelProb(model, f);
-        if (mp != null) s = 0.6 * s + 0.4 * mp;
+        mp = modelProb(model, f, room.presetKey || (room.cap ? room.cap + 'p' : null)); // 1.7.16：v2 configKey 路由（local/cap/global；用 room 而非 world——world 在函数末尾构造，投票循环内不可引用）
+        if (mp != null) {
+          if (model.schema === 'adaboost-vote@2') mp = 1 / (1 + Math.exp(-mp)); // v2：raw score → 单调 sigmoid（仅排序消费，未校准——禁止概率阈值/置信度下游）
+          else { const mi = isoVote(mp); if (mi != null) mp = mi; } // v1：Platt 概率 + iso 过渡校准
+          s = 0.6 * s + 0.4 * mp;
+        }
       }
+    }
+    // 1.7.16：感知层审计钩子（LAB_AUDIT_VOTE=1）——记录排序分数 s（heuristic/adaboost 通用）、
+    // 模型输出 mp（仅 adaboost，校准用）、特征 f、目标真相；离线分析，生产零影响
+    if (process.env.LAB_AUDIT_VOTE === '1') {
+      if (!global._voteAudit) { global._voteAudit = []; }
+      global._voteAudit.push({ v: global._voteAuditSeq, f, mp, s, tIsWolf: campOf(p) === 'wolf', useModel });
     }
     scores[p.id] = s;
   }
@@ -611,6 +645,15 @@ function buildVoteWorld(room, bot) {
     wolfInit, godInit, villInit,
     payoffP: parseFloat(process.env.PAYOFF_P || '1'),
     payoffQ: parseFloat(process.env.PAYOFF_Q || '0'),
+    // V4.2 信息特征（world 层——与训练侧 rebuildEventStatesV5 同源；仅 VALUE_MODEL=v4 的 info 模型消费）
+    //   checkedWolves/checkedCount：room.seerHistory（随对局追加，投票时刻=已发生查验，同源）
+    //   seerAlive：room.players 预言家存活；lastExileWasWolf：room.lastExiledId（上次放逐结算记录，投票时刻=上一轮）
+    info: {
+      checkedWolves: (room.seerHistory || []).filter(h => h.result === 'wolf').length,
+      checkedCount: (room.seerHistory || []).length,
+      seerAlive: (() => { const q = room.players.find(p => ['seer', '预言家'].includes(p.roleKey || p.role)); return q && q.alive ? 1 : 0; })(),
+      lastExileWasWolf: (() => { const id = room.lastExiledId; const q = room.players.find(p => p.id === id); return q ? (campOf(q) === 'wolf' ? 1 : 0) : 0; })(),
+    },
   };
 }
 function smartVoteTarget(room, bot) {
@@ -1460,6 +1503,11 @@ function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRol
         const other = pick(pool2);
         if (other) vote = other;
       }
+    }
+    // v1.7.16：LAB_RANDOM_VOTE——随机策略池（鲁棒性矩阵数据，纯随机投票，生产禁用）
+    if (process.env.LAB_RANDOM_VOTE === '1') {
+      const pool = state.map(id => byId(room, id)).filter(q => q && q.alive && q.id !== bot.id && !(lp && !lp.isWolf && q.id === lp.id));
+      if (pool.length) vote = pick(pool);
     }
     return { action: 'vote', data: { target: vote ? vote.id : null } };
   }

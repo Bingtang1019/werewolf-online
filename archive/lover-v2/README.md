@@ -155,6 +155,73 @@ M3/lover-regress 的 ctl 用**平衡口径**（claimGod 按配置显式开启）
 
 **待办（A-3 纪律闭环）**：① ~~v2 替换启用~~ ✓ ② bot-brain.js:21 路径 bug 修复（绝对路径 + 全加载点扫描：仅此一处有 '..' 隐患，wolf-god/adaboost 路径均正确）——第三方 V 从未生效（fail-open 0.5 = kingmaker thirdValue 从未上线），修复按新功能上线处理（独立 commit/验收/第三方配对评估）③ rollout 档位平衡（B1-9——先定档位目标：simulate 进不进生产）④ v2 的 Brier/校准（Platt）⑤ dG/dV 权衡（随③走）
 
+## vote-v2 模型卡（1.7.16，感知层）
+
+### 架构
+- 分层 AdaBoost（分类，非回归）：9 preset local + 6 cap 聚合 local + global——local vs global **数据驱动选择**（test AUC 对比，胜出才用）
+- 收缩 shrinkage=0.7 + T_max=250 检查点早停（验证集 group-wise AUC 选 T）
+- 按局划分三份（train/val/test 局不跨集）+ 测试集局级 bootstrap CI（200 次）
+- **校准表不挂载**：raw score → 单调 sigmoid（仅排序消费）；PAVA 校准自评口径 4/9 配置未达标、通过项含自评乐观偏置 → **输出禁止任何概率阈值/加权/置信度下游消费**（校准独立评估批已排期：100 局/配置，vote-v3 或后续专门批）
+
+### 9 配置验收（group-wise AUC [CI]）
+| 配置 | AUC | 选择 | 配置 | AUC | 选择 |
+|---|---|---|---|---|---|
+| 4p | 0.947 [0.934,0.962] | local | 12a | 0.736 [0.719,0.758] | global |
+| 6p | 0.737 [0.700,0.772] | local | 12b | 0.723 [0.705,0.739] | local |
+| 8p | 0.752 [0.732,0.772] | local | 12d | 0.660 [0.635,0.686] | global |
+| 9a | 0.684 [0.661,0.707] | local | 15p | 0.707 [0.687,0.730] | local |
+| 9d | 0.682 [0.661,0.701] | local | | | |
+
+- **vote_lead 检查全过**（stump 占比 0.0-2.3%——采集单一策略偏差未污染）
+- 观察期基线（12a，200 局）：**top-1 64.7% / AUC(s) 0.684**——优于 v1 原始（60.0%/0.665）与 heuristic（43.8%/0.551）；与 v1+iso 过渡（66.1%/0.671）的 1.4pp 差异需**同批对局双模型对比**定论（批次差异嫌疑）；观察期建议扩到 12d + 一个 9 人配置（覆盖 local 模型线上表现）
+
+### 回退链（三级）
+`VOTE_MODEL_MODE=v2` → 故障回退 v1+iso 过渡（0.103/66.1%）→ v1 原始（0.244/60%）→ heuristic（43.8% 最后保底）——**v2 故障不直接跳回原始漂移态**
+
+### 12d 三重劣势归因（调查关闭）
+12d（丘比特+狼美）AUC 0.66 全场最低——**配置本质非异常**：claims_god 特征稀疏（0.031 vs 12a/12b 0.070——神职构成不同，丘比特替代守/猎）+ 第三方恋人结构投票噪声 → 可预测性天然低；local 学不到配置特有结构（0.6564 vs global 0.6599 持平）→ useLocal=false 正确。4p 的 0.947 = 查验主导（4 人局查完 1/3 猜狼），样本占比 0.4% 不影响大局。
+
+### ⚠️ world TDZ 教训（防回归，最重要）
+v2 接入时 `modelProb(model, f, world.configKey)` 的 `world` 在投票循环内**未构造**（TDZ——world 是 buildVoteWorld 返回值、函数末尾才有）→ v2 模式所有好人投票崩溃（V4 重采首轮 27,500 局全部 timeout "world is not defined"）→ 审计"useModel=0"假象根源。**已修**（`room.presetKey || room.cap+'p'`，与 world.configKey 同源）+ 代码注释。**教训：审计异常/useModel=0 先查投票路径是否真的在跑；新代码路径必须 smoke test 后再全量。**
+
+### 版本
+1.7.16 = vote-v2（分层 AdaBoost + 回退链 + TDZ 修复）+ V4 数据重采（16 配置 27,500 局，v2 生态，`data/records-v4/`）
+
+## V3.1 归档（v1.7.16，value-vote-v4.json —— 实际为 V3 架构 + v2 生态 + 16 配置 + 3frac，非 V4）
+
+### 归因（v31-audit.js，同 seed42 复现划分 + 局级 CI + 同测试集双模型对比）
+- V3.1 vs v3 同测试集：配置等权 0.7843 vs 0.7787 → **+0.56pp**
+- 12d"0.738→0.812"为换测试集假象（同集真实 +1.65pp）；3frac 贡献 ≈0.5pp（单变量 AUC 高估，多变量 LSTD 共线抵消）；生态贡献 ≈0（V 对生态鲁棒）
+- **结论：V3 线性架构边际收益已尽——V4 必须换架构（非线性/端到端），此归因即立项实锤**
+
+### 校准（独立评估批 1600 局，拟合/评估分离）
+- **0/16 PASS**（max 桶偏差 0.144-0.541）——根因：LSTD 无界线性输出（V 无 sigmoid 压缩）+ 均衡局桶内高方差
+- **裁决：校准为报告项**（value 是排序/评估模型——AUC + 局级 CI 是主闸门；vote 是出牌决策模型——0.10 闸门正确；闸门按模型类型分，不混用）
+- 消费点清单确认（裁决 ② 成立前提）：生产（默认）value 零消费（PAYOFF_MODE/THIRD_BALANCE 均未启用）；lab rollout 消费为 ΔV×scale 加权组合 + margin 相对化（无绝对阈值）；⚠️ **thirdBalanceV 用 w[0..7]（8 维）但 V3.1 是 15 维——特征错位待修（THIRD_BALANCE 启用前必修）**
+
+### 观察期护栏（已挂）
+- V 的 min/max/分位数漂移监控（防无界线性 V 传导过激 rollout 信号）
+- 对局胜率（好人/狼）漂移 + vote top-1 联动
+- 鲁棒性矩阵（V3.1 在 4 生态）：v2 纯 0.791 / v1+iso 0.819 / v1 原始 0.837 / random 0.691——V 对生态鲁棒（P3 off-policy 砍掉二次证实）；random 数据显著降 V 质量（ε-greedy 混入需小 ε）
+
+### 工具教训固化
+- fit-value-v3 CLI：--key=value 带等号匹配（此前静默失效致意外全量）；启动打印训练范围（参数生效确认）
+- world TDZ bug（modelProb 的 world.configKey 在投票循环前未构造 → v2 模式好人投票全崩）——已修（room.presetKey||cap+'p'），代码注释标注
+
+### V4 输入（已知缺陷清单）
+1. 无界线性输出（校准差根因）→ V4 输出层 sigmoid/内建 iso
+2. 线性表达上限（≈0.78）→ V4 非线性
+3. 均衡局桶内高方差 → V4 验收按局内胜率熵分层
+4. thirdBalanceV 特征错位 → 启用前修
+
+## 模型卡规范（v4.2 立规）
+
+**"报告用数据不该进模型文件"**——模型文件只装推理必需的权重（stumps/features/shrinkage/platt 等）；isoTable/PAV 等审计产物存报告文件（`*-audit.json`）或量化后保留（供追溯）。
+
+**案例（vote-v2）**：`adaboost-vote-v2.json` 曾 47.4MB——isoFit 只在单调性违反时合并相邻块，而 score 是连续值（250 树桩加权和几乎必然唯一）→ 每样本一个台阶（n=1，不违反单调不合并）→ 16 张表 ≈ 31 万台阶 → JSON 格式化放大。`tools/ai/compress-vote-model.js` 量化压缩：47.4MB → 268KB（-99.4%），台阶 42k→39/表，保序单调 PASS，推理兼容验证通过（schema@2 加载/12a/12p/unknown 路由/score 正常）。
+
+**防复发**：新增模型文件时检查体积（权重文件 >5MB 即疑似审计数据混入）；isoTable 类产物默认量化或落报告文件。
+
 ## 复现
 
 ```cmd

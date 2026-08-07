@@ -69,6 +69,7 @@ function runMPool({ gen, cfg, onResult, workers = 'auto', taskTimeoutMs = 120000
     const crashReason = new Map();// worker -> 崩溃原因（超时等）
     const pool = new Set();
     let done = 0, exhausted = 0, finished = false;
+    let statTimeout = 0, statRetry = 0; // v4.2：超时/重试统计（诊断"误杀 vs 真卡死"）
 
     const refill = () => {
       while (pending.length < poolSize * 4) {
@@ -83,6 +84,7 @@ function runMPool({ gen, cfg, onResult, workers = 'auto', taskTimeoutMs = 120000
       if (finished || done + exhausted < total) return;
       finished = true;
       clearInterval(timer);
+      if (statTimeout || statRetry) console.log(`\n[mpool] 诊断：墙钟超时 ${statTimeout} 次、重试 ${statRetry} 次、耗尽 ${exhausted} 任务（超时多 → task-timeout 偏小或推理慢；仅偶发 → 正常自愈）`);
       for (const w of pool) w.kill('SIGKILL');
       resolve();
     };
@@ -97,6 +99,7 @@ function runMPool({ gen, cfg, onResult, workers = 'auto', taskTimeoutMs = 120000
     };
     const requeue = (task, why) => {
       const r = (retries.get(task.id) || 0) + 1;
+      statRetry++; // v4.2：诊断统计
       if (r > maxRetry) { exhausted++; onResult({ type: 'fail', id: task.id, error: `${why}（重试耗尽）` }); return; }
       retries.set(task.id, r);
       pending.unshift({ task, retries: r }); // 重试优先
@@ -138,7 +141,7 @@ function runMPool({ gen, cfg, onResult, workers = 'auto', taskTimeoutMs = 120000
     const timer = setInterval(() => {
       const now = Date.now();
       for (const [w, list] of inflight) {
-        if (list.some(x => now - x.sentAt > taskTimeoutMs)) { crashReason.set(w, `wall-clock 超时 ${taskTimeoutMs}ms`); w.kill('SIGKILL'); }
+        if (list.some(x => now - x.sentAt > taskTimeoutMs)) { statTimeout++; crashReason.set(w, `wall-clock 超时 ${taskTimeoutMs}ms`); w.kill('SIGKILL'); }
       }
     }, 5000);
     for (let i = 0; i < poolSize; i++) spawn();

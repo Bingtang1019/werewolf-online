@@ -15,6 +15,7 @@ const loverCore = require('./loverCore.js'); // v2（M1）：恋人机制引擎�
 const { voteFeatures } = require('./server/ai/features.js'); // 1.7.0（B1-2）：vote 特征（训练/推理共用，只含公开信息）
 const { createRng } = require('./server/ai/rng.js');
 const clock = require('./server/clock'); // v1.7.1：可注入时钟（真实/虚拟），所有定时器与时间戳一律经此模块 // 1.7.0（B1-8）：显式可注入 RNG
+const chatRecorder = require('./chat-recorder'); // 1.8.0：真人聊天记录收集（NLU 语料冷启动数据源；CHAT_RECORD=0 关闭）
 
 /* 1.7.0（B1-8）：全局 RNG——server.js 启动时用 SEED env 注入；独立 require（如测试直接调引擎）时回退默认种子 */
 if (!global.rng) global.rng = createRng(parseInt(process.env.SEED || '0', 10) || 12345);
@@ -489,6 +490,11 @@ function tryDeal(room) {
 /* ---------------------------- 夜晚 ---------------------------- */
 function beginNight(room) {
   if (checkGameEnd(room)) return; // v1.6.4（A2-1）：阶段推进入口兜底——防“结算后无人可行动”挂起
+  // v4.2：发言量信息特征——speech 摘要事件（每天结算一次，粗粒度，不撑 200 条事件缓冲）
+  if (room.speechToday && Object.keys(room.speechToday).length) {
+    pushEvent(room, 'speech', { day: room.dayNum, counts: Object.assign({}, room.speechToday) });
+    room.speechToday = {};
+  }
   pushEvent(room, 'night_start', { night: room.nightNum + 1 }); // v1.6.0
   clearPhaseTimer(room); // 白天阶段倒计时清掉（夜晚步骤有自己的 30 秒倒计时）
   if (room._thiefTimer) { clock.clearTimeout(room._thiefTimer); room._thiefTimer = null; }
@@ -1010,6 +1016,7 @@ function exilePlayer(room, id) {
     return;
   }
   q.alive = false; q.deadBy = 'exile';
+  room.lastExiledId = id; // v4.2：票型信息特征（lastExileWasWolf——推理端与训练端 exile 事件同源）
   room.dayDeaths = [id];
   room.exileDeaths = [id];
   startLastWord(room, [id], 'exile');
@@ -1355,6 +1362,9 @@ function chatAction(room, p, data) {
     if (p.lastChatAt && now - p.lastChatAt < CHAT_INTERVAL) return { error: '发言太快了，请稍候再试' };
     p.lastChatAt = now;
   }
+  if (!room.speechToday) room.speechToday = {};
+  room.speechToday[p.id] = (room.speechToday[p.id] || 0) + 1; // v4.2：发言量信息特征（speech 摘要事件数据源）
+  if (!p.isBot) chatRecorder.record(room, p, ch, text); // 1.8.0：真人聊天收集（NLU 语料冷启动；失败静默不阻塞）
   addMessage(room, p, ch, text, null);
   bump(room);
   return { ok: true };

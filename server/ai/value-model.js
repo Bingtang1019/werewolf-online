@@ -10,10 +10,11 @@
 const fs = require('fs');
 const path = require('path');
 
-const MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'value-vote-v3.json');
+const MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'value-vote-v31.json'); // V3.1（v1.7.16 后改名，原 value-vote-v4.json）
 /** A-2 已知配置 key：9 配置精确标签 + cap 级聚合（rollout 路由键全集，v1.7.12） */
-const KNOWN_CONFIGS = ['4p', '6p', '8p', '9a', '9d', '12a', '12b', '12d', '15p', '9p', '12p'];
-const FEATURES = ['bias', 'r_wolfFrac', 's_godFrac', 'T_alive', 'deadFrac', 'cap',
+const KNOWN_CONFIGS = ['4p', '6p', '8p', '9a', '9b', '9c', '9d', '12a', '12b', '12c', '12d', '12e', '12f', '12g', '12h', '15p', '9p', '12p'];
+/* v1.7.16（V4）：deadFrac → 三阵营死亡比例（Step4 验证：比例特征对线性 LSTD 是非线性增量——跨配置归一化减员进度） */
+const FEATURES = ['bias', 'r_wolfFrac', 's_godFrac', 'T_alive', 'wolfDeadFrac', 'godDeadFrac', 'villDeadFrac', 'cap',
                   'r*s', 'wolfAlive', 'godAlive', 'villAlive', 'wolf0', 'god0', 'vill0'];
 
 let _model = null;
@@ -57,7 +58,10 @@ function buildFeatures(s) {
   const T = (s.R + s.S + s.M) || 1;
   const r = s.R / T;
   const sg = s.S / T;
-  return [1, r, sg, T, s.N / (s.cap || T), s.cap || T,
+  const wolfDead = s.wolf0 > 0 ? (s.wolf0 - s.R) / s.wolf0 : 0; // v1.7.16（V4）：三阵营死亡比例（跨配置归一化）
+  const godDead = s.god0 > 0 ? (s.god0 - s.S) / s.god0 : 0;
+  const villDead = s.vill0 > 0 ? (s.vill0 - s.M) / s.vill0 : 0;
+  return [1, r, sg, T, wolfDead, godDead, villDead, s.cap || T,
           r * sg, s.R, s.S, s.M, s.wolf0, s.god0, s.vill0];
 }
 

@@ -53,7 +53,12 @@ async function main() {
       fin++;
       process.stderr.write(`\r[lab:mp] ${fin}/${gen.total}  (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
     };
-    await runMPool({ gen, cfg, onResult, workers: cfg.workers });
+    // v4.2：task-timeout 可配（--task-timeout=ms）——mpool 默认 120s 是线性 V 时代的墙钟上限，
+    // V4.2 MLP 单局可超 → 频繁误杀 + seed 重跑 → 重试耗尽失败（"经常超时"根因）
+    // 默认按 VALUE_MODEL 自适应：v4 → 600s，否则保持 120s 旧行为
+    const taskTimeoutMs = cfg.taskTimeout != null ? Number(cfg.taskTimeout) : (process.env.VALUE_MODEL === 'v4' ? 600000 : 120000);
+    const maxRetry = cfg.retry != null ? Number(cfg.retry) : 2;
+    await runMPool({ gen, cfg, onResult, workers: cfg.workers, taskTimeoutMs, maxRetry });
     if (gen.rec) await gen.rec.close(); // v1.7.9：flush 完成后再 exit（异步写盘抢跑会丢末条）
     // vote 样本合并：多 worker 各自写 sampleFile.<pid>，跑完统一追加到主文件
     if (cfg.sampleFile && gen.sampleFile) {
@@ -75,6 +80,11 @@ async function main() {
     process.exit(0);
   }
   await s.run(cfg);
+  if (global._voteAudit && global._voteAudit.length) {
+    const auditRows = global._voteAudit.map(r => JSON.stringify(r));
+    fs.writeFileSync('data/_vote-audit.jsonl', auditRows.join('\n'));
+    console.log('[audit] vote 审计导出', global._voteAudit.length, '条 → data/_vote-audit.jsonl');
+  }
   process.exit(0);
 }
 main().catch(e => { console.error('异常:', e.message); process.exit(1); });

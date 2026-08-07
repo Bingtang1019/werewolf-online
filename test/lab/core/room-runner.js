@@ -22,6 +22,7 @@ async function runOneLabGame(cfg) {
   const room = Game.rooms.get(r.roomId);
   const host = r.playerId;
   const t0 = Date.now();
+  let guard = 0; // v1.8.0：移到 try 外——catch 分支的 perf 需要它（驱动循环计数）
   try {
     if (cfg.sampleFile) { room.labGameId = cfg.gameId; room.labSampleFile = cfg.sampleFile; } // vote 样本采集（game.js 钩子）
   if (cfg.loverMode) room.loverMode = cfg.loverMode; // v2（M1）：恋人机制模式（off/classic/v2），lab 可配
@@ -49,10 +50,10 @@ async function runOneLabGame(cfg) {
     // ---- 驱动到终局：虚拟模式无脑推时钟，游戏自动跑完 ----
     const v = clock.isVirtual();
     const v0 = clock.now();
-    let guard = 0;
     while (room.phase !== 'ended') {
       if (++guard > 50000) throw { kind: 'stall', msg: `驱动超限 ${room.phase}/${room.nightStep}` };
       if (v && clock.now() - v0 > (cfg.timeoutMs || 60 * 60 * 1000)) throw { kind: 'stall', msg: `虚拟时间超限 ${room.phase}` };
+      if (v && Date.now() - t0 > (cfg.wallBudgetMs || 8000)) throw { kind: 'wall', msg: `墙钟超限 ${Date.now() - t0}ms phase=${room.phase}（决策性能退化或卡死，见 perf.ticks）` }; // v1.8.0：虚拟模式墙钟兜底（虚拟时间与墙钟解耦，决策慢不会触发虚拟超限）
       if (v) {
         if (!clock.hasNext()) {                              // 无定时器且未结束 → 卡死兜底
           const r2 = Game.handleAdvance(room.id, host);
@@ -80,10 +81,12 @@ async function runOneLabGame(cfg) {
     const lv = room.loverMode === 'v2' && room.loverV2 ? { power: room.loverV2.power, unbindUsed: room.loverV2.unbind.used, unbindNight: room.loverV2.timeline.unbindNight, cupidDeadNight: room.loverV2.timeline.cupidDeadNight } : null;
     return {
       schema: 'lab.game-record@1', gameId: cfg.gameId, seed: cfg.seed, scenario: cfg.scenario || 'lab',
-      startedAt: new Date(t0).toISOString(), durMs: Date.now() - t0,
+      startedAt: new Date(t0).toISOString(),       durMs: Date.now() - t0,
+      perf: { ticks: guard, wallMs: Date.now() - t0 }, // v1.8.0：决策性能信号（墙钟/虚拟时间解耦——超时诊断用）
       config: { cap: cfg.cap, counts: cfg.counts, botLine: line, winMode: cfg.winMode || 'edge', name: cfg.name || null, loverMode: room.loverMode, presetKey: room.presetKey || null },
       result: { winner: room.endInfo ? room.endInfo.winner : null, timeout: false, error: null, ...(lv ? { loverMeta: lv } : {}) },
       players,
+      seerHistory: Array.isArray(room.seerHistory) ? room.seerHistory.map(h => ({ target: h.target, result: h.result, night: h.night })) : null, // v4.2：查验历史（信息特征 checkedWolves/checkedCount——训练侧数据源）
       events: (room.events || []).map(e => ({
         i: 0, t: e.type, night: e.night || 0,
         actor: (e.data && (e.data.shooter || e.data.actor)) || null,
@@ -91,15 +94,18 @@ async function runOneLabGame(cfg) {
         data: e.data || {},
       })),
       firstKill,
+      samples: (cfg.flushSamples === false && room.labSampleBuf && room.labSampleBuf.length) ? room.labSampleBuf.slice() : null, // v1.8.0：worker 模式样本回传（主线程统一写盘，防多 worker 竞态）
     };
   } catch (e) {
     return { schema: 'lab.game-record@1', gameId: cfg.gameId, seed: cfg.seed, scenario: cfg.scenario || 'lab',
       startedAt: new Date(t0).toISOString(), durMs: Date.now() - t0,
+      perf: { ticks: guard, wallMs: Date.now() - t0 }, // v1.8.0：catch 分支同样带 perf（超时/卡死局的诊断信号）
       config: { cap: cfg.cap, counts: cfg.counts, botLine: cfg.botLine || [], winMode: cfg.winMode || 'edge', name: cfg.name || null },
       result: { winner: null, timeout: true, error: e.kind ? e : { kind: 'engine', msg: e.message } },
-      players: [], events: [], firstKill: null };
+      players: [], events: [], firstKill: null,
+      samples: (cfg.flushSamples === false && room.labSampleBuf && room.labSampleBuf.length) ? room.labSampleBuf.slice() : null };
   } finally {
-    if (room.labSampleBuf && room.labSampleBuf.length) {      // flush 投票样本
+    if (cfg.flushSamples !== false && room.labSampleBuf && room.labSampleBuf.length) { // flush 投票样本（v1.8.0：worker 模式 flushSamples=false → 样本随 GameRecord 回传主线程统一写盘）
       try { fs.appendFileSync(room.labSampleFile, room.labSampleBuf.join('\n') + '\n'); } catch (e) { /* 采集失败不影响对局 */ }
     }
     clock.clearAll(); // v1.7.2（A-4）：清空虚拟时钟残留定时器（parallel 已强制 1，无并发干扰；防队列线性膨胀 O(n) 插入退化）

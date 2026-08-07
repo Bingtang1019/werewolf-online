@@ -32,7 +32,7 @@ function planTasks(cfg) {
   const p = PRESETS[presetIdx];
   if (!p) throw new Error(`pool: preset ${presetIdx} 不存在（0..${PRESETS.length - 1}）`);
   // v3（v1.7.12）：presetKey 自动路由——已训 9 配置用精确标签，未训配置用 cap 级聚合标签（rollout payoff 路由键，A-2 保证命中）
-  const PRESET_TAG = { 0: '4p', 1: '6p', 2: '8p', 3: '9a', 6: '9d', 7: '12a', 8: '12b', 10: '12d', 15: '15p' };
+  const PRESET_TAG = { 0: '4p', 1: '6p', 2: '8p', 3: '9a', 4: '9b', 5: '9c', 6: '9d', 7: '12a', 8: '12b', 9: '12c', 10: '12d', 11: '12e', 12: '12f', 13: '12g', 14: '12h', 15: '15p' }; // v4.2：16 预设全标签（此前 9 标签导致 9b/9c/12c/12e-12h 的 presetKey 落 cap 级，V4.2 训练漏 7 配置）
   const rec = cfg.out ? createRecorder(path.isAbsolute(cfg.out) ? cfg.out : path.join(ROOT, cfg.out)) : null;
   const total = groups * perGroup; // n 由池规格决定（勿传 --games，smoke 预设默认 10 会干扰）
   const tasks = [];
@@ -80,13 +80,24 @@ function report(statsOrRecords, cfg) {
 async function run(cfg) {
   const gen = planTasks(cfg);
   const st = createStreamStats();
+  const gameTimeout = cfg.gameTimeout != null ? Number(cfg.gameTimeout) : 60000; // v4.2：单进程路径单局墙钟保护（--game-timeout=ms；多进程路径由 mpool 的 taskTimeoutMs + SIGKILL 承担）
   for (let t = gen.next(); t; t = gen.next()) {
     if (t.skip) continue;
-    const r = await runOneLabGame(Object.assign({}, cfg, t.overrides || {}, { seed: t.seed, gameId: t.gameId }));
-    if (gen.rec && !gen.rec.has(r.gameId)) gen.rec.write(r);
+    const r = await withTimeout(runOneLabGame(Object.assign({}, cfg, t.overrides || {}, { seed: t.seed, gameId: t.gameId })), gameTimeout)
+      .catch((e) => ({ gameId: t.gameId, seed: t.seed, winner: null, timeout: true, error: String((e && e.message) || e), timeouts: 1 }));
+    // 超时/异常局不写盘——保持 checkpoint 未完成状态，重跑自动重试（写盘会被 rec.has 判为已完成）
+    if (!r.timeout && gen.rec && !gen.rec.has(r.gameId)) gen.rec.write(r);
     st.add(r);
   }
   if (gen.rec) await gen.rec.close(); // v1.7.9：flush 后再 report/exit
   report(st, cfg);
+}
+/** 单局墙钟超时保护（--game-timeout=ms；超时局记 timeout 且不落盘，checkpoint 保持未完成） */
+function withTimeout(promise, ms) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`game timeout after ${ms}ms`)), ms); }),
+  ]).finally(() => clearTimeout(timer));
 }
 module.exports = { run, planTasks, report, streamable: true };

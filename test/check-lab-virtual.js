@@ -12,11 +12,12 @@ const hash = s => crypto.createHash('sha256').update(s).digest('hex');
 // 归一化：玩家 uid 每局不同，对比前 id→seat（deterministic scenario 同款）
 function norm(rec) {
   const seatOf = id => { const pl = rec.players.find(x => x.id === id); return pl ? pl.seat : id; };
+  const normKey = k => (typeof k === 'string' && seatOf(k) !== k) ? seatOf(k) : k; // v4.2：speech 事件 counts 以 player id 作对象 key——key 也须归一化
   const normData = d => { const o = {}; for (const k of Object.keys(d)) { const v = d[k];
-    if (Array.isArray(v)) o[k] = v.map(x => (typeof x === 'string') ? (seatOf(x) !== x ? seatOf(x) : x) : (x && typeof x === 'object' ? normData(x) : x));
-    else if (typeof v === 'string' && seatOf(v) !== v) o[k] = seatOf(v);
-    else if (v && typeof v === 'object') o[k] = normData(v);
-    else o[k] = v; } return o; };
+    if (Array.isArray(v)) o[normKey(k)] = v.map(x => (typeof x === 'string') ? (seatOf(x) !== x ? seatOf(x) : x) : (x && typeof x === 'object' ? normData(x) : x));
+    else if (typeof v === 'string' && seatOf(v) !== v) o[normKey(k)] = seatOf(v);
+    else if (v && typeof v === 'object') o[normKey(k)] = normData(v);
+    else o[normKey(k)] = v; } return o; };
   return rec.events.map(e => ({ t: e.t, night: e.night, actor: e.actor ? seatOf(e.actor) : null, target: e.target ? seatOf(e.target) : null, data: normData(e.data || {}) }));
 }
 

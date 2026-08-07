@@ -19,9 +19,10 @@ function planTasks(cfg) {
 }
 function norm(rec) {
   const seatOf = id => { const p = (rec.players || []).find(x => x.id === id); return p ? p.seat : id; };
+  const normKey = k => (typeof k === 'string' && seatOf(k) !== k) ? seatOf(k) : k; // v4.2：speech 事件 counts 以 player id 作对象 key——key 也须归一化
   const normVal = (v) => {
     if (Array.isArray(v)) return v.map(normVal);
-    if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = normVal(v[k]); return o; }
+    if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[normKey(k)] = normVal(v[k]); return o; }
     if (typeof v === 'string' && seatOf(v) !== v) return seatOf(v);
     return v;
   };

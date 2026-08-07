@@ -195,7 +195,7 @@ function calibration(y, v, buckets = 5) {  const n = y.length;
 }
 
 /* ---------------- io ---------------- */
-const CFG_TAGS = ['4p', '6p', '8p', '9a', '9d', '12a', '12b', '12d', '15p'];
+const CFG_TAGS = ['4p', '6p', '8p', '9a', '9b', '9c', '9d', '12a', '12b', '12c', '12d', '12e', '12f', '12g', '12h', '15p'];
 function tagOf(file) {
   const base = path.basename(file);
   for (const t of CFG_TAGS) if (base.indexOf(t) === 0) return t;
@@ -225,10 +225,12 @@ function loadRecords(p) {
 
 function parseArgs() {
   const a = process.argv.slice(2);
-  const get = (k, d) => { const i = a.indexOf(k); return i >= 0 ? a[i + 1] : d; };
+  // 教训固化（v1.7.16）：--key=value 带等号也必须匹配（此前 indexOf('--out') 匹配不到 '--out=...' → 静默用默认值 → 意外全量）
+  const get = (k, d) => { const i = a.indexOf(k); if (i >= 0) return a[i + 1]; const p = a.find(x => x.startsWith(k + '=')); return p ? p.slice(k.length + 1) : d; };
   return {
-    records: get('--records', './data/records'),
-    out: get('--out', path.join(__dirname, '..', '..', 'models', 'value-vote-v3.json')),
+    records: get('--records', './data/records-v4'),
+    out: get('--out', path.join(__dirname, '..', '..', 'models', 'value-vote-v31.json')), // V3.1 输出（原名 value-vote-v4.json，v1.7.16 改名）
+    onlyCfg: get('--only-configs', ''),
     lambda: parseFloat(get('--lambda', '1e-2')),
     alphaN0: parseFloat(get('--alpha-n0', '2000')),
     holdout: parseFloat(get('--holdout', '0.2')),
@@ -240,8 +242,15 @@ function parseArgs() {
 function main() {
   const opt = parseArgs();
   console.log(`[v3] loading records from ${opt.records}`);
-  const recs = loadRecords(opt.records).filter(r => r.events && r.result && r.result.winner);
+  let recs = loadRecords(opt.records).filter(r => r.events && r.result && r.result.winner);
+  if (opt.onlyCfg) { // smoke test：--only-configs=4p（训练/评估同范围过滤）
+    const set = new Set(opt.onlyCfg.split(',').map(s => s.trim()).filter(Boolean));
+    const before = recs.length;
+    recs = recs.filter(r => set.has(String(r.config.preset || '')));
+    console.log(`[v3] --only-configs=${opt.onlyCfg}：${before} → ${recs.length} 局`);
+  }
   console.log(`[v3] ${recs.length} games`);
+  console.log(`[v3] 本次训练范围：${opt.onlyCfg ? 'only-configs=' + opt.onlyCfg : '全量 16 配置（未指定 --only-configs）'}`); // 教训固化：参数生效确认，防静默全量
 
   const configKey = rec => `${rec.config.preset || (rec.config.cap || rec.players.length) + 'p'}`;
 
@@ -331,7 +340,7 @@ function main() {
     console.log(`  ${cfg}: AUC ${a.toFixed(4)} (n=${items.length}) V[${minV.toFixed(3)},${maxV.toFixed(3)}] std=${sdV.toFixed(4)}`);
   }
   const eqAuc = Object.values(perConfig).reduce((s, c) => s + c.auc, 0) / Math.max(1, Object.keys(perConfig).length);
-  console.log(`[v3] config-equal-weight holdout AUC（preset 级 9 配置）: ${eqAuc.toFixed(4)}`);
+  console.log(`[v3] config-equal-weight holdout AUC（preset 级 ${Object.keys(perConfig).length} 配置）: ${eqAuc.toFixed(4)}`);
 
   // ---- cap 级评估（12p/9p 等：lab 未训配置的 cap 聚合路由——P0-1 修复，验收覆盖生产路由键）----
   const capKeyOf = cfg => ((cfg.match(/\d+/) || [''])[0]) + 'p';

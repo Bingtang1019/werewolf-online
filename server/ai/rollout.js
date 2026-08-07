@@ -67,12 +67,20 @@ function getValueModel() {
 }
 
 /* v1.7.12（v3）：分层 LSTD 价值模型 payoff——V_c(s) = α·local + (1−α)·global，payoff = ΔV × payoffScale[config]
- * 启用：PAYOFF_MODE=value + VALUE_MODEL=v3（默认 v3）；v2 对照/回退：VALUE_MODEL=v2（旧 sigmoid+K 路径）
- * v3 训练：9 配置分层采集 16998 局，pre-only holdout AUC 0.838（v1 0.262 → v2 0.775 → v3 0.838，修复后口径）
+ * 启用：PAYOFF_MODE=value；v3 回滚：VALUE_MODEL=v3；v2 对照/回滚：VALUE_MODEL=v2（旧 sigmoid+K 路径）
+ * v3 训练：16 配置分层采集（records-v5/v2 生态），pre-only holdout AUC 0.838（v1 0.262 → v2 0.775 → v3 0.838，修复后口径）
  * 纪律：configKey 未知 → 纯 global（local 缺失自动回退，见 value-model.value）；A-2 断言在 lab 启动时校验已知 key */
 const valueModel = require('./value-model');
+const valueModelV4 = require('./value-model-v4'); // V4 HiCVN（value-hicvn@1）
 function valuePayoff(world, xIsWolf) {
-  if (process.env.VALUE_MODEL !== 'v2') return valuePayoffV3(world, xIsWolf); // 默认 v3（v1.7.12 接入）
+  // v1.7.16（V4.2 替换）：默认 v4（MLP 集成，AUC 0.8055 vs V3.1 0.7819，配对终裁 16/16 无劣化）；
+  // v3/v2 保留回滚（VALUE_MODEL=v3 | v2）；σ 分桶单调 FAIL 已列入 V4.3/块 1 多样性增强（观察期补，不影响 ΔV 排序/幅度消费）
+  if (process.env.VALUE_MODEL === 'v3') return valuePayoffV3(world, xIsWolf);
+  if (process.env.VALUE_MODEL === 'v2') return valuePayoffV2(world, xIsWolf);
+  return valuePayoffV4(world, xIsWolf);
+}
+/* v2（旧 sigmoid+K 路径，VALUE_MODEL=v2 显式启用——默认已替换为 v4） */
+function valuePayoffV2(world, xIsWolf) {
   const m = getValueModel();
   if (!m) return payoffFor(world, xIsWolf);
   if (world.faction === 'third') return payoffFor(world, xIsWolf); // v1.7.6：V 模型是好人视角，第三方用 thirdValue 启发式
@@ -117,6 +125,42 @@ function valuePayoffV3(world, xIsWolf) {
   if (world.faction === 'wolf') {
     if (!xIsWolf) return pGod * -dV + pVill * -dM; // 放逐好人 → 好人胜率降 → 狼收益
     return -dG; // 误投队友
+  }
+  if (xIsWolf) return dG;
+  return -(pGod * dV + pVill * dM);
+}
+
+/* V4 payoff（HiCVN）：V ∈ [0,1] 胜率概率语义；ΔV × payoffScale（sigmoid 压缩后 Δ 幅度小 → scale 反放大）
+ * 启用：PAYOFF_MODE=value + VALUE_MODEL=v4；第三方/未知 cap → 解析版（与 V3 分支同纪律） */
+function valuePayoffV4(world, xIsWolf) {
+  const m = valueModelV4.loadV4();
+  if (!m) return payoffFor(world, xIsWolf);
+  if (world.faction === 'third') return payoffFor(world, xIsWolf); // V 无第三方样本，启发式
+  const cfg = world.configKey;
+  if (!cfg) return payoffFor(world, xIsWolf);
+  if (!m.payoffScale[cfg]) {
+    if (world.hasPreset) throw new Error(`[v4] unknown configKey "${cfg}" — lab 训练/推理不匹配（A-2）`);
+    return payoffFor(world, xIsWolf); // 生产未训 cap → 显式降级解析版（可用性优先，非静默）
+  }
+  const R = Math.max(0, world.wolfAlive), S = Math.max(0, world.godAlive), M = Math.max(0, world.villAlive);
+  const cap = world.wolfInit + world.godInit + world.villInit;
+  const N = Math.max(0, cap - R - S - M);
+  // V4.2 信息特征（world.info 与训练侧 rebuildEventStatesV5 同源；next 不变量——放逐身份的信息影响不模拟，
+  // 差分二阶可接受，模型卡记录限制；非 info 模型 buildX 自动忽略该字段）
+  const info = world.info || null;
+  const base = { R, S, M, N, cap, wolf0: world.wolfInit, god0: world.godInit, vill0: world.villInit, info };
+  const next = (dR, dS, dM) => ({ R: Math.max(0, R - dR), S: Math.max(0, S - dS), M: Math.max(0, M - dM), N: N + 1, cap, wolf0: world.wolfInit, god0: world.godInit, vill0: world.villInit, info });
+  // 性能优化：V(base) 每调用只算 1 次（原 3×payoff 各算一次 V(prev)——MLP 4 成员前向贵，
+  // 重复计算被放大；行为完全等价：payoff(prev,next) ≡ (V(next)−V(base))×scale（scale 已在 135 行断言）
+  const vBase = valueModelV4.value(base, cfg);
+  const sc = m.payoffScale[cfg];
+  const dG = (valueModelV4.value(next(1, 0, 0), cfg) - vBase) * sc;
+  const dV = (valueModelV4.value(next(0, 1, 0), cfg) - vBase) * sc;
+  const dM = (valueModelV4.value(next(0, 0, 1), cfg) - vBase) * sc;
+  const pGod = S / (S + M || 1), pVill = M / (S + M || 1);
+  if (world.faction === 'wolf') {
+    if (!xIsWolf) return pGod * -dV + pVill * -dM;
+    return -dG;
   }
   if (xIsWolf) return dG;
   return -(pGod * dV + pVill * dM);
