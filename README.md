@@ -90,7 +90,7 @@ werewolf/
 ├── 启动游戏.bat       # 局域网联机启动
 ├── server-loop.bat    # 服务器崩溃自动重启（供公网联机脚本调用）
 ├── public/            # 网页客户端（index.html / style.css / client.js）
-└── test/              # 自动化测试（41 个脚本 + 1 个渲染 harness）
+└── test/              # 自动化测试（40 个脚本 + 1 个渲染 harness）
 └── tools/selfcheck.js # 代码自检工具（语法/版本串/死代码/重复case/文档-代码一致，--tests 可带全量测试）
 └── tools/ai/determinism-check.js # 对局确定性验证（1.7.0 B1-8：同种子两遍 actionLog 逐字节一致；--seed/--cap/--bots）
 ```
@@ -171,6 +171,11 @@ node test/check-game-end.js         # 终局幂等兜底（屠边结束/猎人�
 node test/check-bot-expression.js   # 好人 bot 发言（easy 预言家报查验/被投辩解/平民表态/组合式生成质量）
 node test/check-bot-vote-noise.js   # 投票不确定性表达（低置信波动/高置信稳定/波动不投恋人/confidenceOf）
 node test/check-lab-stats.js        # 实验室 stats 纯函数（Wilson CI/McNemar/报告错误分类）
+node test/check-rules-174.js        # 1.7.4 规则补足（丘比特判定表/自连/查验口径/翻牌口径/警长平票 PK/阵营归属）
+node test/check-lab-virtual.js      # 虚拟时间加速 + 确定性守卫（墙钟 <3s / 同 seed 事件流 hash 一致）
+node test/check-lover-v2.js         # 恋人机制 v2 引擎单测（三态开关/解绑/权能槽/恋人刀/classic 回归）
+node test/check-favens-modules.js   # favens 模块单元（红线过滤/人狼恋集成/三路站队/护短/invalid 回退）
+node test/check-favens-condition.js # favens conditionOn 单元（v1.7.8 β）
 node tools/selfcheck.js             # 代码自检工具：语法+版本串+死代码+重复case+遗留标记+文档一致（--quick 快速；--tests 带全量回归）
 node tools/ai/determinism-check.js  # 对局确定性验证（1.7.0 B1-8：同种子跑两遍，actionLog 逐字节一致）
 ```

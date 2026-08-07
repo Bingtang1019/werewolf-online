@@ -8,6 +8,12 @@
  *   [--trees 200] [--depth 3] [--hidden 128] [--epochs 20] [--seed 42] [--holdout 0.2]
  *   [--only-configs 4p] [--quick]
  *
+ * 注：默认 --out 是 v1 实验档（value-hicvn-v1.json）；推理端默认消费 v42
+ * （value-model-v4.js 的 MODEL_PATH），两者刻意不同——训练工具默认输出实验档，
+ * 验收通过后显式改名/复制到 v42 才被推理消费（MODEL_VALUE_VOTE_V4 可覆盖 A/B）。
+ * 报告数据（perConfig/校准等）已写入 --audit-out（默认 value-hicvn-v1-audit.json），
+ * 推理模型文件不再携带（v1.7.16 自检修复：v42 已剔除 perConfig，424KB→266KB）。
+ *
  * 纪律（教训固化）：
  *   - records-v4 的 holdout 划分与 V3.1/v31-audit 同序同 LCG（seed=42 按局 rnd<holdout）
  *     → 同测试集归因公平（v31-audit 可复现同一 test 集）

@@ -102,4 +102,4 @@ function viewState(room, pid) {
 }
 /* 付费护短标记（v2）：好恋人本票为护短 → 结算时公告“X在保护恋人”（狼队获知身份，代价端） */
 function markProtect(room, playerId) { st(room).protectBy = playerId; return true; }
-module.exports = { canUnbind, unbind, grantPower, applyGuard, vengeanceDeclare, betrayalKill, trackCupidDeath, markProtect, viewState, isLover, loverOf, cupidDead, v2 };
+module.exports = { canUnbind, unbind, grantPower, applyGuard, vengeanceDeclare, betrayalKill, trackCupidDeath, markProtect, viewState, isLover, cupidDead, v2 };

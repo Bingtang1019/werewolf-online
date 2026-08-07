@@ -88,35 +88,5 @@ function payoff(prevState, nextState, config) {
   return d * scale;
 }
 
-/* ---------------- P1-B: uncertainty-aware rollout (experimental, default off) ---------------- */
-/** σ(s) = √(φ'A⁻¹φ)：训练分布覆盖度代理（工程近似，非严格后验）。model.uncertainty.invA 由训练侧写入 */
-function sigma(state, config) {
-  const m = loadV3();
-  if (!m || !m.uncertainty || !m.uncertainty.invA) return 0;
-  const A = m.uncertainty.invA;
-  const x = buildFeatures(state);
-  let acc = 0;
-  for (let i = 0; i < x.length; i++) {
-    let t = 0;
-    for (let j = 0; j < x.length; j++) t += A[i][j] * x[j];
-    acc += x[i] * t;
-  }
-  return Math.sqrt(Math.max(acc, 1e-9));
-}
-/** v3.1 实验档（默认关闭）：低置信状态收缩 payoff——k≈2 */
-function payoffUncertain(prevState, nextState, config, k) {
-  const d = payoff(prevState, nextState, config);
-  const s = sigma(nextState, config);
-  return s > 0 ? d * (1 / (1 + (k || 2) * s)) : d;
-}
-
-module.exports = { loadV3, isLoaded, resetModel, buildFeatures, classifyRole, value, payoff, sigma, payoffUncertain, assertConfigs, FEATURES, MODEL_PATH, KNOWN_CONFIGS };
-
-/** A-2 启动断言：configKey 必须命中模型，禁止静默 fallback（v1 死因温床）——已知 key 不在模型则抛错 */
-function assertConfigs(known) {
-  const m = loadV3();
-  if (!m) throw new Error('[v3] model not loaded — assertConfigs called before loadV3');
-  const keys = new Set([...Object.keys(m.local), ...Object.keys(m.payoffScale)]);
-  for (const k of known) if (!keys.has(k)) throw new Error('[v3] unknown config key "' + k + '" — train/infer mismatch (A-2)');
-  return true;
-}
+/* ---------------- P1-B: uncertainty-aware rollout（实验档，未接线——v1.7.16 自检确认无消费方，函数已移除；如需恢复见 git 历史） ---------------- */
+module.exports = { loadV3, isLoaded, resetModel, buildFeatures, classifyRole, value, payoff, assertConfigs, FEATURES, MODEL_PATH, KNOWN_CONFIGS };

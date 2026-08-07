@@ -112,7 +112,6 @@ function valuePayoffV3(world, xIsWolf) {
     if (world.hasPreset) throw new Error(`[v3] unknown configKey "${cfg}" — lab 训练/推理不匹配（A-2）`);
     return payoffFor(world, xIsWolf); // 生产未训 cap（如 '10p'）→ 显式降级解析版（可用性优先，非静默）
   }
-  if (!m.local[cfg]) throw new Error(`[v3] unknown configKey "${cfg}" — 训练/推理不匹配（A-2 纪律，禁止静默 fallback）`);
   const R = Math.max(0, world.wolfAlive), S = Math.max(0, world.godAlive), M = Math.max(0, world.villAlive);
   const cap = world.wolfInit + world.godInit + world.villInit;
   const N = Math.max(0, cap - R - S - M);

@@ -62,4 +62,4 @@ function record(room, p, ch, text) {
   } catch (e) { /* 静默 */ }
 }
 
-module.exports = { record, LOG_FILE, ENABLED };
+module.exports = { record };

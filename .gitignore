@@ -31,5 +31,16 @@ rooms.json.bak
 rooms.json.tmp
 data/
 
+# AI 实验模型档（不入库；只提交推理端消费的模型：value-hicvn-v42 / value-vote-v31 / adaboost-vote-v2 等）
+# 训练/评估中间产物：v1/v41-* 系列、frac/mlp/smoke/noinfo、*-audit 报告档——留本地防误删，重训可重建
+models/value-hicvn-v1.json
+models/value-hicvn-v1-audit.json
+models/value-hicvn-v41-*.json
+models/value-hicvn-v42-audit.json
+models/value-hicvn-v42-noinfo*.json
+models/value-hicvn-frac.json
+models/value-hicvn-mlp.json
+models/value-hicvn-smoke.json
+
 # 内部工作清单（不公开）
 工作清单.md

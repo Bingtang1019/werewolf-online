@@ -108,7 +108,7 @@ async function runOneLabGame(cfg) {
     if (cfg.flushSamples !== false && room.labSampleBuf && room.labSampleBuf.length) { // flush 投票样本（v1.8.0：worker 模式 flushSamples=false → 样本随 GameRecord 回传主线程统一写盘）
       try { fs.appendFileSync(room.labSampleFile, room.labSampleBuf.join('\n') + '\n'); } catch (e) { /* 采集失败不影响对局 */ }
     }
-    clock.clearAll(); // v1.7.2（A-4）：清空虚拟时钟残留定时器（parallel 已强制 1，无并发干扰；防队列线性膨胀 O(n) 插入退化）
+    clock.clearAll(); // v1.7.2（A-4）：清空虚拟时钟残留定时器；v1.8.0 起 runPoolParallel 用 worker 进程隔离（无并发干扰），runPool 串行路径仍受益于清理（防队列线性膨胀 O(n) 插入退化）
     Game.rooms.delete(room.id);   // 引擎无公开销毁接口，直接清 Map
   }
 }
