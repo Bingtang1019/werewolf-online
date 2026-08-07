@@ -19,6 +19,7 @@
  * ========================================================================= */
 const path = require('path');
 const { runPoolParallel } = require('./core/pool');
+const { PRESETS } = require('./presets');
 
 const a = process.argv.slice(2);
 const get = (k, d) => { const i = a.indexOf(k); return i >= 0 ? a[i + 1] : d; };
@@ -27,26 +28,41 @@ const has = k => a.includes(k);
 const total = parseInt(get('--total', '2000'), 10);
 const tag = get('--tag', `batch-${Date.now()}`);
 const outDir = get('--out-dir', path.join(__dirname, 'data'));
-const cap = parseInt(get('--cap', '12'), 10);
-const counts = (get('--counts', '4-4-4') || '4-4-4').split('-').map(Number);
 const seedBase = get('--seed-base', null) || null;
 const wallBudget = parseInt(get('--wall-budget', '8000'), 10);
 const timeoutMs = parseInt(get('--timeout-ms', String(60 * 60 * 1000)), 10);
 const parallel = has('--parallel') ? parseInt(get('--parallel', '0'), 10) : 0; // 0 → os.cpus().length
 
+/* preset 优先：--preset 12a 等从 PRESETS 取标准阵容（counts 对象语义，12 人局 = 4狼+1预+1猎+1守+1女巫+4民）；
+ * --counts 兼容对象语法（--counts "wolf=4,seer=1,hunter=1,guard=1,witch=1,villager=4"）；
+ * 教训固化（v1.8.0）：早期 --counts 4-4-4 数组传入 setCounts 被当角色 key '0/1/2' 丢弃 → 12 人局只剩 1狼1民 → 异常局面 stall。 */
+const PRESET_KEYS = { '4p': 0, '6p': 1, '8p': 2, '9a': 3, '9b': 4, '9c': 5, '9d': 6, '12a': 7, '12b': 8, '12c': 9, '12d': 10, '12e': 11, '12f': 12, '12g': 13, '12h': 14, '15p': 15 };
+const presetKey = get('--preset', null);
+const presetIdx = presetKey != null ? PRESET_KEYS[presetKey] : (presetKey != null ? Number(presetKey) : null);
+let cap = parseInt(get('--cap', String(presetIdx != null && PRESETS[presetIdx] ? PRESETS[presetIdx].cap : 12)), 10);
+let counts = null;
+if (presetIdx != null && PRESETS[presetIdx]) counts = { ...PRESETS[presetIdx].counts }; // 标准阵容（含狼美/丘比特配置）
+const countsRaw = get('--counts', '');
+if (countsRaw) { // 显式覆盖（对象语法）
+  counts = {};
+  for (const kv of countsRaw.split(',')) { const [k, v] = kv.split('='); if (k && v != null) counts[k.trim()] = parseInt(v, 10); }
+  if (!counts.wolf) { console.error('[lab] --counts 需对象语法（--counts "wolf=4,seer=1,..."）；数组语义已废弃'); process.exit(1); }
+}
+if (!counts) { console.error('[lab] 必须提供 --preset（标准阵容）或 --counts（对象语法）'); process.exit(1); }
+
 const baseCfg = {
   cap,
   counts,
-  winMode: get('--win-mode', 'edge'),
+  winMode: get('--win-mode', presetIdx != null && PRESETS[presetIdx] ? PRESETS[presetIdx].winMode : 'edge'),
   botLevel: get('--bot-level', 'simulate'),
-  presetKey: get('--preset', null),
+  presetKey,
   loverMode: get('--lover-mode', 'off'),
   timeoutMs,
   wallBudgetMs: wallBudget,
 };
 const sampleFile = has('--sample') ? path.join(outDir, `${tag}.samples.jsonl`) : null;
 
-console.log(`[lab] run-batch: total=${total} tag=${tag} cap=${cap} counts=${counts.join('-')} parallel=${parallel || 'auto'}`);
+console.log(`[lab] run-batch: total=${total} tag=${tag} cap=${cap} counts=${JSON.stringify(counts)} parallel=${parallel || 'auto'} preset=${presetKey || '-'}`);
 console.log(`[lab] outputs → ${path.join(outDir, tag + '.jsonl')}（checkpoint: done-${tag}.txt${sampleFile ? '，样本: ' + path.basename(sampleFile) : ''}）`);
 
 runPoolParallel(total, {

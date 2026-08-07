@@ -64,6 +64,8 @@ async function runPoolParallel(total, opts = {}) {
       if (msg.type === 'done') {
         const { i, rec } = msg;
         results[i] = rec;
+        // v1.8.0：超时/异常局不写盘也不记 done——checkpoint 保持未完成，下次跑批自动重试（与 scenarios/pool.js 同语义）
+        if (rec && rec.result && rec.result.timeout) { finished++; if (opts.onProgress) opts.onProgress(finished, jobs.length, Date.now() - t0); return; }
         try {
           fs.appendFileSync(path.join(outDir, `${tag}.jsonl`), JSON.stringify(rec) + '\n');
           if (sampleFile && rec.samples && rec.samples.length) fs.appendFileSync(sampleFile, rec.samples.join('\n') + '\n');
