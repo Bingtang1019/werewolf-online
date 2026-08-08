@@ -646,9 +646,9 @@ function buildVoteWorld(room, bot) {
           ];
         } catch (e) { belF = null; }
       }
-      // 1.7.18（vote-v3 A-2 修复）：在线采集 25 维特征（v3 时与推理同源——beliefFeatures25），
+      // 1.7.18（vote-v3 A-2 修复）：在线采集 25 维特征（beliefFeatures25 独立于模型——任何模式都存，训练/推理同源）
       // 消除"重放训练 vs 在线推理"生态错配（v3 偏狼根因：离线 0.85/上线 32.4% 背离）
-      const fAudit = (useModel && model.schema === 'adaboost-vote@3') ? (beliefFeatures25(room, bot.id, p.id) || f) : f;
+      const fAudit = (beliefFeatures25(room, bot.id, p.id) || f);
       global._voteAudit.push({ v: global._voteAuditSeq, f: fAudit, belF, mp, s, tIsWolf: campOf(p) === 'wolf', useModel, schema: model ? model.schema : null });
     }
     scores[p.id] = s;
