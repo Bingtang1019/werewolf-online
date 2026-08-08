@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { voteFeatures } = require('../../server/ai/features.js');
 const { MLP } = require('../../server/ai/mlp.js');
+const { createBeliefEngine, applyEvent, getBeliefs } = require('../../server/ai/belief-engine.js'); // V5.1b：信念引擎
 
 const root = path.join(__dirname, '..', '..');
 
@@ -22,6 +23,7 @@ function parseArgs() {
   return {
     records: get('--records', path.join(root, 'data', 'records-v5-bc')),
     quick: a.includes('--quick'),
+    belief: a.includes('--belief'), // V5.1b：信念特征扩展（后验/可信度/票数）
     hidden: parseInt(get('--hidden', '64'), 10),
     epochs: parseInt(get('--epochs', '30'), 10),
     seed: parseInt(get('--seed', '42'), 10),
@@ -30,13 +32,25 @@ function parseArgs() {
 }
 
 /** 重放单局：产出 [样本, 真相回填]——真相 = 每局结束时 players 的 roleKey */
-function replayGame(rec) {
+function replayGame(rec, useBelief) {
   const players = rec.players || [];
   const idx = new Map(players.map((p, i) => [p.id, i]));
   const alive = players.map(() => true);
   const room = { players, messages: [], votes: {}, lastVoteResult: null, actionLog: [] };
   const evs = (rec.events || []).slice().sort((a, b) => (a.i || 0) - (b.i || 0));
-  // audit 队列：botId → dv 决策（顺序 = 决策序）
+  // V5.1b：信念引擎并行增量（消费 deaths/exile/vote_cast/claim 事件）
+  const counts = {};
+  for (const p of players) {
+    const rk = String(p.roleKey || p.role || '').toLowerCase();
+    if (rk.includes('wolf')) { if (rk.includes('beauty')) counts.wolfBeauty = (counts.wolfBeauty || 0) + 1; else counts.wolf = (counts.wolf || 0) + 1; }
+    else if (rk.includes('seer')) counts.seer = (counts.seer || 0) + 1;
+    else if (rk.includes('witch')) counts.witch = (counts.witch || 0) + 1;
+    else if (rk.includes('guard')) counts.guard = (counts.guard || 0) + 1;
+    else if (rk.includes('hunter')) counts.hunter = (counts.hunter || 0) + 1;
+    else if (rk.includes('cupid')) counts.cupid = (counts.cupid || 0) + 1;
+    else counts.villager = (counts.villager || 0) + 1;
+  }
+  const eng = useBelief ? createBeliefEngine(players, counts) : null;
   const auditQ = new Map();
   for (const a of rec.rolloutAudit || []) {
     if (a.dv == null) continue;
@@ -47,6 +61,7 @@ function replayGame(rec) {
   let lastSnapTotals = null;
   for (const ev of evs) {
     const t = ev.t;
+    if (eng) applyEvent(eng, ev);
     if (t === 'deaths' && ev.data && Array.isArray(ev.data.deaths)) {
       for (const d of ev.data.deaths) { const i = idx.get(typeof d === 'string' ? d : d.id); if (i != null) alive[i] = false; }
     }
@@ -66,11 +81,27 @@ function replayGame(rec) {
       const aud = q && q.length ? q.shift() : null;
       if (aud && alive[idx.get(voter)] != null && alive[idx.get(voter)]) {
         const vp = players[idx.get(voter)];
+        // V5.1b：信念快照（vote_cast 时刻，增量引擎已消费到该事件）
+        let belSnap = null;
+        if (eng) {
+          const bel = getBeliefs(eng);
+          belSnap = bel;
+        }
         for (const cand of players) {
           if (cand.id === voter || !alive[idx.get(cand.id)]) continue;
           const feats = voteFeatures(room, voter, cand.id);
           if (!feats) continue;
-          out.samples.push({ botId: voter, candId: cand.id, y: aud.dv === cand.id ? 1 : 0, feats });
+          let fe = feats;
+          if (belSnap) {
+            // V5.1b 信念特征（附后）：候选后验 / 候选可信度 / 投票者可信度 / 候选累计票数（相对）
+            fe = feats.concat([
+              belSnap.posterior[cand.id] != null ? belSnap.posterior[cand.id] : 0.5,
+              belSnap.credibility[cand.id] != null ? belSnap.credibility[cand.id] : 0.5,
+              belSnap.credibility[voter] != null ? belSnap.credibility[voter] : 0.5,
+              (tot[cand.id] || 0) / Math.max(1, Object.keys(tot).length),
+            ]);
+          }
+          out.samples.push({ botId: voter, candId: cand.id, y: aud.dv === cand.id ? 1 : 0, feats: fe });
         }
         if (vp) room.actionLog.push({ action: 'vote', actor: vp.seat, data: { target: ev.data.target } });
       }
@@ -102,11 +133,11 @@ function main() {
   const samples = [];
   const truths = new Map(); // botId → 该 bot 是狼?
   for (const rec of games) {
-    const r = replayGame(rec);
+    const r = replayGame(rec, opt.belief);
     samples.push(...r.samples);
     for (const [id, w] of r.truth) if (!truths.has(id)) truths.set(id, w);
   }
-  console.log(`[pi] 样本（voter×cand, label=dv）=${samples.length}`);
+  console.log(`[pi] 样本（voter×cand, label=dv）=${samples.length}` + (opt.belief ? '（信念特征版）' : ''));
 
   /* ---- 划分（按 botId 80/20） ---- */
   const bots = [...new Set(samples.map(s => s.botId))];
@@ -157,7 +188,10 @@ function main() {
   /* ---- 保存模型 ---- */
   const out = {
     schema: 'vote-pi@1',
-    features: ['seat_norm', 'ring_dist', 'talk_count', 'checked_wolf', 'checked_good', 'votes_against', 'prev_votes', 'claims_seer', 'claims_god', 'accused_count', 'counter_seer', 'vote_lead', 'bot_prev_same'],
+    features: opt.belief
+      ? ['seat_norm', 'ring_dist', 'talk_count', 'checked_wolf', 'checked_good', 'votes_against', 'prev_votes', 'claims_seer', 'claims_god', 'accused_count', 'counter_seer', 'vote_lead', 'bot_prev_same', 'bel_posterior', 'bel_cred_cand', 'bel_cred_voter', 'bel_vote_share']
+      : ['seat_norm', 'ring_dist', 'talk_count', 'checked_wolf', 'checked_good', 'votes_against', 'prev_votes', 'claims_seer', 'claims_god', 'accused_count', 'counter_seer', 'vote_lead', 'bot_prev_same'],
+    belief: opt.belief ? true : false,
     hidden: opt.hidden,
     epochs: opt.quick ? 5 : opt.epochs,
     trainedAt: new Date().toISOString(),
@@ -168,7 +202,9 @@ function main() {
     truthHitPi: +(100 * piHit / Math.max(1, piTotal)).toFixed(3),
     truthHitDv: +(100 * dvHit / Math.max(1, dvTotal)).toFixed(3),
     seed: opt.seed,
-    note: 'V5.0 π：BC from decideVote（label=audit dv，无 rollout 污染）；推理=逐候选打分 argmax；口径：输出保真（行为）≠ 真相命中（决策质量）',
+    note: opt.belief
+      ? 'V5.1b π（信念特征版）：13 维快照 + 4 维信念（后验/可信度/票占）；BC from decideVote；配对验收锚点 62.6%+3pp'
+      : 'V5.0 π：BC from decideVote（label=audit dv，无 rollout 污染）；推理=逐候选打分 argmax；口径：输出保真（行为）≠ 真相命中（决策质量）',
     mlp: m.toJSON(),
   };
   fs.writeFileSync(opt.out, JSON.stringify(out));

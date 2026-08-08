@@ -1001,7 +1001,7 @@ function botTalk(room, bot, level) {
   const isWolf = campOf(bot) === 'wolf';
   const lp = loverPartner(room, bot); // v1.6.3：狼恋人保护/辩护
   const count = talkedCount(room, bot);
-  const chat = text => text ? { action: 'chat', data: { ch: 'all', text } } : null;
+  const chat = (text, claim) => text ? { action: 'chat', data: { ch: 'all', text, claim: claim || null } } : null; // 1.7.17（V5.1）：结构化声明（查杀/金水/跳身份）随发言标记
 
   /* ===== 主发言（第 1 条） ===== */
   if (count === 0) {
@@ -1045,7 +1045,7 @@ function botTalk(room, bot, level) {
         if (pool.length) {
           const t = pool.sort((a, b) => wolfProb(room, bot, a.id) - wolfProb(room, bot, b.id))[0];
           room.wolfPackMemory.talkedClaim = true;
-          return chat(genPhrase('wolf_fake_seer', { name: t.name }) || '我是预言家，昨晚查验了' + t.name + '：查杀'); // v1.6.4（A2-5）：组合式生成
+          return chat(genPhrase('wolf_fake_seer', { name: t.name }) || '我是预言家，昨晚查验了' + t.name + '：查杀', { type: 'check_wolf', target: t.id }); // v1.6.4（A2-5）：组合式生成；V5.1：结构化声明（狼悍跳=假查杀）
         }
       }
       // v1.7.7（S3）：穿衣服概率——默认0（生产安全：六人局已平衡52.4%，穿衣服0.25会打崩）；
@@ -1201,7 +1201,7 @@ function botLastWord(room, bot, level) {
     const last = (room.seerHistory || []).filter(x => x.night >= 1).slice(-1)[0];
     if (myRole === 'seer' && last) {
       const nm = nameById(room, last.target);
-      if (nm !== '未知') return { action: 'post', data: { text: '我是预言家，昨夜查了' + nm + '：' + (last.result === 'wolf' ? '查杀' : '金水') + '，大家务必出他' } };
+      if (nm !== '未知') return { action: 'post', data: { text: '我是预言家，昨夜查了' + nm + '：' + (last.result === 'wolf' ? '查杀' : '金水') + '，大家务必出他', claim: { type: last.result === 'wolf' ? 'check_wolf' : 'check_good', target: last.target, night: last.night } } }; // V5.1：结构化声明（真实查验结果）
     }
     if (myRole === 'guard' && mem.guarded) return { action: 'post', data: { text: '我是守卫，守人记录在我脑子里，按我之前的判断走' } };
     if (myRole === 'witch') return { action: 'post', data: { text: '我是女巫，解药已经用了，毒药还在，你们加油' } };

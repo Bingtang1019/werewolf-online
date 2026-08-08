@@ -801,7 +801,7 @@ function resolveNight(room) {
   loverCore.trackCupidDeath(room, deaths); // v2 时序记录（丘比特死亡轮次，M3 敏感性分析）
   // v1.6.2：wolf_kill/deaths 事件提前到猎人判断之前推送（猎人开枪分支提前 return 曾导致这两条事件丢失）
   if (room.night && room.night.wolf && room.night.wolf.kill) pushEvent(room, 'wolf_kill', { kill: room.night.wolf.kill, saved: !deaths.includes(room.night.wolf.kill) });
-  pushEvent(room, 'deaths', { deaths: deaths.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '', by: q ? q.deadBy : '' }; }) });
+  pushEvent(room, 'deaths', { deaths: deaths.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '', by: q ? q.deadBy : '', role: q ? q.role : '' }; }) });
   // 猎人被狼刀杀死 → 先结算猎人开枪，再判胜负（否则最后的神职猎人被刀会直接判狼胜而无法开枪；枪杀可能改变战局）
   const hunter = deaths.find(id => { const q = byId(room, id); return effRole(q) === 'hunter' && q.deadBy === 'wolf'; });
   if (hunter) {
@@ -836,7 +836,7 @@ function resolveShot(room, target) {
     // 狼美人被猎人枪杀不能带走被魅惑者（仅被放逐时才触发魅惑）
   }
   // v1.6.2：枪杀/殉情死亡批次入事件流（night 分支与此前 deaths 事件分两批；day 分支与放逐批次分离）
-  if (deaths.length) pushEvent(room, 'deaths', { deaths: deaths.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '', by: q ? q.deadBy : '' }; }) });
+  if (deaths.length) pushEvent(room, 'deaths', { deaths: deaths.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '', by: q ? q.deadBy : '', role: q ? q.role : '' }; }) });
   room.shooter = null;
   if (room.shotContext === 'night') {
     room.nightDeaths = (room.nightDeaths || []).concat(deaths);
@@ -996,7 +996,7 @@ function resolveExileVote(room) {
     result: res.tie ? 'tie' : (res.winner ? 'exile' : 'none'),
     exiled: res.winner, tied: res.tied || null,
   };
-  pushEvent(room, 'exile', { exiled: res.winner, result: res.tie ? 'tie' : (res.winner ? 'exile' : 'none'), tied: res.tied || null }); // v1.6.0
+  pushEvent(room, 'exile', { exiled: res.winner, result: res.tie ? 'tie' : (res.winner ? 'exile' : 'none'), tied: res.tied || null, role: res.winner ? (byId(room, res.winner) || {}).role || '' : '' }); // v1.6.0（V5.1：放逐身份公开）
   if (res.tie) {
     if (room.settings.tieRule === 'pk') {
       room.pkTied = res.tied.filter(id => byId(room, id).alive);
@@ -1048,7 +1048,7 @@ function afterExile(room) {
   room.dayDeaths = room.dayDeaths.concat(deaths);
   // v1.6.2：放逐死亡批次入事件流（放逐者 + 魅惑带走 + 殉情；猎人枪杀批次由 resolveShot 推送）
   const exileDead = [...new Set(exileAndCharm.concat(deaths))];
-  if (exileDead.length) pushEvent(room, 'deaths', { deaths: exileDead.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '', by: q ? q.deadBy : '' }; }) });
+  if (exileDead.length) pushEvent(room, 'deaths', { deaths: exileDead.map(id => { const q = byId(room, id); return { id, name: q ? q.name : '', by: q ? q.deadBy : '', role: q ? q.role : '' }; }) });
   // 猎人被放逐 → 先结算开枪，再判胜负（枪杀可能改变战局，与夜晚猎人同规则）
   const hunter = room.exileDeaths.find(id => { const q = byId(room, id); return effRole(q) === 'hunter'; });
   if (hunter) {
@@ -1186,7 +1186,8 @@ function dayAction(room, p, action, data) {
       if (action === 'post') {
         const text = (data.text || '').trim();
         if (!text) return { error: '请输入遗言内容' };
-        addMessage(room, p, 'all', text, '遗言');
+        addMessage(room, p, 'all', text, '遗言', data.claim || null); // V5.1：结构化声明透传
+        if (data.claim) pushEvent(room, 'claim', { from: p.id, type: data.claim.type, target: data.claim.target || null, night: data.claim.night != null ? data.claim.night : room.nightNum }); // V5.1：声明事件
         p.lastWordUsed = true;
         room.lastWordDone[p.id] = true;
         bump(room);
@@ -1342,11 +1343,11 @@ function resolvePkVote(room) {
 }
 
 /* ---------------------------- 消息 ---------------------------- */
-function addMessage(room, p, ch, text, marker) {
+function addMessage(room, p, ch, text, marker, claim) {
   const prev = room.messages[room.messages.length - 1];
   // ts 严格递增：作为聊天增量传输的锚点（同一毫秒内的多条消息也不会丢失）
   const ts = Math.max(clock.now(), (prev ? prev.ts : 0) + 1);
-  room.messages.push({ id: uid(), ch, from: p ? p.id : null, name: p ? p.name : '系统', text, marker: marker || null, ts, day: room.dayNum, night: room.nightNum });
+  room.messages.push({ id: uid(), ch, from: p ? p.id : null, name: p ? p.name : '系统', text, marker: marker || null, ts, day: room.dayNum, night: room.nightNum, claim: claim || null }); // V5.1：结构化声明随消息
   if (room.messages.length > 500) room.messages.splice(0, room.messages.length - 500);
 }
 /* v1.7.6（丘比特规则补足）：情侣频道成员 = 情侣两人 + 丘比特（丘比特知情侣，可在情侣频道发言） */
@@ -1386,7 +1387,8 @@ function chatAction(room, p, data) {
   if (!room.speechToday) room.speechToday = {};
   room.speechToday[p.id] = (room.speechToday[p.id] || 0) + 1; // v4.2：发言量信息特征（speech 摘要事件数据源）
   if (!p.isBot) chatRecorder.record(room, p, ch, text); // 1.8.0：真人聊天收集（NLU 语料冷启动；失败静默不阻塞）
-  addMessage(room, p, ch, text, null);
+  addMessage(room, p, ch, text, null, data.claim || null); // V5.1：结构化声明透传（bot 声明：查杀/金水）
+  if (data.claim) pushEvent(room, 'claim', { from: p.id, type: data.claim.type, target: data.claim.target || null, night: data.claim.night != null ? data.claim.night : room.nightNum }); // V5.1：声明事件（belief-engine 证据源）
   bump(room);
   return { ok: true };
 }
