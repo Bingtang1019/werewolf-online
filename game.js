@@ -336,6 +336,9 @@ function lobbyAction(room, p, action, data) {
     bot.isBot = true;
     // v1.4.0：人机级别（idle 挂机 / easy 简单 / smart 智能）；v1.5.0 增加 simulate（态度模型档）；非法值忽略，走房间 botMode 映射
     if (data.level === 'idle' || data.level === 'easy' || data.level === 'smart' || data.level === 'simulate') bot.botLevel = data.level;
+    // 1.7.17（V5.2 轻量 B）：per-bot 嫌疑分混合权重（多样化 bot 变体——BOT_SUSPICION_W 的 per-bot 版）
+    if (data.suspicionW != null) bot.suspicionW = parseFloat(data.suspicionW);
+    if (data.followMode === 'strict' || data.followMode === 'loose' || data.followMode === 'none') bot.followMode = data.followMode; // 跟票变体
     // v1.5.0：态度模型风格参数（aggressive/balanced/conservative + 狼侧 charge/shark/normal）
     if (data.style === 'aggressive' || data.style === 'conservative' || data.style === 'balanced') bot.botStyle = data.style;
     if (data.wolfStyle === 'charge' || data.wolfStyle === 'shark' || data.wolfStyle === 'normal') bot.wolfStyle = data.wolfStyle;

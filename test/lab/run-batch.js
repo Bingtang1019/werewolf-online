@@ -60,6 +60,27 @@ const baseCfg = {
   timeoutMs,
   wallBudgetMs: wallBudget,
 };
+// 1.7.17（V5.2 轻量 B）：--variant "0.6,0.8,0.4" 或 "0.6:strict,0.8:loose"（w:followMode）→ 混合变体 botLine（轮转分配）
+const variantRaw = get('--variant', '');
+if (variantRaw) {
+  const parts = variantRaw.split(',').map(x => x.trim()).filter(Boolean);
+  const ws = [];
+  for (const pt of parts) {
+    const [w, mode] = pt.split(':');
+    const wv = parseFloat(w);
+    if (isNaN(wv) || wv <= 0 || wv >= 1) { console.error('[lab] --variant 格式: "0.6:strict,0.8:loose"（0<w<1，mode=strict/loose/none 可选）'); process.exit(1); }
+    ws.push({ w: wv, mode: mode || 'strict' });
+  }
+  if (ws.length) {
+    const line = [];
+    for (let i = 0; i < cap - 1; i++) {
+      const v = ws[i % ws.length];
+      line.push({ level: baseCfg.botLevel, suspicionW: v.w, followMode: v.mode });
+    }
+    baseCfg.botLine = line;
+    console.log(`[lab] 变体池: ${ws.map(v => v.w + ':' + v.mode).join('/')}（${cap - 1} bot 轮转）`);
+  }
+}
 const sampleFile = has('--sample') ? path.join(outDir, `${tag}.samples.jsonl`) : null;
 
 console.log(`[lab] run-batch: total=${total} tag=${tag} cap=${cap} counts=${JSON.stringify(counts)} parallel=${parallel || 'auto'} preset=${presetKey || '-'}`);

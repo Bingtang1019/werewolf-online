@@ -576,7 +576,8 @@ function buildVoteWorld(room, bot) {
         if (mp != null) {
           if (model.schema === 'adaboost-vote@2') mp = 1 / (1 + Math.exp(-mp)); // v2：raw score → 单调 sigmoid（仅排序消费，未校准——禁止概率阈值/置信度下游）
           else { const mi = isoVote(mp); if (mi != null) mp = mi; } // v1：Platt 概率 + iso 过渡校准
-          s = 0.6 * s + 0.4 * mp;
+          const wb = (bot.suspicionW != null ? bot.suspicionW : parseFloat(process.env.BOT_SUSPICION_W || '0.6')); // 1.7.17（V5.2 轻量 B）：per-bot 混合权重（多样化变体）优先于 env
+          s = wb * s + (1 - wb) * mp;
         }
       }
     }
@@ -634,6 +635,7 @@ function buildVoteWorld(room, bot) {
     sellTarget: sellWolfBeauty(room, bot),
     allVoters: room.players.filter(p => p.alive && !p.leftGame).map(p => p.id), // 1.7.0（B1-5）：rollout 模拟投票者
     me: bot.id,
+    followMode: bot.followMode || process.env.FOLLOW_MODE || 'strict', // 1.7.17（V5.2 轻量 B）：per-bot 跟票变体（strict/loose/none）
     configKey: room.presetKey || (room.cap ? room.cap + 'p' : null), // v1.7.14：cap 级 fallback（生产真人局无 preset → '12p' 等路由到 cap 聚合 local）；A-2 双轨：lab（presetKey 存在）未知 key 抛错，生产（无 preset）cap fallback + 未训 cap 显式降级解析版（可用性优先，注释写明非静默）
     hasPreset: !!room.presetKey, // v1.7.14：A-2 双轨判定（lab preset 标签 / 生产 cap fallback）
     vGood, // 1.7.6：第三方平衡用（好人胜率估值）

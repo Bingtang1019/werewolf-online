@@ -89,7 +89,7 @@ function replayGame(rec, useBelief) {
         // V5.1b：信念快照（vote_cast 时刻，增量引擎已消费到该事件）
         let belSnap = null;
         if (eng) {
-          const bel = getBeliefs(eng);
+          const bel = getBeliefs(eng, { temperature: parseFloat(process.env.BELIEF_T || '1') }); // 校准：温度缩放（T>1 压缩过冲——输入分布改善）
           belSnap = bel;
         }
         for (const cand of players) {
@@ -98,6 +98,9 @@ function replayGame(rec, useBelief) {
           if (!feats) continue;
           let fe = feats;
           if (belSnap) {
+            if (process.env.BELIEF_NOISE === '1') { // 对照：信念特征随机化（增益是否来自特征本身）
+              for (const c of players) { if (c.id !== voter) { belSnap.posterior[c.id] = 0.3 + 0.4 * Math.random(); belSnap.credibility[c.id] = 0.5; } }
+            }
             // V5.1b 信念特征（附后）：候选后验 / 候选可信度 / 投票者可信度 / 候选累计票数（相对）
             fe = feats.concat([
               belSnap.posterior[cand.id] != null ? belSnap.posterior[cand.id] : 0.5,

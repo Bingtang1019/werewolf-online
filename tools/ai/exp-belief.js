@@ -59,7 +59,7 @@ console.log('对局: ' + games + ' 事件: ' + events + ' 样本: ' + samples.le
 if (!samples.length) { console.log('无样本'); process.exit(1); }
 
 // ---- ROC AUC ----
-const sorted = samples.map((s, i) => ({ ...s, i })).sort((a, b) => b.p - a.p);
+const sorted = samples.map((s, i) => ({ ...s, i })).sort((a, b) => a.p - b.p); // 1.7.17（校准审计）：升序——rank 越大越可能是正类（标准 AUC）；原降序+公式不匹配导致方向反
 const nPos = samples.filter(s => s.y === 1).length;
 const nNeg = samples.length - nPos;
 let rankSum = 0;

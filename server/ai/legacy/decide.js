@@ -75,14 +75,21 @@ if (world.faction === 'third') {
   const sorted = pool.map(id => ({ id, score: scoreOf(id) })).sort((a, b) => b.score - a.score);
   return { ranked: sorted, target: sorted.length ? sorted[0].id : null };
 }
-  // 跟票集中（防分票）：嫌疑前二且已有人投 → 跟票
+  // 跟票集中（防分票）：嫌疑前二且已有人投 → 跟票（1.7.17（V5.2 轻量 B）：FOLLOW_MODE 变体——strict 默认 / loose 前二独立 / none 最高嫌疑）
   const votes = world.votes || {};
   const counts = {};
   for (const k of Object.keys(votes)) { const t = votes[k]; if (t && pool.includes(t)) counts[t] = (counts[t] || 0) + 1; }
   const sorted = pool.map(id => ({ id, score: score(id) })).sort((a, b) => b.score - a.score);
   const top = sorted.slice(0, 2);
+  const followMode = world.followMode || process.env.FOLLOW_MODE || 'strict';
   let target = null;
-  for (const p of top) if (counts[p.id]) { target = p.id; break; }
+  if (followMode === 'strict') {
+    for (const p of top) if (counts[p.id]) { target = p.id; break; }
+  } else if (followMode === 'loose') {
+    target = top.length ? top[0].id : null; // 前二独立（不看票型）
+  } else {
+    target = sorted.length ? sorted[0].id : null; // 最高嫌疑（无跟票）
+  }
   if (!target) target = sorted.length ? sorted[0].id : null;
   return { ranked: sorted, target };
 }

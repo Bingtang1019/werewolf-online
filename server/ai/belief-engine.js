@@ -227,12 +227,14 @@ function applyEvent(engine, ev) {
   }
 }
 
-// ---- 输出：信念状态张量（raw 后验 + rank 归一化——校准修正）----
-function getBeliefs(engine) {
+// ---- 输出：信念状态张量（raw 后验 + rank 归一化 + 温度校准——校准审计修正）----
+function getBeliefs(engine, opts) {
+  const t = (opts && opts.temperature) || 1; // 温度缩放（T>1 压缩过冲；单调变换不改变 argmax，但改善 π 输入分布）
   const posterior = {}, credibility = {}, follows = {};
   const aliveIds = [...engine.alive];
   for (const [id, n] of Object.entries(engine.nodes)) {
-    posterior[id] = n.posterior;
+    const p = n.posterior;
+    posterior[id] = t === 1 ? p : 1 / (1 + Math.exp(-(Math.log(Math.max(1e-6, p) / Math.max(1e-6, 1 - p)) / t)));
     credibility[id] = n.credibility;
   }
   for (const [v, tgt] of Object.entries(engine.follow)) {
