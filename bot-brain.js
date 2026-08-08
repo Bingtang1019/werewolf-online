@@ -2,6 +2,7 @@
 /* v1.6.4（A5-1/A2-5）：统一置信度入口 + 发言语料库（组合式生成）——C1 意图层未来只消费这两处 */
 const { confidenceOf } = require('./server/ai/confidence.js');
 const { getVoteModel, getVoteModelV2, modelProb } = require('./server/ai/model-loader.js');
+const { buildRoomVoteState, voteFeatures13 } = require('./server/ai/vote-state.js'); // 1.8.0（P1）：投票轮级快照——房间级特征构造一次，决策 O(1) 查表（架构革命 ①）
 let _getBeliefsRef = null; // 1.7.18：belief-engine 懒预加载（TDZ 修复——getBeliefs 仅供 beliefFeatures25 运行时使用，模块级缓存避免函数内局部 require 的初始化时序问题）
 const _belMod = require('./server/ai/belief-engine.js');
 _getBeliefsRef = _belMod.getBeliefs || null; // 1.7.18：getVoteModelV2——v2 独立缓存（12c per-config 回退用） // 1.7.0（B1-4）：vote 模型（fail-open）
@@ -565,51 +566,50 @@ function isoVote(p) {
  *       19=claim_suspect 20=vote_lead_order 21=follow_strength 22=seer_check 23=wolf_kill_survivor 24=cred_derived
  * 无引擎时返回中性特征（fail-open——v3 模型退化但不崩） */
 function beliefFeatures25(room, botId, candId) {
-  const base = voteFeatures(room, botId, candId);
+  const base = (process.env.LAB_VS !== '0' && room._vs) ? voteFeatures13(room._vs.base, botId, candId) : voteFeatures(room, botId, candId); // 1.8.0（P1）：房间级快照优先（LAB_VS=0 回退原实现——配对验证）
   if (!base) return null;
   const eng = room._beliefEngine;
   const getBeliefs = _getBeliefsRef; // 1.7.18：模块顶部预加载（TDZ 修复——const 声明必须在函数顶部，函数内先使用后声明会触发 TDZ）
-  // 1.7.18：getBeliefs 缓存（每票每候选重建排名对象 = V8 堆碎片化崩溃根源——同 bot 同轮信念状态不变）
-  const _belKey = room.day + ':' + botId + ':' + (room._voteCastCount || 0); // 1.7.18：缓存 key 三段一致（修复比较/存储格式错位——原代码比较 2 段、存储 3 段 → 永不命中 → 每候选全量重建 getBeliefs → V8 堆碎片崩溃）
-  if (!room._belCache || room._belCache.key !== _belKey) {
-    room._belCache = { key: _belKey, bel: getBeliefs(eng) };
+  // 1.7.18：每票每 bot 预计算一次证据索引（beliefFeatures25 每票每候选调用——kills/claims/messages 全扫 × 11 候选 = O(候选×证据)；预计算后每候选 O(1) 查表，提速 ~10×，特征值不变 A-2 安全）
+  let idx = room._belFeatIdx || {}; // 1.8.0：let（构建后需更新引用——原 const 导致 Assignment to constant）
+  const idxKey = room.day + ':' + botId + ':' + (room._voteCastCount || 0);
+  if (idx.key !== idxKey) {
+    const deathInfer = {}, claimSuspect = {}, seerCheck = {}, tot = room.votes || {};
+    for (const k of eng.kills || []) {
+      const victim = eng.nodes[k.victim];
+      if (victim && victim.votesMade) for (const vm of victim.votesMade) deathInfer[vm.target] = (deathInfer[vm.target] || 0) + 1;
+    }
+    for (const c of eng.claims || []) if (c.type === 'check_wolf') claimSuspect[c.target] = (claimSuspect[c.target] || 0) + 1;
+    for (const m of room.messages || []) {
+      if (m.ch === 'all' && m.from !== botId && m.text && m.text.includes('查杀')) {
+        for (const p of room.players) if (p.alive && m.text.includes(p.name)) { seerCheck[p.id] = 1; break; }
+      }
+    }
+    const sorted = Object.entries(tot).sort((a, b) => b[1] - a[1]);
+    const leadId = sorted.length ? sorted[0][0] : null;
+    room._belFeatIdx = { key: idxKey, deathInfer, claimSuspect, seerCheck, leadId, totKey: Object.keys(tot).length };
+    idx = room._belFeatIdx; // 1.8.0：构建后更新局部引用（原代码遗漏——idx 仍指向空对象 → deathInfer undefined 崩溃）
+  }
+  const belKey = room.day + ':' + botId + ':' + (room._voteCastCount || 0);
+  if (!room._belCache || room._belCache.key !== belKey) {
+    room._belCache = { key: belKey, bel: getBeliefs(eng) };
   }
   const bel = room._belCache.bel;
   if (!eng) return base.concat([0.5, 0.5, 0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-  const tot = room.votes || {};
   const p = bel.posterior[candId] != null ? bel.posterior[candId] : 0.5;
   const cc = bel.credibility[candId] != null ? bel.credibility[candId] : 0.5;
   const cv = bel.credibility[botId] != null ? bel.credibility[botId] : 0.5;
-  const share = (tot[candId] || 0) / Math.max(1, Object.keys(tot).length);
-  // death_infer：被刀者投过候选的次数（死亡因果链）
-  let deathInfer = 0;
-  for (const k of eng.kills || []) {
-    const victim = eng.nodes[k.victim];
-    if (victim && victim.votesMade) for (const vm of victim.votesMade) if (vm.target === candId) deathInfer++;
-  }
-  deathInfer = Math.min(1, deathInfer / 3);
-  // claim_suspect：候选被查杀声明数（狼悍跳居多）
-  let claimSuspect = 0;
-  for (const c of eng.claims || []) if (c.type === 'check_wolf' && c.target === candId) claimSuspect++;
-  claimSuspect = Math.min(1, claimSuspect / 2);
-  // vote_lead_order：候选当前票型是否第一
-  let voteLeadOrder = 0;
-  const sorted = Object.entries(tot).sort((a, b) => b[1] - a[1]);
-  if (sorted.length && sorted[0][0] === candId) voteLeadOrder = 1;
-  // follow_strength：投票者跟随候选票型的关系强度
+  const share = (room.votes[candId] || 0) / Math.max(1, idx.totKey);
+  const deathInferV = Math.min(1, (idx.deathInfer[candId] || 0) / 3);
+  const claimSuspectV = Math.min(1, (idx.claimSuspect[candId] || 0) / 2);
+  const voteLeadOrder = idx.leadId === candId ? 1 : 0;
   let followStrength = 0;
   const follows = bel.follows[botId] || {};
   if (follows[candId]) followStrength = Math.min(1, follows[candId] / 3);
-  // seer_check：发言查杀声明（与训练同源）
-  let seerCheck = 0;
-  const cand = room.players.find(q => q.id === candId);
-  for (const m of room.messages || []) {
-    if (m.ch === 'all' && m.from !== botId && m.text && cand && m.text.includes(cand.name) && m.text.includes('查杀')) { seerCheck = 1; break; }
-  }
+  const seerCheckV = idx.seerCheck[candId] || 0;
   const credDerived = Math.abs(cc - 0.5) * 2;
-  return base.concat([p, cc, cv, share, deathInfer, 0, claimSuspect, voteLeadOrder, followStrength, seerCheck, 0, credDerived]);
+  return base.concat([p, cc, cv, share, deathInferV, 0, claimSuspectV, voteLeadOrder, followStrength, seerCheckV, 0, credDerived]);
 }
-// 1.7.18：动态嫌疑分权重（数学方法——见 buildVoteWorld 内注释）
 function dynamicWb(bot, pid, mp, auc) {
   const b = bot.botMemory && bot.botMemory.beliefs && bot.botMemory.beliefs[pid];
   const alpha = (b && b.ev) || 0; // 信念证据量（0 = 无证据，纯先验）
@@ -627,6 +627,14 @@ function buildVoteWorld(room, bot) {
   const suspicion = b.suspicion || {};
   const modelBase = getVoteModel(); // 1.7.0（B1-4）：fail-open——模型缺失/损坏回退纯信念；仅好人侧注入（狼侧用模型会反向增强）
   const model = (process.env.VOTE_MODEL_MODE || 'v2') === 'v3' && (room.presetKey || (room.cap ? room.cap + 'p' : null)) === '12c' ? getVoteModelV2() || modelBase : modelBase; // 1.7.18：12c 配对劣化（狼+15.7pp）→ per-config 回退 v2（分配置灰度）
+  const _vsEnabled = process.env.LAB_VS !== '0'; // 1.8.0（P1）：LAB_VS=0 禁用房间级快照（配对验证对照——原实现）
+  const _vsKey = room.day + ':' + (room.phase || '') + ':' + (room._voteCastCount || 0) + ':' + (room.messages ? room.messages.length : 0); // 1.8.0（P1）：快照失效键 day+phase+voteCastCount+messages.length——messages 投票轮内动态追加（talkCount 等发言派生字段随新发言重建）；票型实时读 room.votes
+  if (_vsEnabled) {
+    if (!room._vs || room._vs.key !== _vsKey) {
+      const _vsBase = buildRoomVoteState(room);
+      room._vs = { key: _vsKey, base: _vsBase };
+    }
+  }
   const cfgAuc = (() => { // 1.7.18：per-config 校准 AUC（动态权重 β 信号源——v3 模型 configs[key].local.testAUC；无则 0.7 中性）
     try {
       const mk = room.presetKey || (room.cap ? room.cap + 'p' : null);
@@ -644,7 +652,13 @@ function buildVoteWorld(room, bot) {
     // 1.7.0（B1-4）：每轮投票前动态似然——模型 P(wolf) 混合（0.6 信念 + 0.4 模型；不改 beliefs 防累积饱和）
     let f = null, mp = null;
     if (useModel) {
-      f = model.schema === 'adaboost-vote@3' ? beliefFeatures25(room, bot.id, p.id) : voteFeatures(room, bot.id, p.id); // 1.7.18：v3 用 25 维（13 快照 + 12 信念），v1/v2 用 13 维
+      f = model.schema === 'adaboost-vote@3' ? beliefFeatures25(room, bot.id, p.id) : (_vsEnabled ? voteFeatures13(room._vs.base, bot.id, p.id) : voteFeatures(room, bot.id, p.id)); // 1.8.0（P1）：v1/v2 走房间级快照（LAB_VS=0 回退原实现——配对验证）
+      if (f && process.env.LAB_VS_DBG === '1' && _vsEnabled) {
+        const _fa = voteFeatures(room, bot.id, p.id);
+        if (_fa && f.length === _fa.length) {
+          for (let _i = 0; _i < f.length; _i++) { if (Math.abs(f[_i] - _fa[_i]) > 1e-9) { console.log('VS_DBG day=' + room.day + ' phase=' + (room.phase || '') + ' bot=' + bot.id + ' cand=' + p.id + ' idx=' + _i + ' 快照=' + f[_i] + ' 原=' + _fa[_i]); break; } }
+        } else console.log('VS_DBG 长度不同 bot=' + bot.id + ' cand=' + p.id);
+      }
       if (f) {
         mp = modelProb(model, f, room.presetKey || (room.cap ? room.cap + 'p' : null)); // 1.7.16：v2 configKey 路由（local/cap/global；用 room 而非 world——world 在函数末尾构造，投票循环内不可引用）
         if (mp != null) {
