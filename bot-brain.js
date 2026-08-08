@@ -1479,14 +1479,25 @@ function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRol
     const state = room.phase === 'pk_vote' ? [...(room.pkTied || [])] : aliveOthers(room, bot).map(p => p.id);
     const world = buildVoteWorld(room, bot);
     let resTarget = null;
-    if (useRollout) {
+    // 1.7.17（审计）：LAB_AUDIT_ROLLOUT=2 → 记录好人侧每票的 rollout/decideVote 分歧（偏狼归因）；随 room 缓冲由 room-runner 回传
+    const auditRollout = process.env.LAB_AUDIT_ROLLOUT === '2' && campOf(bot) !== 'wolf';
+    if (auditRollout) { if (!room._rolloutAuditBuf) room._rolloutAuditBuf = []; room._rolloutAuditBuf.push({ day: room.day || 0, bot: bot.id }); }
+    // 1.7.17（实验门控）：LAB_WOLF_NO_ROLLOUT=1 → 狼 bot 跳过 rollout（decideVote 纯策略）——偏狼归因对照：rollout 模拟好人投票对狼的增益是否偏狼根源
+    const wolfNoRollout = process.env.LAB_WOLF_NO_ROLLOUT === '1' && campOf(bot) === 'wolf';
+    if (useRollout && !wolfNoRollout) {
       const rv = rolloutVote(world, state, rng());
       if (process.env.LAB_DEBUG_ROLLOUT === '1') console.log('[rollout-dbg] scores=' + JSON.stringify(Object.fromEntries(Object.entries(world.scores).map(([k, v]) => [k, +v.toFixed(2)]))) + ' rv=' + (rv && rv.target));
       // v1.7.2（4-①）：rollout 得分差距 <ε 时回退 decideVote 的跟票目标——低信息局（无查杀/票数接近）
       // 64 世界采样噪声大，rollout 可能与公众票型冲突 → 分票 → 狼渔利；跟票在低信息时是防分票的正确策略
-      resTarget = (rv && rv.margin >= 0.05 && rv.target) ? rv.target : decideVote(world, state, rng()).target; // 1.7.4：margin 相对化（0.05×W×scale；卖狼 margin=Infinity 恒命中）
+      const dv = decideVote(world, state, rng()).target;
+      resTarget = (rv && rv.margin >= 0.05 && rv.target) ? rv.target : dv; // 1.7.4：margin 相对化（0.05×W×scale；卖狼优先：margin=Infinity 恒过）
+      if (auditRollout) {
+        const rec = room._rolloutAuditBuf[room._rolloutAuditBuf.length - 1];
+        if (rec && rec.bot === bot.id) { rec.rv = rv ? rv.target : null; rec.dv = dv; rec.final = resTarget; rec.margin = rv ? rv.margin : null; }
+      }
     } else {
       resTarget = decideVote(world, state, rng()).target;
+      if (auditRollout) { const rec = room._rolloutAuditBuf[room._rolloutAuditBuf.length - 1]; if (rec && rec.bot === bot.id) { rec.rv = null; rec.dv = resTarget; rec.final = resTarget; rec.margin = null; } }
     }
     let vote = resTarget ? byId(room, resTarget) : null;
     const lp = loverPartner(room, bot); // v1.6.3：狼恋人不投恋人（决策层之上）

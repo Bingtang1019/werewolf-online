@@ -75,9 +75,15 @@ const valueModelV4 = require('./value-model-v4'); // V4 HiCVN（value-hicvn@1）
 function valuePayoff(world, xIsWolf) {
   // v1.7.16（V4.2 替换）：默认 v4（MLP 集成，AUC 0.8055 vs V3.1 0.7819，配对终裁 16/16 无劣化）；
   // v3/v2 保留回滚（VALUE_MODEL=v3 | v2）；σ 分桶单调 FAIL 已列入 V4.3/块 1 多样性增强（观察期补，不影响 ΔV 排序/幅度消费）
-  if (process.env.VALUE_MODEL === 'v3') return valuePayoffV3(world, xIsWolf);
-  if (process.env.VALUE_MODEL === 'v2') return valuePayoffV2(world, xIsWolf);
-  return valuePayoffV4(world, xIsWolf);
+  try {
+    if (process.env.VALUE_MODEL === 'v3') return valuePayoffV3(world, xIsWolf);
+    if (process.env.VALUE_MODEL === 'v2') return valuePayoffV2(world, xIsWolf);
+    return valuePayoffV4(world, xIsWolf);
+  } catch (e) {
+    // 1.7.17（生产 fail-open）：A-2/schema 断言 throw（lab 启动即暴露 bug）不允许穿透到生产投票——
+    // 回退解析版 payoff（可用性优先）；lab 的 A-2 语义保留在加载层（loadV3/loadV4 启动时仍 throw）
+    return payoffFor(world, xIsWolf);
+  }
 }
 /* v2（旧 sigmoid+K 路径，VALUE_MODEL=v2 显式启用——默认已替换为 v4） */
 function valuePayoffV2(world, xIsWolf) {
@@ -94,8 +100,8 @@ function valuePayoffV2(world, xIsWolf) {
   const pGod = S / (S + M), pVill = M / (S + M);
   const K = m.K || 1;
   if (world.faction === 'wolf') {
-    if (!xIsWolf) return K * (pGod * -dV + pVill * -dM);
-    return K * -dG;
+    // 1.7.17（V_wolf）：狼侧统一走 V_wolf（VALUE_MODEL=v2 回滚档同——消除不对称）
+    return valuePayoffV4Wolf(world, xIsWolf, { R, S, M, cap: R + S + M, wolf0: world.wolfInit, god0: world.godInit, vill0: world.villInit, info: world.info || null, cfg: world.configKey });
   }
   if (xIsWolf) return K * dG;
   return -K * (pGod * dV + pVill * dM);
@@ -122,8 +128,9 @@ function valuePayoffV3(world, xIsWolf) {
   const dM = valueModel.payoff(base, next(0, 0, 1), cfg);
   const pGod = S / (S + M || 1), pVill = M / (S + M || 1);
   if (world.faction === 'wolf') {
-    if (!xIsWolf) return pGod * -dV + pVill * -dM; // 放逐好人 → 好人胜率降 → 狼收益
-    return -dG; // 误投队友
+    // 1.7.17（V_wolf）：狼侧统一走 V_wolf（P(狼胜)）——V3.1 无狼视角版，跨架构复用 V4 的 V_wolf；
+    // 消除"狼用好人视角 V 预判好人"不对称（V3 狼侧原为 -dV/-dM 好人视角取反）
+    return valuePayoffV4Wolf(world, xIsWolf, { R, S, M, cap, wolf0: world.wolfInit, god0: world.godInit, vill0: world.villInit, info: world.info || null, cfg });
   }
   if (xIsWolf) return dG;
   return -(pGod * dV + pVill * dM);
@@ -158,11 +165,33 @@ function valuePayoffV4(world, xIsWolf) {
   const dM = (valueModelV4.value(next(0, 0, 1), cfg) - vBase) * sc;
   const pGod = S / (S + M || 1), pVill = M / (S + M || 1);
   if (world.faction === 'wolf') {
-    if (!xIsWolf) return pGod * -dV + pVill * -dM;
-    return -dG;
+    // 1.7.17（V_wolf）：狼侧用狼视角价值模型（P(狼胜)）——消除"狼用好人视角 V 预判好人"的不对称增强；
+    // V_wolf 缺失 → 回退解析版（fail-open，见 valuePayoffV4Wolf）
+    return valuePayoffV4Wolf(world, xIsWolf, { R, S, M, cap, wolf0: world.wolfInit, god0: world.godInit, vill0: world.villInit, info, cfg });
   }
   if (xIsWolf) return dG;
   return -(pGod * dV + pVill * dM);
+}
+
+/* 1.7.17（V_wolf）：狼侧 payoff——V_wolf = P(狼胜|s)，与 V_good 对称：
+ *   x 为好人（放逐好人）→ pGod·dV + pVill·dM：V_wolf 视角放逐好人 → 狼胜率升（dV/dM 正）→ 狼收益正
+ *   x 为狼（误投队友）→ dG：V_wolf 视角放逐狼 → 狼胜率降（dG 负）→ 负收益
+ * 语义：V_wolf 是"狼自己的胜率评估"，狼据此前瞻——不再用好人视角模型预判好人行动。
+ * fail-open：模型缺失/未训 cap → 解析版 payoffFor（生产可用性优先） */
+function valuePayoffV4Wolf(world, xIsWolf, base) {
+  const m = valueModelV4.loadV4Wolf();
+  if (!m) return payoffFor(world, xIsWolf);
+  if (world.faction === 'third') return payoffFor(world, xIsWolf);
+  const cfg = base.cfg;
+  const vBase = valueModelV4.valueWolf(base, cfg);
+  const sc = m.payoffScale && m.payoffScale[cfg];
+  if (!sc) return payoffFor(world, xIsWolf); // 未训 cap → 解析版
+  const dG = (valueModelV4.valueWolf({ ...base, R: Math.max(0, base.R - 1), N: base.N + 1 }, cfg) - vBase) * sc;
+  const dV = (valueModelV4.valueWolf({ ...base, S: Math.max(0, base.S - 1), N: base.N + 1 }, cfg) - vBase) * sc;
+  const dM = (valueModelV4.valueWolf({ ...base, M: Math.max(0, base.M - 1), N: base.N + 1 }, cfg) - vBase) * sc;
+  const pGod = base.S / (base.S + base.M || 1), pVill = base.M / (base.S + base.M || 1);
+  if (!xIsWolf) return pGod * dV + pVill * dM; // 放逐好人 → V_wolf 视角：狼胜率升（dV/dM 正）→ 狼收益正（放逐好人对狼有利）
+  return dG; // 放逐狼（队友）→ V_wolf 视角：狼胜率降（dG 负）→ 负收益；x 为狼即狼被放逐 → 误投队友损失
 }
 
 /**

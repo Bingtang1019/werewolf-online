@@ -4,6 +4,7 @@
 
 | 归档 | 内容 | 关联版本 |
 |---|---|---|
+| [`v5-投票判定实验/README.md`](v5-投票判定实验/README.md) | **V5 主干判定**：路径 A（投票预测器）vs 路径 B（BC from decideVote）——B 成立，rollout 退役（含口径审查：行为预测 51.6% ≠ 真相命中 54.4%） | v1.7.17 |
 | [`value-v42/README.md`](value-v42/README.md) | **V4.2 HiCVN 价值模型卡**（MLP 集成×4、等权 AUC 0.8055、配对终裁 16/16、σ 单调 FAIL→V4.3 观察项、回滚/复现） | v1.7.16 |
 | [`lover-v2/README.md`](lover-v2/README.md) | 恋人机制 v2 归档 + **vote-v2 模型卡**（分层 AdaBoost、压缩 268KB、回退链）+ 模型卡规范立规 | v1.7.7/v1.7.16 |
 | [`α9-基线-v1.7.7/README.md`](α9-基线-v1.7.7/README.md) | α9 狼美人机制基线（config-狼美基线 + 当时模型快照） | v1.7.7 |

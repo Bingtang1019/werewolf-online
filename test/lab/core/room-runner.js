@@ -95,6 +95,7 @@ async function runOneLabGame(cfg) {
       })),
       firstKill,
       samples: (cfg.flushSamples === false && room.labSampleBuf && room.labSampleBuf.length) ? room.labSampleBuf.slice() : null, // v1.8.0：worker 模式样本回传（主线程统一写盘，防多 worker 竞态）
+      rolloutAudit: (room._rolloutAuditBuf && room._rolloutAuditBuf.length) ? room._rolloutAuditBuf.slice() : null, // 1.7.17：rollout 分歧审计（LAB_AUDIT_ROLLOUT=2）
     };
   } catch (e) {
     return { schema: 'lab.game-record@1', gameId: cfg.gameId, seed: cfg.seed, scenario: cfg.scenario || 'lab',
@@ -103,7 +104,8 @@ async function runOneLabGame(cfg) {
       config: { cap: cfg.cap, counts: cfg.counts, botLine: cfg.botLine || [], winMode: cfg.winMode || 'edge', name: cfg.name || null },
       result: { winner: null, timeout: true, error: e.kind ? e : { kind: 'engine', msg: e.message } },
       players: [], events: [], firstKill: null,
-      samples: (cfg.flushSamples === false && room.labSampleBuf && room.labSampleBuf.length) ? room.labSampleBuf.slice() : null };
+      samples: (cfg.flushSamples === false && room.labSampleBuf && room.labSampleBuf.length) ? room.labSampleBuf.slice() : null,
+      rolloutAudit: (room._rolloutAuditBuf && room._rolloutAuditBuf.length) ? room._rolloutAuditBuf.slice() : null }; // 1.7.17：rollout 分歧审计（LAB_AUDIT_ROLLOUT=2）
   } finally {
     if (cfg.flushSamples !== false && room.labSampleBuf && room.labSampleBuf.length) { // flush 投票样本（v1.8.0：worker 模式 flushSamples=false → 样本随 GameRecord 回传主线程统一写盘）
       try { fs.appendFileSync(room.labSampleFile, room.labSampleBuf.join('\n') + '\n'); } catch (e) { /* 采集失败不影响对局 */ }

@@ -1,0 +1,217 @@
+{
+  "gate": {
+    "vsV31SameSet": 0.6216,
+    "passVsV31": true,
+    "absEqAuc": 0.8197,
+    "ref7843": 0.7843,
+    "passVs7843": true,
+    "note": "主判据 = 同测试集 V4 − V3.1 ≥ +0.02；0.7843 为 V3.1 独立校准批等权 AUC（分布不同，仅报告）"
+  },
+  "perConfig": {
+    "12a": {
+      "auc": 0.7921,
+      "aucCI": [
+        0.7721,
+        0.8178
+      ],
+      "n": 4687,
+      "games": 994,
+      "v31Auc": 0.2057,
+      "maxCalibDev": 0.086,
+      "calibration": [
+        {
+          "bucket": 1,
+          "n": 938,
+          "meanV": 0.096,
+          "actual": 0.06
+        },
+        {
+          "bucket": 2,
+          "n": 938,
+          "meanV": 0.253,
+          "actual": 0.268
+        },
+        {
+          "bucket": 3,
+          "n": 938,
+          "meanV": 0.304,
+          "actual": 0.228
+        },
+        {
+          "bucket": 4,
+          "n": 938,
+          "meanV": 0.482,
+          "actual": 0.396
+        },
+        {
+          "bucket": 5,
+          "n": 935,
+          "meanV": 0.773,
+          "actual": 0.742
+        }
+      ],
+      "vStats": {
+        "min": 0.035,
+        "max": 0.9704
+      }
+    },
+    "6p": {
+      "auc": 0.8472,
+      "aucCI": [
+        0.8088,
+        0.8852
+      ],
+      "n": 348,
+      "games": 204,
+      "v31Auc": 0.1905,
+      "maxCalibDev": 0.136,
+      "calibration": [
+        {
+          "bucket": 1,
+          "n": 70,
+          "meanV": 0.105,
+          "actual": 0.071
+        },
+        {
+          "bucket": 2,
+          "n": 70,
+          "meanV": 0.252,
+          "actual": 0.171
+        },
+        {
+          "bucket": 3,
+          "n": 70,
+          "meanV": 0.421,
+          "actual": 0.557
+        },
+        {
+          "bucket": 4,
+          "n": 70,
+          "meanV": 0.577,
+          "actual": 0.657
+        },
+        {
+          "bucket": 5,
+          "n": 68,
+          "meanV": 0.856,
+          "actual": 0.882
+        }
+      ],
+      "vStats": {
+        "min": 0.0212,
+        "max": 0.9648
+      }
+    }
+  },
+  "ecoAuc": {
+    "v2": {
+      "auc": 0.8027,
+      "n": 2040
+    },
+    "random": {
+      "auc": 0.5605,
+      "n": 112
+    },
+    "v1iso": {
+      "auc": 0.7942,
+      "n": 1487
+    },
+    "v1raw": {
+      "auc": 0.8264,
+      "n": 1396
+    }
+  },
+  "layered": {
+    "balanced": {
+      "auc": 0.6424,
+      "n": 1543
+    },
+    "mid": {
+      "auc": 0.7846,
+      "n": 2132
+    },
+    "extreme": {
+      "auc": 0.8196,
+      "n": 1360
+    }
+  },
+  "sigmaCal": [
+    {
+      "bucket": 1,
+      "n": 1007,
+      "meanSigma": 0.0029,
+      "coverage80": 0.457
+    },
+    {
+      "bucket": 2,
+      "n": 1007,
+      "meanSigma": 0.0098,
+      "coverage80": 0.738
+    },
+    {
+      "bucket": 3,
+      "n": 1007,
+      "meanSigma": 0.0175,
+      "coverage80": 0.985
+    },
+    {
+      "bucket": 4,
+      "n": 1007,
+      "meanSigma": 0.0203,
+      "coverage80": 1
+    },
+    {
+      "bucket": 5,
+      "n": 1007,
+      "meanSigma": 0.0386,
+      "coverage80": 1
+    }
+  ],
+  "payoffScale": {
+    "12a": 5.971,
+    "6p": 4.339,
+    "12p": 5.971
+  },
+  "meta": {
+    "trainedAt": "2026-08-08T02:43:41.461Z",
+    "trainGames": 5679,
+    "testGames": 1444,
+    "trainStates": 39320,
+    "configEqualAUC": 0.8197,
+    "v31SameSetAUC": 0.1981,
+    "gate": {
+      "vsV31SameSet": 0.6216,
+      "passVsV31": true,
+      "absEqAuc": 0.8197,
+      "ref7843": 0.7843,
+      "passVs7843": true,
+      "note": "主判据 = 同测试集 V4 − V3.1 ≥ +0.02；0.7843 为 V3.1 独立校准批等权 AUC（分布不同，仅报告）"
+    },
+    "ecoSplit": {
+      "v2": {
+        "train": 2305,
+        "test": 629
+      },
+      "random": {
+        "train": 150,
+        "test": 39
+      },
+      "v1iso": {
+        "train": 1603,
+        "test": 397
+      },
+      "v1raw": {
+        "train": 1621,
+        "test": 379
+      }
+    },
+    "sigmaScale": 39.9984,
+    "sigmaMonotonic": true,
+    "evalScope": "pre-only (excludes terminal post nodes, v1.7.12 红旗口径)",
+    "replaces": "value-vote-v31.json (V3.1，原名 value-vote-v4.json)",
+    "view": "wolf",
+    "note": "V(s) = P(终局狼胜 | s) ∈ [0,1] — sigmoid/clip 语义；payoff = ΔV × payoffScale[config]（狼侧 rollout 专用，与 V_good 对称）",
+    "note2": "3frac 默认不手工给（模型自学习组合）；--with-frac 消融对比；random 池按 random-ratio 抽局",
+    "infoFeats": true
+  }
+}

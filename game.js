@@ -981,6 +981,16 @@ function resolveExileVote(room) {
     room.loverV2.protectBy = null;
   }
   const res = computeVotes(room, true);
+  // 1.7.17（V5 判定实验）：vote 明细事件——每票 voter→target（投票结算处发射，块 2 lastExiledId 的同源数据；
+  // 投票预测器训练数据源：P(vote_i = j | 投票者视角)；records-v5 重采后含本事件）
+  const voteDetail = [];
+  for (const p of room.players) {
+    if (!p.alive || !room.votes.hasOwnProperty(p.id)) continue;
+    const v = room.votes[p.id];
+    if (!v) continue;
+    voteDetail.push({ voter: p.id, target: v });
+  }
+  if (voteDetail.length) pushEvent(room, 'vote', { votes: voteDetail, totals: res.totals });
   room.lastVoteResult = {
     kind: 'vote', totals: res.totals, max: res.max,
     result: res.tie ? 'tie' : (res.winner ? 'exile' : 'none'),
@@ -1238,6 +1248,17 @@ function dayAction(room, p, action, data) {
       const target = data.target || null;
       if (target) { const t = byId(room, target); if (!t || !t.alive) return { error: '玩家不存在或已出局' }; }
       room.votes[p.id] = target;
+      // 1.7.17（V5 实验 1 数据源）：逐票事件——每票落定时刻快照（含本次，不含后续票；训练投票预测器 P(vote_i = j)，特征严格用"决策时刻前"信息，结算快照会泄漏后续票）
+      if (room.phase === 'vote') {
+        const snap = [];
+        for (const q of room.players) {
+          if (!q.alive || !room.votes.hasOwnProperty(q.id)) continue;
+          const v = room.votes[q.id];
+          if (!v) continue;
+          snap.push({ voter: q.id, target: v });
+        }
+        pushEvent(room, 'vote_cast', { voter: p.id, target, votes: snap });
+      }
       bump(room);
       if (allAliveVoted(room)) resolveExileVote(room);
       return { ok: true };

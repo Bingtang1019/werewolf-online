@@ -7,6 +7,7 @@
  *   [--model gbdt|mlp] [--with-frac] [--members 4]
  *   [--trees 200] [--depth 3] [--hidden 128] [--epochs 20] [--seed 42] [--holdout 0.2]
  *   [--only-configs 4p] [--quick]
+ *   [--wolf-view] 狼视角训练：label = P(终局狼胜|s)（V_good 的对称版；训练数据同源重标）
  *
  * 注：默认 --out 是 v1 实验档（value-hicvn-v1.json）；推理端默认消费 v42
  * （value-model-v4.js 的 MODEL_PATH），两者刻意不同——训练工具默认输出实验档，
@@ -150,6 +151,7 @@ function parseArgs() {
     holdout: parseFloat(get('--holdout', '0.2')),
     onlyCfg: get('--only-configs', ''),
     quick: a.includes('--quick'),
+    wolfView: a.includes('--wolf-view'), // V_wolf：label = P(狼胜|s)（狼侧 rollout 消费，好人视角对称版）
     // V4.1 配置条件化：--stratify 配置等权采样（根治大配置主导）；--config-cond 配置 one-hot 特征（12d 等特殊配置显式编码）
     stratify: a.includes('--stratify'),
     configCond: a.includes('--config-cond'),
@@ -226,7 +228,10 @@ function main() {
   for (const r of all) {
     const states = opt.infoFeats ? rebuildEventStatesV5(r.rec) : rebuildEventStates(r.rec);
     if (!states.length) continue;
-    const y = String(r.rec.result.winner).toLowerCase().includes('good') ? 1 : 0;
+    // 1.7.17（V_wolf）：label 按视角翻转——好人视角 y = P(good|s)，狼视角 y = P(wolf|s)；draw 两视角均 0（非胜）
+    const y = opt.wolfView
+      ? (String(r.rec.result.winner).toLowerCase().includes('wolf') ? 1 : 0)
+      : (String(r.rec.result.winner).toLowerCase().includes('good') ? 1 : 0);
     rows.push({
       states, y, cfg: configKeyOf(r.rec, r.tag), eco: r.eco, split: r.split,
       gameId: r.rec.gameId || r.rec.id || `${r.tag}-${rows.length}`,
@@ -479,7 +484,10 @@ function main() {
       sigmaMonotonic,
       evalScope: 'pre-only (excludes terminal post nodes, v1.7.12 红旗口径)',
       replaces: 'value-vote-v31.json (V3.1，原名 value-vote-v4.json)',
-      note: 'V(s) = P(终局好人胜 | s) ∈ [0,1] — sigmoid/clip 语义；payoff = ΔV × payoffScale[config]；σ = 集成成员 std',
+      view: opt.wolfView ? 'wolf' : 'good', // 1.7.17：V_wolf = P(狼胜|s)（狼侧 rollout 消费）；V_good = P(好人胜|s)
+      note: opt.wolfView
+        ? 'V(s) = P(终局狼胜 | s) ∈ [0,1] — sigmoid/clip 语义；payoff = ΔV × payoffScale[config]（狼侧 rollout 专用，与 V_good 对称）'
+        : 'V(s) = P(终局好人胜 | s) ∈ [0,1] — sigmoid/clip 语义；payoff = ΔV × payoffScale[config]；σ = 集成成员 std',
       note2: '3frac 默认不手工给（模型自学习组合）；--with-frac 消融对比；random 池按 random-ratio 抽局',
       infoFeats: opt.infoFeats, // V4.2：信息特征启用（checkedWolves/checkedCount/seerAlive/lastExileWasWolf）
     },

@@ -14,22 +14,35 @@ const { GBDT } = require('./gbdt');
 const { MLP } = require('./mlp');
 
 const MODEL_PATH = process.env.MODEL_VALUE_VOTE_V4 || path.join(__dirname, '..', '..', 'models', 'value-hicvn-v42.json'); // v1.7.16：V4.2 替换后默认（MODEL_VALUE_VOTE_V4 可覆盖——A/B 对照/回退评估）
+/* 1.7.17（V_wolf）：狼侧价值模型——P(狼胜|s)，与 V_good 同 schema 同特征（训练同源重标 --wolf-view）；
+ * MODEL_VALUE_VOTE_V4_WOLF 可覆盖（A/B）；缺失 → fail-open null（狼侧回退解析版 payoff） */
+const WOLF_MODEL_PATH = process.env.MODEL_VALUE_VOTE_V4_WOLF || path.join(__dirname, '..', '..', 'models', 'value-hicvn-v42-wolf.json');
 const KNOWN_CONFIGS = ['4p', '6p', '8p', '9a', '9b', '9c', '9d', '12a', '12b', '12c', '12d', '12e', '12f', '12g', '12h', '15p', '9p', '12p'];
 
 let _model = null;
+let _wolfModel = null;
+function _load(pathOrEnv, cacheKey) {
+  const p = cacheKey === 'wolf' ? WOLF_MODEL_PATH : MODEL_PATH;
+  try {
+    const m = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (m.schema !== 'value-hicvn@1') return null; // schema 不匹配 → fail-open（不 throw：生产可用性优先）
+    for (const k of KNOWN_CONFIGS) if (!m.payoffScale[k]) return null; // A-2 失配 → fail-open（lab 由 assertConfigs 显式抛）
+    m._members = m.members.map(j => m.backbone === 'gbdt' ? GBDT.fromJSON(j) : MLP.fromJSON(j));
+    return m;
+  } catch (e) { return null; } // 文件缺失/损坏 → fail-open
+}
 function loadV4() {
   if (_model) return _model;
-  try {
-    _model = JSON.parse(fs.readFileSync(MODEL_PATH, 'utf8'));
-  } catch (e) { _model = null; return _model; } // 文件缺失 → fail-open（调用方回退）
-  if (_model.schema !== 'value-hicvn@1') throw new Error(`[v4] 模型 schema 不匹配: ${_model.schema}`);
-  // A-2 启动断言：已知配置 key 必须命中 payoffScale（训练/推理不匹配是 bug）
-  for (const k of KNOWN_CONFIGS) if (!_model.payoffScale[k]) throw new Error(`[v4] A-2: 模型缺配置 key "${k}"（训练/推理不匹配）`);
-  _model._members = _model.members.map(j => _model.backbone === 'gbdt' ? GBDT.fromJSON(j) : MLP.fromJSON(j));
+  _model = _load(MODEL_PATH, 'good');
   return _model;
 }
+function loadV4Wolf() {
+  if (_wolfModel) return _wolfModel;
+  _wolfModel = _load(WOLF_MODEL_PATH, 'wolf');
+  return _wolfModel;
+}
 function isLoaded() { return _model !== null; }
-function resetModel() { _model = null; }
+function resetModel() { _model = null; _wolfModel = null; }
 
 /** 特征构建（与 fit-value-v4 的 buildX 完全一致——以模型文件 featureSet/cfgKeys 为准，禁止分叉）
  *  featureSet: v4 | v4-frac | v4-info | v4-frac-info（-info 追加信息特征）；cfgKeys 追加配置 one-hot（V4.1 部署缺口修复） */
@@ -59,10 +72,20 @@ function buildX(s, m, config) {
   return x;
 }
 
-/** V(s) ∈ [0,1] — 胜率概率语义 */
+/** V(s) ∈ [0,1] — 胜率概率语义（V_good = P(好人胜)） */
 function value(state, config) {
   const m = loadV4();
   if (!m) return 0.5; // fail-open（与 value-model.js 一致）
+  return _value(m, state, config);
+}
+
+/** V_wolf(s) ∈ [0,1] — P(狼胜)（1.7.17：狼侧 rollout 消费——与 V_good 对称，消除"狼预判好人"不对称） */
+function valueWolf(state, config) {
+  const m = loadV4Wolf();
+  if (!m) return 0.5; // fail-open（模型缺失 → 狼侧回退解析版）
+  return _value(m, state, config);
+}
+function _value(m, state, config) {
   const x = buildX(state, m, config);
   let s = 0;
   for (const mem of m._members) s += mem.predict(x);
@@ -74,9 +97,19 @@ function value(state, config) {
 function payoff(prevState, nextState, config) {
   const m = loadV4();
   if (!m) return 0;
-  const d = value(nextState, config) - value(prevState, config);
+  return _payoff(m, prevState, nextState, config);
+}
+
+/** 狼侧 payoff（1.7.17）：ΔV_wolf × payoffScale——rollout 狼分支专用 */
+function payoffWolf(prevState, nextState, config) {
+  const m = loadV4Wolf();
+  if (!m) return 0;
+  return _payoff(m, prevState, nextState, config);
+}
+function _payoff(m, prevState, nextState, config) {
+  const d = _value(m, nextState, config) - _value(m, prevState, config);
   const scale = m.payoffScale && m.payoffScale[config];
-  if (!scale) throw new Error(`[v4] A-2: payoffScale 缺配置 key "${config}"（训练/推理不匹配，禁止静默 fallback）`);
+  if (!scale) return 0; // fail-open（生产未训 cap 降级，lab 由 A-2 显式抛）
   return d * scale;
 }
 
@@ -102,4 +135,4 @@ function assertConfigs(known) {
   return true;
 }
 
-module.exports = { loadV4, isLoaded, resetModel, buildX, value, payoff, sigma, assertConfigs, MODEL_PATH, KNOWN_CONFIGS };
+module.exports = { loadV4, loadV4Wolf, isLoaded, resetModel, buildX, value, valueWolf, payoff, payoffWolf, sigma, assertConfigs, MODEL_PATH, WOLF_MODEL_PATH, KNOWN_CONFIGS };
