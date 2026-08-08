@@ -4,6 +4,7 @@ const { confidenceOf } = require('./server/ai/confidence.js');
 const { getVoteModel, modelProb } = require('./server/ai/model-loader.js'); // 1.7.0（B1-4）：vote 模型（fail-open）
 const { voteFeatures } = require('./server/ai/features.js'); // 1.7.0（B1-2）：vote 特征（训练/推理共用）
 const { rolloutVote } = require('./server/ai/rollout.js'); // 1.7.0（B1-5）：rollout 规划层（新 simulate 档）
+const { piVote } = require('./server/ai/vote-pi.js'); // 1.7.17（V5.0）：π 投票策略网络（VOTE_STRATEGY=pi）
 const LEXICON = require('./server/ai/lexicon.json');
 const { decideVote, decideNightKill } = require('./server/ai/legacy/decide.js'); // 1.7.0（B1-1）：纯行动策略接口
 /* 1.7.0（B1-8）：显式可注入 RNG——决策随机全部走“当前 RNG”（createBotDecision 入口设置），杜绝 Math.random 隐性状态 */
@@ -1480,11 +1481,21 @@ function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRol
     const world = buildVoteWorld(room, bot);
     let resTarget = null;
     // 1.7.17（审计）：LAB_AUDIT_ROLLOUT=2 → 记录好人侧每票的 rollout/decideVote 分歧（偏狼归因）；随 room 缓冲由 room-runner 回传
-    const auditRollout = process.env.LAB_AUDIT_ROLLOUT === '2' && campOf(bot) !== 'wolf';
+    const auditRollout = (process.env.LAB_AUDIT_ROLLOUT === '2' && campOf(bot) !== 'wolf') || process.env.LAB_AUDIT_ROLLOUT === '3'; // =3 → 含狼侧（分侧覆盖审计）
     if (auditRollout) { if (!room._rolloutAuditBuf) room._rolloutAuditBuf = []; room._rolloutAuditBuf.push({ day: room.day || 0, bot: bot.id }); }
     // 1.7.17（实验门控）：LAB_WOLF_NO_ROLLOUT=1 → 狼 bot 跳过 rollout（decideVote 纯策略）——偏狼归因对照：rollout 模拟好人投票对狼的增益是否偏狼根源
     const wolfNoRollout = process.env.LAB_WOLF_NO_ROLLOUT === '1' && campOf(bot) === 'wolf';
-    if (useRollout && !wolfNoRollout) {
+    // 1.7.17（V5.0）：VOTE_STRATEGY=pi → π 投票策略网络（BC from decideVote）；
+    // π 与 dv 一致处用 π（快，0.21ms）；分歧处用 dv（准——BC 分歧处质量低于规则老师）；
+    // 混合语义：质量= dv（大样本配对 0/300 不一致）、性能=部分加速；默认无 env → 现有 rollout+decideVote 链
+    // （归档：archive/v5-投票判定实验/README.md——rollout 好人侧 -12.4pp 退役、狼侧 +8.5pp 保留）
+    const piMode = process.env.VOTE_STRATEGY === 'pi' && campOf(bot) !== 'wolf';
+    const piRes = piMode ? piVote(room, bot.id, state) : null;
+    if (piMode && piRes) {
+      const dvT = decideVote(world, state, rng()).target;
+      resTarget = piRes.target === dvT ? piRes.target : dvT; // 一致→π（快）；分歧→dv（准）
+      if (auditRollout) { const rec = room._rolloutAuditBuf[room._rolloutAuditBuf.length - 1]; if (rec && rec.bot === bot.id) { rec.pi = piRes.target; rec.piMargin = piRes.margin; rec.dv = dvT; rec.final = resTarget; rec.margin = null; rec.mix = resTarget === piRes.target ? 'pi' : 'dv'; } }
+    } else if (useRollout && !wolfNoRollout) {
       const rv = rolloutVote(world, state, rng());
       if (process.env.LAB_DEBUG_ROLLOUT === '1') console.log('[rollout-dbg] scores=' + JSON.stringify(Object.fromEntries(Object.entries(world.scores).map(([k, v]) => [k, +v.toFixed(2)]))) + ' rv=' + (rv && rv.target));
       // v1.7.2（4-①）：rollout 得分差距 <ε 时回退 decideVote 的跟票目标——低信息局（无查杀/票数接近）
