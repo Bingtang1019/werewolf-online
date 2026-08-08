@@ -15,12 +15,16 @@ const W = {
   deathInfer: 0.7,     // 客观推断：被刀者=狼威胁 → 其声明/投票目标权重提升
   killMute: 1.2,       // 灭口验证：被刀者的查杀声明高权重（狼灭口 = 查杀可信）
   checkFact: 1.0,      // 客观：放逐者身份验证查杀/金水
-  voteFlow: 0.5,       // 客观：票型（A 投 B → B 嫌疑+，按 A 可信度加权）
-  voteRatio: 0.6,      // 票型相对领先（第一名 vs 第二名差距）——防集火误判
+  voteFlow: 0.5,       // 客观：票型（A 投 B → B 嫌疑+，按 A 可信度加权）——组合信号（校准审计：单独反、组合正）
+  voteRatio: 0.6,      // 票型相对领先（组合信号——与死亡/声明交叉后产生净正向）
   leadWeight: 0.3,     // 带节奏者识别：先投票者权重（二阶信念）
   claim: 0.3,          // 声明：跳身份/报查验（低权重 × 声明者可信度）
-  clip: [0.05, 0.95],  // 后验压缩（防 logit 累积过冲）
+  clip: [0.05, 0.95],  // 后验压缩
 };
+
+// 1.7.17（校准审计结论）：权重组合是调优问题——单独证据方向可反（票型），组合后净正向（AUC 0.6151）。
+// 校准 FAIL（绝对后验过冲）的修正不在权重层，在输出层：π 特征用 rank 归一化（存活内排名→[0,1]），
+// 消除绝对过冲、保留排序信息（getBeliefs 提供 raw + rank 两种形态）
 
 function createBeliefEngine(players, counts) {
   const alive = new Set(players.map(p => p.id));
@@ -140,7 +144,7 @@ function onVote(engine, voterId, targetId, night) {
   const already = order.filter(([v, t]) => t === targetId).length;
   const isLead = already === 0; // 首个投该目标 = 带节奏
   order.push([voterId, targetId]);
-  // 票型证据（客观 0.5 × 投票者可信度）：A 投 B → B 嫌疑 +
+  // 票型证据（客观 0.5 × 投票者可信度）：A 投 B → B 嫌疑+（组合信号——与死亡/声明交叉后净正向）
   const weight = W.voteFlow * (0.5 + (voter.credibility - 0.5) * 0.6);
   updatePosterior(engine, targetId, isLead ? weight : weight * 0.6);
   // 二阶信念：跟票者与先投者关系（谁在跟谁）
@@ -154,7 +158,7 @@ function onVote(engine, voterId, targetId, night) {
   }
 }
 
-// 投票结算（exile 事件前）——相对领先更新：第一名 vs 第二名的差距（防集火误判）
+// 投票结算（exile 事件前）——相对领先更新：第一名 vs 第二名的差距（组合信号）
 function onVoteSettle(engine, night) {
   const order = engine.voteOrder[night];
   if (!order || !order.length) return;
@@ -167,11 +171,11 @@ function onVoteSettle(engine, night) {
   const top = sorted[0], second = sorted[1];
   const lead = top[1] - (second ? second[1] : 0); // 领先票数
   if (lead <= 0) return;
-  // 第一名嫌疑+（相对领先）；被投者整体轻微+
+  // 第一名嫌疑+（相对领先）；次高票轻微+（组合信号——与死亡/声明交叉）
   const deltaTop = W.voteRatio * Math.min(2, lead);
   updatePosterior(engine, top[0], deltaTop);
   for (const [t, cnt] of sorted.slice(1)) {
-    if (cnt >= 2) updatePosterior(engine, t, 0.1); // 次高票轻微嫌疑（狼会投狼？不——狼投好人，次高通常是狼带节奏的好人——轻微）
+    if (cnt >= 2) updatePosterior(engine, t, 0.1);
   }
 }
 
@@ -223,9 +227,10 @@ function applyEvent(engine, ev) {
   }
 }
 
-// ---- 输出：信念状态张量 ----
+// ---- 输出：信念状态张量（raw 后验 + rank 归一化——校准修正）----
 function getBeliefs(engine) {
   const posterior = {}, credibility = {}, follows = {};
+  const aliveIds = [...engine.alive];
   for (const [id, n] of Object.entries(engine.nodes)) {
     posterior[id] = n.posterior;
     credibility[id] = n.credibility;
@@ -233,7 +238,12 @@ function getBeliefs(engine) {
   for (const [v, tgt] of Object.entries(engine.follow)) {
     follows[v] = { ...tgt };
   }
-  return { posterior, credibility, follows };
+  // rank 归一化（存活玩家内排名 → [0,1]）：消除绝对过冲，保留排序信息（校准审计结论）
+  const ranks = {};
+  const aliveSorted = aliveIds.filter(id => posterior[id] != null).sort((a, b) => posterior[b] - posterior[a]);
+  const m = Math.max(1, aliveSorted.length - 1);
+  aliveSorted.forEach((id, i) => { ranks[id] = m > 0 ? 1 - i / m : 0.5; });
+  return { posterior, credibility, follows, ranks };
 }
 
 module.exports = { createBeliefEngine, applyEvent, getBeliefs, W };

@@ -37,7 +37,12 @@ function replayGame(rec, useBelief) {
   const idx = new Map(players.map((p, i) => [p.id, i]));
   const alive = players.map(() => true);
   const room = { players, messages: [], votes: {}, lastVoteResult: null, actionLog: [] };
-  const evs = (rec.events || []).slice().sort((a, b) => (a.i || 0) - (b.i || 0));
+  const evs = (rec.events || []).slice();
+  // 1.7.17（校准审计）：事件序——i 全 0（新数据 room-runner 转换）时保留原序（sort 不稳定会打乱）；
+  // 旧数据（i 递增）按 i 稳定排序（map 携带原索引保证稳定）
+  if (evs.some(e => (e.i || 0) !== 0)) {
+    evs.sort((a, b) => (a.i || 0) - (b.i || 0));
+  }
   // V5.1b：信念引擎并行增量（消费 deaths/exile/vote_cast/claim 事件）
   const counts = {};
   for (const p of players) {

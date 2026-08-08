@@ -9,7 +9,7 @@ const { createBeliefEngine, applyEvent, getBeliefs } = require(path.join(root, '
 
 const quick = process.argv.includes('--quick');
 const dataDir = path.join(root, 'test', 'lab', 'data');
-const files = fs.existsSync(dataDir) ? fs.readdirSync(dataDir).filter(f => f.startsWith('belief2') && f.endsWith('.jsonl')) : [];
+const files = fs.existsSync(dataDir) ? fs.readdirSync(dataDir).filter(f => f.startsWith('belief4') && f.endsWith('.jsonl')) : [];
 if (!files.length) { console.log('未找到 belief.jsonl（需先采集：node test/lab/run-batch.js --tag belief ...）'); process.exit(1); }
 const use = quick ? files.slice(0, 1) : files;
 console.log('数据文件: ' + use.length + ' 个（' + (quick ? 'quick' : '全量') + '）');

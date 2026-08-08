@@ -55,9 +55,10 @@ class MLP {
     };
   }
 
-  fit(X, y, valX, valY, stratifyGroups) {
+  fit(X, y, valX, valY, stratifyGroups, weights) {
     // V4.1: stratifyGroups = [[idx...], ...]（每组一个配置）——每 epoch 组内等量采样拼接，
     // 大配置不再主导梯度（小配置重复出现=软加权）。null 时保持全局 shuffle（V4.0 行为）。
+    // V5.2a: weights = Float64Array/数组（逐样本重要性权重，RWR/PPO 用）——null 时等权。
     this.stratifyGroups = stratifyGroups || null;
     const n = X.length, d = X[0].length, h = this.hidden;
     this.d = d;
@@ -135,8 +136,8 @@ class MLP {
           for (let j = 0; j < h; j++) acc += relu[i * h + j] * p.W2T[j];
           out[i] = 1 / (1 + Math.exp(-acc));
         }
-        /* output-layer gradients */
-        for (let i = 0; i < m; i++) dout[i] = (out[i] - y[idx[off + i]]) / m;
+        /* output-layer gradients（V5.2a：weights 乘入——RWR/PPO 重要性加权） */
+        for (let i = 0; i < m; i++) dout[i] = (out[i] - y[idx[off + i]]) * (weights ? weights[idx[off + i]] : 1) / m;
         const gW2 = new Float64Array(h);
         let gb2 = 0;
         for (let j = 0; j < h; j++) {

@@ -71,6 +71,32 @@ function pushEvent(room, type, data) {
   if (!room.events) room.events = [];
   room.events.push({ t: clock.now(), night: room.nightNum || 0, phase: room.phase || '', type, data });
   if (room.events.length > 200) room.events.splice(0, room.events.length - 200);
+  // 1.7.17（V5.2）：信念引擎增量（仅 VOTE_STRATEGY=pi 的信念版 π 需要——生产默认零开销）
+  // 事件驱动：与训练侧 belief-engine 消费同一事件流（A-2 同源）；首次投票前挂载
+  if (process.env.VOTE_STRATEGY === 'pi' && room.players && room.players.length) {
+    try {
+      if (!room._beliefEngine) {
+        const { createBeliefEngine } = require('./server/ai/belief-engine.js');
+        const counts = { wolf: 0, villager: 0, seer: 0, witch: 0, guard: 0, hunter: 0, wolfBeauty: 0, cupid: 0 };
+        for (const p of room.players) {
+          const rk = String(p.role || '').toLowerCase();
+          if (rk.includes('wolf')) { if (rk.includes('beauty')) counts.wolfBeauty++; else counts.wolf++; }
+          else if (rk.includes('seer')) counts.seer++;
+          else if (rk.includes('witch')) counts.witch++;
+          else if (rk.includes('guard')) counts.guard++;
+          else if (rk.includes('hunter')) counts.hunter++;
+          else if (rk.includes('cupid')) counts.cupid++;
+          else counts.villager++;
+        }
+        room._beliefEngine = createBeliefEngine(room.players, counts);
+      }
+      if (type === 'deaths' || type === 'exile' || type === 'vote_cast' || type === 'claim') {
+        const { applyEvent } = require('./server/ai/belief-engine.js');
+        // 事件字段归一：pushEvent 存 {type, data}，belief-engine 消费 {t, night, data}
+        applyEvent(room._beliefEngine, { t: type, night: room.nightNum || 0, data });
+      }
+    } catch (e) { /* 信念引擎异常绝不影响对局（fail-open） */ }
+  }
 }
 function bump(room) {
   room.version = (room.version || 0) + 1;
