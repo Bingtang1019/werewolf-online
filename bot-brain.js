@@ -1487,12 +1487,14 @@ function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRol
     if (auditRollout) { if (!room._rolloutAuditBuf) room._rolloutAuditBuf = []; room._rolloutAuditBuf.push({ day: room.day || 0, bot: bot.id }); }
     // 1.7.17（实验门控）：LAB_WOLF_NO_ROLLOUT=1 → 狼 bot 跳过 rollout（decideVote 纯策略）——偏狼归因对照：rollout 模拟好人投票对狼的增益是否偏狼根源
     const wolfNoRollout = process.env.LAB_WOLF_NO_ROLLOUT === '1' && campOf(bot) === 'wolf';
-    // 1.7.17（V5.0）：VOTE_STRATEGY=pi → π 投票策略网络（BC from decideVote）；
+    // 1.7.17（V5.0）：VOTE_STRATEGY=pi-snap（默认生产）→ π 快照版（13 维，与 dv 决策等价 300/300 实证——性能 113×）；
+    // VOTE_STRATEGY=pi → π 信念版（17 维，实验——60.2%<dv 63.2% 不上线）；未设 → 现有 rollout+decideVote 链
     // π 与 dv 一致处用 π（快，0.21ms）；分歧处用 dv（准——BC 分歧处质量低于规则老师）；
-    // 混合语义：质量= dv（大样本配对 0/300 不一致）、性能=部分加速；默认无 env → 现有 rollout+decideVote 链
+    // 混合语义：质量= dv（大样本配对 0/300 不一致）、性能=部分加速；模型缺失 → fail-open 回退现有链
     // （归档：archive/v5-投票判定实验/README.md——rollout 好人侧 -12.4pp 退役、狼侧 +8.5pp 保留）
-    const piMode = process.env.VOTE_STRATEGY === 'pi' && campOf(bot) !== 'wolf';
-    const piRes = piMode ? piVote(room, bot.id, state) : null;
+    const piMode = (process.env.VOTE_STRATEGY === 'pi' || process.env.VOTE_STRATEGY === 'pi-snap') && campOf(bot) !== 'wolf';
+    const piUseSnap = process.env.VOTE_STRATEGY !== 'pi'; // 默认 pi-snap；仅显式 'pi' 用信念版
+    const piRes = piMode ? piVote(room, bot.id, state, piUseSnap) : null;
     if (piMode && piRes) {
       const dvT = decideVote(world, state, rng()).target;
       resTarget = piRes.target === dvT ? piRes.target : dvT; // 一致→π（快）；分歧→dv（准）

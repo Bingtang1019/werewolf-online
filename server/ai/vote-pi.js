@@ -12,35 +12,40 @@ const { MLP } = require('./mlp');
 const { getBeliefs } = require('./belief-engine');
 
 const MODEL_PATH = process.env.MODEL_VOTE_PI || path.join(__dirname, '..', '..', 'models', 'vote-pi-belief-v1.json');
+const MODEL_PATH_SNAP = process.env.MODEL_VOTE_PI_SNAP || path.join(__dirname, '..', '..', 'models', 'vote-pi-snap-v1.json');
 const FEATURE_NAMES = ['seat_norm', 'ring_dist', 'talk_count', 'checked_wolf', 'checked_good', 'votes_against', 'prev_votes', 'claims_seer', 'claims_god', 'accused_count', 'counter_seer', 'vote_lead', 'bot_prev_same'];
 const BELIEF_NAMES = ['bel_posterior', 'bel_cred_cand', 'bel_cred_voter', 'bel_vote_share'];
 
 let _model = null;
-function loadPi() {
-  if (_model) return _model;
+let _snapModel = null;
+function loadPi(useSnap) {
+  if (useSnap && _snapModel) return _snapModel;
+  if (!useSnap && _model) return _model;
+  const path0 = useSnap ? MODEL_PATH_SNAP : MODEL_PATH;
   try {
-    const m = JSON.parse(fs.readFileSync(MODEL_PATH, 'utf8'));
+    const m = JSON.parse(fs.readFileSync(path0, 'utf8'));
     if (m.schema !== 'vote-pi@1') return null;
     const names = m.features || [];
     if (names.length !== FEATURE_NAMES.length && names.length !== FEATURE_NAMES.length + BELIEF_NAMES.length) return null;
-    // A-2：特征名逐一核对（13 维纯快照 / 17 维快照+信念）
     for (let i = 0; i < FEATURE_NAMES.length; i++) if (names[i] !== FEATURE_NAMES[i]) return null;
     if (names.length === 17) for (let i = 0; i < BELIEF_NAMES.length; i++) if (names[13 + i] !== BELIEF_NAMES[i]) return null;
     m._mlp = MLP.fromJSON(m.mlp);
     m._belief = names.length === 17;
+    if (useSnap) _snapModel = m; else _model = m;
     return m;
   } catch (e) { return null; }
 }
-function isLoaded() { return loadPi() !== null; }
-function resetModel() { _model = null; }
+function isLoaded() { return loadPi(false) !== null; }
+function resetModel() { _model = null; _snapModel = null; }
 
 /** π 投票：对候选集逐候选打分 → argmax
  *  @param room      房间（room.players/messages/votes/lastVoteResult/actionLog + room._beliefEngine）
  *  @param voterId   投票者 id
  *  @param state     候选 id 数组
+ *  @param useSnap   快照版（13 维，决策等价 dv）——生产默认；belief 版（17 维）实验
  *  @returns { target, scores, margin } | null（模型缺失/候选不足 → null，调用方回退） */
-function piVote(room, voterId, state) {
-  const m = loadPi();
+function piVote(room, voterId, state, useSnap) {
+  const m = loadPi(useSnap);
   if (!m) return null;
   if (!state || state.length < 2) return null;
   const bel = m._belief && room._beliefEngine ? getBeliefs(room._beliefEngine) : null;
@@ -71,4 +76,4 @@ function piVote(room, voterId, state) {
   return { target: best, scores, margin: bs - second };
 }
 
-module.exports = { loadPi, isLoaded, resetModel, piVote, MODEL_PATH, FEATURE_NAMES, BELIEF_NAMES };
+module.exports = { loadPi, isLoaded, resetModel, piVote, MODEL_PATH, MODEL_PATH_SNAP, FEATURE_NAMES, BELIEF_NAMES };
