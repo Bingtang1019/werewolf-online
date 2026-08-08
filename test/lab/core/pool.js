@@ -37,7 +37,7 @@ async function runPool(total, parallel, fn, { seedBase = null, doneSet = null, o
  *   采样：worker 模式 flushSamples=false（room-runner）→ 样本随 GameRecord 回传 → 主线程写。
  * ========================================================================= */
 async function runPoolParallel(total, opts = {}) {
-  const { tag, outDir, baseCfg = {}, seedBase = null, sampleFile = null, mode = 'virtual' } = opts;
+  const { tag, outDir, baseCfg = {}, seedBase = null, sampleFile = null, auditFile = null, mode = 'virtual' } = opts;
   const n = Math.max(1, Math.min(opts.parallel || os.cpus().length, Math.max(1, total)));
   fs.mkdirSync(outDir, { recursive: true });
   // checkpoint：读 done 文件 → 跳过已完成局
@@ -69,6 +69,7 @@ async function runPoolParallel(total, opts = {}) {
         try {
           fs.appendFileSync(path.join(outDir, `${tag}.jsonl`), JSON.stringify(rec) + '\n');
           if (sampleFile && rec.samples && rec.samples.length) fs.appendFileSync(sampleFile, rec.samples.join('\n') + '\n');
+          if (auditFile && rec.voteAudit && rec.voteAudit.length) fs.appendFileSync(auditFile, rec.voteAudit.map(x => JSON.stringify(x)).join('\n') + '\n'); // 1.7.18：投票审计落盘（v3 在线重训数据源）
           const job = jobByI.get(i);
           if (job) fs.appendFileSync(donePath, job.seed + '\n');
         } catch (e) { /* 写盘失败不中断（下局重试） */ }

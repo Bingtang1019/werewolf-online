@@ -96,7 +96,8 @@ async function runOneLabGame(cfg) {
         data: e.data || {},
       })),
       firstKill,
-      samples: (cfg.flushSamples === false && room.labSampleBuf && room.labSampleBuf.length) ? room.labSampleBuf.slice() : null, // v1.8.0：worker 模式样本回传（主线程统一写盘，防多 worker 竞态）
+      samples: (cfg.flushSamples === false && room.labSampleBuf && room.labSampleBuf.length) ? room.labSampleBuf.slice() : null, // v1.8.0：worker 模式样本回传（主线程
+      voteAudit: (global._voteAudit && global._voteAudit.length) ? global._voteAudit.splice(0) : null, // 1.7.18：投票审计（LAB_AUDIT_VOTE=1，含 25 维在线特征——v3 重训数据源）统一写盘，防多 worker 竞态）
       rolloutAudit: (room._rolloutAuditBuf && room._rolloutAuditBuf.length) ? room._rolloutAuditBuf.slice() : null, // 1.7.17：rollout 分歧审计（LAB_AUDIT_ROLLOUT=2）
     };
   } catch (e) {

@@ -82,12 +82,13 @@ if (variantRaw) {
   }
 }
 const sampleFile = has('--sample') ? path.join(outDir, `${tag}.samples.jsonl`) : null;
+const auditFile = has('--audit') ? path.join(outDir, `${tag}.voteaudit.jsonl`) : null; // 1.7.18：投票审计落盘（v3 在线重训数据源——LAB_AUDIT_VOTE=1 时产出）
 
 console.log(`[lab] run-batch: total=${total} tag=${tag} cap=${cap} counts=${JSON.stringify(counts)} parallel=${parallel || 'auto'} preset=${presetKey || '-'}`);
 console.log(`[lab] outputs → ${path.join(outDir, tag + '.jsonl')}（checkpoint: done-${tag}.txt${sampleFile ? '，样本: ' + path.basename(sampleFile) : ''}）`);
 
 runPoolParallel(total, {
-  tag, outDir, baseCfg, seedBase, sampleFile,
+  tag, outDir, baseCfg, seedBase, sampleFile, auditFile,
   parallel: parallel || undefined, // undefined → runPoolParallel 内部 os.cpus().length
   mode: has('--real') ? 'real' : 'virtual',
   onProgress: (f, t, ms) => {
