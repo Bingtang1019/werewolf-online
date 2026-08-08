@@ -71,7 +71,7 @@ function pushEvent(room, type, data) {
   if (!room.events) room.events = [];
   room.events.push({ t: clock.now(), night: room.nightNum || 0, phase: room.phase || '', type, data });
   if (room.events.length > 200) room.events.splice(0, room.events.length - 200);
-  // 1.7.17（V5.2）：信念引擎增量（仅 VOTE_STRATEGY=pi 的信念版 π 需要——生产默认零开销）
+  // 1.7.17（D1）：信念引擎增量（仅 VOTE_STRATEGY=pi 的信念版 π 需要——生产默认零开销）
   // 事件驱动：与训练侧 belief-engine 消费同一事件流（A-2 同源）；首次投票前挂载
   // 1.7.17（vote-v3）：VOTE_STRATEGY=pi/pi-snap、VOTE_MODEL_MODE=v3 或 LAB_AUDIT_VOTE=1（采集）时挂载——信念特征进感知层特征
   if ((process.env.VOTE_MODEL_MODE === 'v3' || process.env.VOTE_STRATEGY === 'pi' || process.env.VOTE_STRATEGY === 'pi-snap' || process.env.LAB_AUDIT_VOTE === '1') && room.players && room.players.length) {
@@ -294,8 +294,19 @@ function createRoom(hostName) {
   bump(room);
   return { roomId: id, playerId: host.id, view: viewFor(room, host.id) };
 }
+/* 1.7.18 修复：座位号分配改"最小空缺"——玩家退出（splice）后 length+1 会与剩余
+ * 玩家座位冲突（3号退出后新加入者 seat=length+1=6，与现有6号重复——"全是6号"bug
+ * 的根因）；最小空缺保证：座位号稳定（退出者不自动进位）+ 新加入者补最小空位，
+ * 永不重复 */
+function nextFreeSeat(room) {
+  const used = new Set();
+  for (const q of room.players) if (q && q.seat != null) used.add(q.seat);
+  let s = 1;
+  while (used.has(s)) s++;
+  return s;
+}
 function addPlayer(room, name) {
-  const p = { id: uid(), name: name || '玩家', seat: room.players.length + 1, role: null, alive: true, deadBy: null, deadNote: null, leftGame: false, confirmed: false, lastWordUsed: false };
+  const p = { id: uid(), name: name || '玩家', seat: nextFreeSeat(room), role: null, alive: true, deadBy: null, deadNote: null, leftGame: false, confirmed: false, lastWordUsed: false };
   room.players.push(p);
   return p;
 }
@@ -337,7 +348,7 @@ function lobbyAction(room, p, action, data) {
     bot.isBot = true;
     // v1.4.0：人机级别（idle 挂机 / easy 简单 / smart 智能）；v1.5.0 增加 simulate（态度模型档）；非法值忽略，走房间 botMode 映射
     if (data.level === 'idle' || data.level === 'easy' || data.level === 'smart' || data.level === 'simulate') bot.botLevel = data.level;
-    // 1.7.17（V5.2 轻量 B）：per-bot 嫌疑分混合权重（多样化 bot 变体——BOT_SUSPICION_W 的 per-bot 版）
+    // 1.7.17（D2 前置）：per-bot 嫌疑分混合权重（多样化 bot 变体——BOT_SUSPICION_W 的 per-bot 版）
     if (data.suspicionW != null) bot.suspicionW = parseFloat(data.suspicionW);
     if (data.followMode === 'strict' || data.followMode === 'loose' || data.followMode === 'none') bot.followMode = data.followMode; // 跟票变体
     // v1.5.0：态度模型风格参数（aggressive/balanced/conservative + 狼侧 charge/shark/normal）
@@ -1011,7 +1022,7 @@ function resolveExileVote(room) {
     room.loverV2.protectBy = null;
   }
   const res = computeVotes(room, true);
-  // 1.7.17（V5 判定实验）：vote 明细事件——每票 voter→target（投票结算处发射，块 2 lastExiledId 的同源数据；
+  // 1.7.17（D1 数据源）：vote 明细事件——每票 voter→target（投票结算处发射，块 2 lastExiledId 的同源数据；
   // 投票预测器训练数据源：P(vote_i = j | 投票者视角)；records-v5 重采后含本事件）
   const voteDetail = [];
   for (const p of room.players) {
@@ -1216,7 +1227,7 @@ function dayAction(room, p, action, data) {
       if (action === 'post') {
         const text = (data.text || '').trim();
         if (!text) return { error: '请输入遗言内容' };
-        addMessage(room, p, 'all', text, '遗言', data.claim || null); // V5.1：结构化声明透传
+        addMessage(room, p, 'all', text, '遗言', data.claim || null); // D1：结构化声明透传
         if (data.claim) pushEvent(room, 'claim', { from: p.id, type: data.claim.type, target: data.claim.target || null, night: data.claim.night != null ? data.claim.night : room.nightNum }); // V5.1：声明事件
         p.lastWordUsed = true;
         room.lastWordDone[p.id] = true;
@@ -1279,7 +1290,7 @@ function dayAction(room, p, action, data) {
       const target = data.target || null;
       if (target) { const t = byId(room, target); if (!t || !t.alive) return { error: '玩家不存在或已出局' }; }
       room.votes[p.id] = target;
-      // 1.7.17（V5 实验 1 数据源）：逐票事件——每票落定时刻快照（排除本次票——决策时刻语义，训练/推理特征对齐；结算快照会泄漏后续票）
+      // 1.7.17（D1 数据源）：逐票事件——每票落定时刻快照（排除本次票——决策时刻语义，训练/推理特征对齐；结算快照会泄漏后续票）
       if (room.phase === 'vote') {
         const snap = [];
         for (const q of room.players) {
@@ -1418,7 +1429,7 @@ function chatAction(room, p, data) {
   if (!room.speechToday) room.speechToday = {};
   room.speechToday[p.id] = (room.speechToday[p.id] || 0) + 1; // v4.2：发言量信息特征（speech 摘要事件数据源）
   if (!p.isBot) chatRecorder.record(room, p, ch, text); // 1.8.0：真人聊天收集（NLU 语料冷启动；失败静默不阻塞）
-  addMessage(room, p, ch, text, null, data.claim || null); // V5.1：结构化声明透传（bot 声明：查杀/金水）
+  addMessage(room, p, ch, text, null, data.claim || null); // D1：结构化声明透传（bot 声明：查杀/金水）
   if (data.claim) pushEvent(room, 'claim', { from: p.id, type: data.claim.type, target: data.claim.target || null, night: data.claim.night != null ? data.claim.night : room.nightNum }); // V5.1：声明事件（belief-engine 证据源）
   bump(room);
   return { ok: true };

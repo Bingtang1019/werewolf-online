@@ -1,5 +1,5 @@
 'use strict';
-/* v1.8.0（DynEns P1）：投票轮级决策状态——房间级特征快照（架构革命 ①）。
+/* v1.8.0（vote-v4 蒸馏前置）：投票轮级决策状态——房间级特征快照（架构革命 ①）。
  *
  * 问题：buildVoteWorld 每票每 bot 全量重算——11 候选 × [voteFeatures(13 维，内部
  *       全扫 messages/票型) + beliefFeatures25(12 维信念查表) + modelProb(stump)]

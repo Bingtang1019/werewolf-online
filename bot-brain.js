@@ -8,7 +8,7 @@ const _belMod = require('./server/ai/belief-engine.js');
 _getBeliefsRef = _belMod.getBeliefs || null; // 1.7.18：getVoteModelV2——v2 独立缓存（12c per-config 回退用） // 1.7.0（B1-4）：vote 模型（fail-open）
 const { voteFeatures } = require('./server/ai/features.js'); // 1.7.0（B1-2）：vote 特征（训练/推理共用）
 const { rolloutVote } = require('./server/ai/rollout.js'); // 1.7.0（B1-5）：rollout 规划层（新 simulate 档）
-const { piVote } = require('./server/ai/vote-pi.js'); // 1.7.17（V5.0）：π 投票策略网络（VOTE_STRATEGY=pi）
+const { piVote } = require('./server/ai/vote-pi.js'); // 1.7.17（D0）：π 投票策略网络（VOTE_STRATEGY=pi）
 const LEXICON = require('./server/ai/lexicon.json');
 const { decideVote, decideNightKill } = require('./server/ai/legacy/decide.js'); // 1.7.0（B1-1）：纯行动策略接口
 /* 1.7.0（B1-8）：显式可注入 RNG——决策随机全部走“当前 RNG”（createBotDecision 入口设置），杜绝 Math.random 隐性状态 */
@@ -750,7 +750,7 @@ const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? b
     sellTarget: sellWolfBeauty(room, bot),
     allVoters: room.players.filter(p => p.alive && !p.leftGame).map(p => p.id), // 1.7.0（B1-5）：rollout 模拟投票者
     me: bot.id,
-    followMode: bot.followMode || process.env.FOLLOW_MODE || 'strict', // 1.7.17（V5.2 轻量 B）：per-bot 跟票变体（strict/loose/none）
+    followMode: bot.followMode || process.env.FOLLOW_MODE || 'strict', // 1.7.17（D2 前置）：per-bot 跟票变体（strict/loose/none）
     configKey: room.presetKey || (room.cap ? room.cap + 'p' : null), // v1.7.14：cap 级 fallback（生产真人局无 preset → '12p' 等路由到 cap 聚合 local）；A-2 双轨：lab（presetKey 存在）未知 key 抛错，生产（无 preset）cap fallback + 未训 cap 显式降级解析版（可用性优先，注释写明非静默）
     hasPreset: !!room.presetKey, // v1.7.14：A-2 双轨判定（lab preset 标签 / 生产 cap fallback）
     vGood, // 1.7.6：第三方平衡用（好人胜率估值）
@@ -1602,7 +1602,7 @@ function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRol
     if (auditRollout) { if (!room._rolloutAuditBuf) room._rolloutAuditBuf = []; room._rolloutAuditBuf.push({ day: room.day || 0, bot: bot.id }); }
     // 1.7.17（实验门控）：LAB_WOLF_NO_ROLLOUT=1 → 狼 bot 跳过 rollout（decideVote 纯策略）——偏狼归因对照：rollout 模拟好人投票对狼的增益是否偏狼根源
     const wolfNoRollout = process.env.LAB_WOLF_NO_ROLLOUT === '1' && campOf(bot) === 'wolf';
-    // 1.7.17（V5.0）：VOTE_STRATEGY=pi-snap（默认生产）→ π 快照版（13 维，与 dv 决策等价 300/300 实证——性能 113×）；
+    // 1.7.17（D0）：VOTE_STRATEGY=pi-snap（默认生产）→ π 快照版（13 维，与 dv 决策等价 300/300 实证——性能 113×）；
     // VOTE_STRATEGY=pi → π 信念版（17 维，实验——60.2%<dv 63.2% 不上线）；未设 → 现有 rollout+decideVote 链
     // π 与 dv 一致处用 π（快，0.21ms）；分歧处用 dv（准——BC 分歧处质量低于规则老师）；
     // 混合语义：质量= dv（大样本配对 0/300 不一致）、性能=部分加速；模型缺失 → fail-open 回退现有链

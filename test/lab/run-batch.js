@@ -60,7 +60,7 @@ const baseCfg = {
   timeoutMs,
   wallBudgetMs: wallBudget,
 };
-// 1.7.17（V5.2 轻量 B）：--variant "0.6,0.8,0.4" 或 "0.6:strict,0.8:loose"（w:followMode）→ 混合变体 botLine（轮转分配）
+// 1.7.17（D2 前置）：--variant "0.6,0.8,0.4" 或 "0.6:strict,0.8:loose"（w:followMode）→ 混合变体 botLine（轮转分配）
 const variantRaw = get('--variant', '');
 if (variantRaw) {
   const parts = variantRaw.split(',').map(x => x.trim()).filter(Boolean);
