@@ -70,6 +70,11 @@ function fitAdaBoost(X, y, valX, valY, T, shrinkage, NBINS) {
   return { trees, bestT: trees.length, bestAuc: calcAUC(valX, valY, trees) };
 }
 
+/* 1.7.18：分箱 AdaBoost 的 trees（fi/th/flip）→ 统一 stumps（f/thr/dir）——与 v1/v2 模型格式一致，model-loader 复用
+ * 预测等价：flip 语义 (x<th?1:-1)*(flip?-1:1) = (x<th?1:-1)*dir（dir = flip?-1:1） */
+function treesToStumps(trees) {
+  return trees.map(tr => ({ f: tr.fi, thr: tr.th, dir: tr.flip ? -1 : 1, alpha: tr.alpha }));
+}
 function predict(trees, x) {
   let s = 0;
   for (const tr of trees) {
@@ -146,7 +151,7 @@ for (const tag of allTags) {
   const { trees, bestT, bestAuc } = fitAdaBoost(tr.X, tr.y, va.X, va.y, T_MAX, SHRINKAGE, NBINS);
   const auc = calcAUC(te.X, te.y, trees);
   console.log(`[v3] ${tag}: val AUC=${bestAuc.toFixed(4)} test AUC=${auc.toFixed(4)}（trees=${trees.length}）`);
-  result.configs[tag] = { local: { trees, bestT, valAUC: bestAuc, testAUC: auc } };
+  result.configs[tag] = { local: { stumps: treesToStumps(trees), useLocal: true, valAUC: bestAuc, testAUC: auc } };
 }
 
 // global fallback：全部配置数据合并训练一个 global（仅非 merge 模式或 merge 且无 global 时）
@@ -159,7 +164,7 @@ if (!MERGE || !result.global) {
     const { trees, bestT, bestAuc } = fitAdaBoost(tr.X, tr.y, va.X, va.y, T_MAX, SHRINKAGE, NBINS);
     const auc = calcAUC(te.X, te.y, trees);
     console.log(`[v3] global: val AUC=${bestAuc.toFixed(4)} test AUC=${auc.toFixed(4)}`);
-    result.global = { trees, bestT, valAUC: bestAuc, testAUC: auc };
+    result.global = { stumps: treesToStumps(trees), valAUC: bestAuc, testAUC: auc };
   }
 }
 

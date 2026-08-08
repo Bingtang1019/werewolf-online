@@ -556,6 +556,50 @@ function isoVote(p) {
     return table[ans].cal;
   } catch (e) { return null; }
 }
+/* 1.7.18（vote-v3）：25 维特征——13 快照 + 12 信念（与 tools/ai/build-vote-v3-samples.js extractV3Features 同源，A-2 纪律）
+ * 索引：13=bel_posterior 14=bel_cred_cand 15=bel_cred_voter 16=bel_vote_share 17=death_infer 18=check_verified
+ *       19=claim_suspect 20=vote_lead_order 21=follow_strength 22=seer_check 23=wolf_kill_survivor 24=cred_derived
+ * 无引擎时返回中性特征（fail-open——v3 模型退化但不崩） */
+function beliefFeatures25(room, botId, candId) {
+  const base = voteFeatures(room, botId, candId);
+  if (!base) return null;
+  const eng = room._beliefEngine;
+  if (!eng) return base.concat([0.5, 0.5, 0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  const { getBeliefs } = require('./server/ai/belief-engine.js'); // 局部 require（与 LAB_AUDIT_VOTE 采集同模式）
+  const bel = getBeliefs(eng);
+  const tot = room.votes || {};
+  const p = bel.posterior[candId] != null ? bel.posterior[candId] : 0.5;
+  const cc = bel.credibility[candId] != null ? bel.credibility[candId] : 0.5;
+  const cv = bel.credibility[botId] != null ? bel.credibility[botId] : 0.5;
+  const share = (tot[candId] || 0) / Math.max(1, Object.keys(tot).length);
+  // death_infer：被刀者投过候选的次数（死亡因果链）
+  let deathInfer = 0;
+  for (const k of eng.kills || []) {
+    const victim = eng.nodes[k.victim];
+    if (victim && victim.votesMade) for (const vm of victim.votesMade) if (vm.target === candId) deathInfer++;
+  }
+  deathInfer = Math.min(1, deathInfer / 3);
+  // claim_suspect：候选被查杀声明数（狼悍跳居多）
+  let claimSuspect = 0;
+  for (const c of eng.claims || []) if (c.type === 'check_wolf' && c.target === candId) claimSuspect++;
+  claimSuspect = Math.min(1, claimSuspect / 2);
+  // vote_lead_order：候选当前票型是否第一
+  let voteLeadOrder = 0;
+  const sorted = Object.entries(tot).sort((a, b) => b[1] - a[1]);
+  if (sorted.length && sorted[0][0] === candId) voteLeadOrder = 1;
+  // follow_strength：投票者跟随候选票型的关系强度
+  let followStrength = 0;
+  const follows = bel.follows[botId] || {};
+  if (follows[candId]) followStrength = Math.min(1, follows[candId] / 3);
+  // seer_check：发言查杀声明（与训练同源）
+  let seerCheck = 0;
+  const cand = room.players.find(q => q.id === candId);
+  for (const m of room.messages || []) {
+    if (m.ch === 'all' && m.from !== botId && m.text && cand && m.text.includes(cand.name) && m.text.includes('查杀')) { seerCheck = 1; break; }
+  }
+  const credDerived = Math.abs(cc - 0.5) * 2;
+  return base.concat([p, cc, cv, share, deathInfer, 0, claimSuspect, voteLeadOrder, followStrength, seerCheck, 0, credDerived]);
+}
 function buildVoteWorld(room, bot) {
   const b = bot.botMemory || {};
   const beliefs = b.beliefs || {};
@@ -570,11 +614,11 @@ function buildVoteWorld(room, bot) {
     // 1.7.0（B1-4）：每轮投票前动态似然——模型 P(wolf) 混合（0.6 信念 + 0.4 模型；不改 beliefs 防累积饱和）
     let f = null, mp = null;
     if (useModel) {
-      f = voteFeatures(room, bot.id, p.id);
+      f = model.schema === 'adaboost-vote@3' ? beliefFeatures25(room, bot.id, p.id) : voteFeatures(room, bot.id, p.id); // 1.7.18：v3 用 25 维（13 快照 + 12 信念），v1/v2 用 13 维
       if (f) {
         mp = modelProb(model, f, room.presetKey || (room.cap ? room.cap + 'p' : null)); // 1.7.16：v2 configKey 路由（local/cap/global；用 room 而非 world——world 在函数末尾构造，投票循环内不可引用）
         if (mp != null) {
-          if (model.schema === 'adaboost-vote@2') mp = 1 / (1 + Math.exp(-mp)); // v2：raw score → 单调 sigmoid（仅排序消费，未校准——禁止概率阈值/置信度下游）
+          if (model.schema === 'adaboost-vote@2' || model.schema === 'adaboost-vote@3') mp = 1 / (1 + Math.exp(-mp)); // v2/v3：raw score → 单调 sigmoid（仅排序消费，未校准——禁止概率阈值/置信度下游）
           else { const mi = isoVote(mp); if (mi != null) mp = mi; } // v1：Platt 概率 + iso 过渡校准
           const wb = (bot.suspicionW != null ? bot.suspicionW : parseFloat(process.env.BOT_SUSPICION_W || '0.6')); // 1.7.17（V5.2 轻量 B）：per-bot 混合权重（多样化变体）优先于 env
           s = wb * s + (1 - wb) * mp;

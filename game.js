@@ -73,8 +73,8 @@ function pushEvent(room, type, data) {
   if (room.events.length > 200) room.events.splice(0, room.events.length - 200);
   // 1.7.17（V5.2）：信念引擎增量（仅 VOTE_STRATEGY=pi 的信念版 π 需要——生产默认零开销）
   // 事件驱动：与训练侧 belief-engine 消费同一事件流（A-2 同源）；首次投票前挂载
-  // 1.7.17（vote-v3）：VOTE_STRATEGY=pi/pi-snap 或 LAB_AUDIT_VOTE=1（采集）时挂载——信念特征进感知层特征
-  if ((process.env.VOTE_STRATEGY === 'pi' || process.env.VOTE_STRATEGY === 'pi-snap' || process.env.LAB_AUDIT_VOTE === '1') && room.players && room.players.length) {
+  // 1.7.17（vote-v3）：VOTE_STRATEGY=pi/pi-snap、VOTE_MODEL_MODE=v3 或 LAB_AUDIT_VOTE=1（采集）时挂载——信念特征进感知层特征
+  if ((process.env.VOTE_MODEL_MODE === 'v3' || process.env.VOTE_STRATEGY === 'pi' || process.env.VOTE_STRATEGY === 'pi-snap' || process.env.LAB_AUDIT_VOTE === '1') && room.players && room.players.length) {
     try {
       if (!room._beliefEngine) {
         const { createBeliefEngine } = require('./server/ai/belief-engine.js');
