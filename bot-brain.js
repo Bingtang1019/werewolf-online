@@ -1,7 +1,10 @@
 'use strict';
 /* v1.6.4（A5-1/A2-5）：统一置信度入口 + 发言语料库（组合式生成）——C1 意图层未来只消费这两处 */
 const { confidenceOf } = require('./server/ai/confidence.js');
-const { getVoteModel, getVoteModelV2, modelProb } = require('./server/ai/model-loader.js'); // 1.7.18：getVoteModelV2——v2 独立缓存（12c per-config 回退用） // 1.7.0（B1-4）：vote 模型（fail-open）
+const { getVoteModel, getVoteModelV2, modelProb } = require('./server/ai/model-loader.js');
+let _getBeliefsRef = null; // 1.7.18：belief-engine 懒预加载（TDZ 修复——getBeliefs 仅供 beliefFeatures25 运行时使用，模块级缓存避免函数内局部 require 的初始化时序问题）
+const _belMod = require('./server/ai/belief-engine.js');
+_getBeliefsRef = _belMod.getBeliefs || null; // 1.7.18：getVoteModelV2——v2 独立缓存（12c per-config 回退用） // 1.7.0（B1-4）：vote 模型（fail-open）
 const { voteFeatures } = require('./server/ai/features.js'); // 1.7.0（B1-2）：vote 特征（训练/推理共用）
 const { rolloutVote } = require('./server/ai/rollout.js'); // 1.7.0（B1-5）：rollout 规划层（新 simulate 档）
 const { piVote } = require('./server/ai/vote-pi.js'); // 1.7.17（V5.0）：π 投票策略网络（VOTE_STRATEGY=pi）
@@ -344,7 +347,7 @@ function initBeliefs(room, bot) {
     const aliveCount = alivePlayers(room).length || 1;
     const prior = wolfCount / aliveCount;
     bot.botMemory.beliefs = {};
-    for (const p of room.players) bot.botMemory.beliefs[p.id] = { wolf: prior, good: 1 - prior };
+    for (const p of room.players) bot.botMemory.beliefs[p.id] = { wolf: prior, good: 1 - prior, ev: 0 }; // 1.7.18：ev=证据量（动态权重用——每次 updateBelief +1）
   }
 }
 function updateBelief(room, bot, targetId, evidence) {
@@ -363,6 +366,7 @@ function updateBelief(room, bot, targetId, evidence) {
   const odds = (b.wolf / Math.max(b.good, 0.01)) * LR;
   b.wolf = odds / (1 + odds);
   b.good = 1 - b.wolf;
+  b.ev = (b.ev || 0) + 1; // 1.7.18：证据量累积（动态权重信号）
 }
 function calibrateBeliefs(room, bot) {
   const wolfCount = getWolfCount(room);
@@ -564,9 +568,13 @@ function beliefFeatures25(room, botId, candId) {
   const base = voteFeatures(room, botId, candId);
   if (!base) return null;
   const eng = room._beliefEngine;
+  const getBeliefs = _getBeliefsRef; // 1.7.18：模块顶部预加载（TDZ 修复——const 声明必须在函数顶部，函数内先使用后声明会触发 TDZ）
+  // 1.7.18：getBeliefs 缓存（每票每候选重建排名对象 = V8 堆碎片化崩溃根源——同 bot 同轮信念状态不变）
+  if (!room._belCache || room._belCache.key !== (room.day + ':' + botId)) {
+    room._belCache = { key: room.day + ':' + botId + ':' + (room._voteCastCount || 0), bel: getBeliefs(eng) }; // _voteCastCount 由 game.js 在每次 vote_cast 时 +1（缓存失效）
+  }
+  const bel = room._belCache.bel;
   if (!eng) return base.concat([0.5, 0.5, 0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-  const { getBeliefs } = require('./server/ai/belief-engine.js'); // 局部 require（与 LAB_AUDIT_VOTE 采集同模式）
-  const bel = getBeliefs(eng);
   const tot = room.votes || {};
   const p = bel.posterior[candId] != null ? bel.posterior[candId] : 0.5;
   const cc = bel.credibility[candId] != null ? bel.credibility[candId] : 0.5;
@@ -600,12 +608,32 @@ function beliefFeatures25(room, botId, candId) {
   const credDerived = Math.abs(cc - 0.5) * 2;
   return base.concat([p, cc, cv, share, deathInfer, 0, claimSuspect, voteLeadOrder, followStrength, seerCheck, 0, credDerived]);
 }
+// 1.7.18：动态嫌疑分权重（数学方法——见 buildVoteWorld 内注释）
+function dynamicWb(bot, pid, mp, auc) {
+  const b = bot.botMemory && bot.botMemory.beliefs && bot.botMemory.beliefs[pid];
+  const alpha = (b && b.ev) || 0; // 信念证据量（0 = 无证据，纯先验）
+  let beta = 0.5; // 模型信度下限（无模型分时中性）
+  if (mp != null && isFinite(mp)) {
+    const ca = auc || 0.7; // per-config 校准 AUC（v3 模型 configs[key].local.testAUC）
+    beta = Math.min(1, Math.abs(2 * mp - 1) * ca); // 模型确定性 × 配置校准
+  }
+  const k = parseFloat(process.env.LAB_DYN_K || '1'); // 模型信度缩放（可调）
+  return alpha / (alpha + k * beta); // 最优线性组合形态：各按信度反比加权
+}
 function buildVoteWorld(room, bot) {
   const b = bot.botMemory || {};
   const beliefs = b.beliefs || {};
   const suspicion = b.suspicion || {};
   const modelBase = getVoteModel(); // 1.7.0（B1-4）：fail-open——模型缺失/损坏回退纯信念；仅好人侧注入（狼侧用模型会反向增强）
   const model = (process.env.VOTE_MODEL_MODE || 'v2') === 'v3' && (room.presetKey || (room.cap ? room.cap + 'p' : null)) === '12c' ? getVoteModelV2() || modelBase : modelBase; // 1.7.18：12c 配对劣化（狼+15.7pp）→ per-config 回退 v2（分配置灰度）
+  const cfgAuc = (() => { // 1.7.18：per-config 校准 AUC（动态权重 β 信号源——v3 模型 configs[key].local.testAUC；无则 0.7 中性）
+    try {
+      const mk = room.presetKey || (room.cap ? room.cap + 'p' : null);
+      if (model && model.schema === 'adaboost-vote@3' && mk && model.configs && model.configs[mk]) return model.configs[mk].local.testAUC || 0.7;
+      if (model && model.schema === 'adaboost-vote@3' && model.global) return model.global.testAUC || 0.7;
+    } catch (e) {}
+    return 0.7;
+  })();
   if (process.env.LAB_AUDIT_VOTE === '1') global._voteAuditSeq = (global._voteAuditSeq || 0) + 1; // 1.7.15：审计——每次投票决策一个时刻 id
   const useModel = (process.env.VOTE_MODEL_MODE || 'v2') !== 'heuristic' && !!model && factionOf(room, bot) === 'good'; // v1.7.16：生产默认 v2
   const scores = {};
@@ -621,7 +649,14 @@ function buildVoteWorld(room, bot) {
         if (mp != null) {
           if (model.schema === 'adaboost-vote@2' || model.schema === 'adaboost-vote@3') mp = 1 / (1 + Math.exp(-mp)); // v2/v3：raw score → 单调 sigmoid（仅排序消费，未校准——禁止概率阈值/置信度下游）
           else { const mi = isoVote(mp); if (mi != null) mp = mi; } // v1：Platt 概率 + iso 过渡校准
-          const wb = (bot.suspicionW != null ? bot.suspicionW : parseFloat(process.env.BOT_SUSPICION_W || ((process.env.VOTE_MODEL_MODE || 'v2') === 'v3' ? '0.4' : '0.6'))); // 1.7.18：权重扫描（12a 300 局配对）——v3 模型 P(wolf) 质量提升后 0.4 最优（信念 0.4+模型 0.6：投狼 +4.2pp/狼胜 -4.0pp）；v2 保持 0.6；env 可覆盖
+          // 1.7.18：动态权重（数学方法——最优线性组合形态：各按信度反比加权）
+// 信念信度 α = 证据量 ev（查验/票型/死亡/发言 7 类证据源的贝叶斯更新次数）
+// 模型信度 β = |2·mp−1| × AUC_config（per-config 校准：4p 0.916 / 12a 0.727 / global 0.742）
+// wb(p) = α/(α + k·β)——证据少→模型主导；模型不确定(mp≈0.5)→信念主导；配置 AUC 高→模型更重
+// 固定档保留（BOT_SUSPICION_W env 覆盖 + LAB_DYN_W=0 禁用动态回固定档）：
+//   v3→0.4（扫描最优）/ v2→0.6（未扫描，保守）
+const dynW = process.env.LAB_DYN_W !== '0' && bot.suspicionW == null && !process.env.BOT_SUSPICION_W;
+const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? bot.suspicionW : parseFloat(process.env.BOT_SUSPICION_W || ((process.env.VOTE_MODEL_MODE || 'v2') === 'v3' ? '0.4' : '0.6')));
           s = wb * s + (1 - wb) * mp;
         }
       }
@@ -635,7 +670,7 @@ function buildVoteWorld(room, bot) {
       let belF = null;
       if (room._beliefEngine) {
         try {
-          const { getBeliefs } = require('./server/ai/belief-engine.js');
+          const getBeliefs = _getBeliefsRef;
           const bel = getBeliefs(room._beliefEngine);
           const vv = room.votes || {};
           const tot = {}; for (const k of Object.keys(vv)) { const t = vv[k]; if (t) tot[t] = (tot[t] || 0) + 1; }
