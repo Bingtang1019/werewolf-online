@@ -1,0 +1,1 @@
+[{"id":"w04-300","type":"shell","cmd":"node","args":["test/lab/run-batch.js","--total","300","--tag","w04-300","--cap","12","--preset","12a","--win-mode","standard"],"env":{"VOTE_MODEL_MODE":"v3","BOT_SUSPICION_W":"0.4"},"cwd":"C:/Users/dell/Desktop/狼人杀在线版 1.0.0"}]

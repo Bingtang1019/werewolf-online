@@ -52,6 +52,7 @@ function record(room, p, ch, text) {
     ch: ch || 'all',
     seat: p.seat != null ? p.seat : null,
     pid: p.id,
+    name: p.name || '', // v1.7.18: 玩家名——按"人机"前缀剔除测试 bot 发言（收集器原版缺名字段，无法按名筛选）
     role: p.role || null,
     cap: cfg.cap != null ? cfg.cap : (st.cap != null ? st.cap : null),
     preset: cfg.presetKey || cfg.preset || null,

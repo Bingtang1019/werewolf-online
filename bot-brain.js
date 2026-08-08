@@ -621,7 +621,7 @@ function buildVoteWorld(room, bot) {
         if (mp != null) {
           if (model.schema === 'adaboost-vote@2' || model.schema === 'adaboost-vote@3') mp = 1 / (1 + Math.exp(-mp)); // v2/v3：raw score → 单调 sigmoid（仅排序消费，未校准——禁止概率阈值/置信度下游）
           else { const mi = isoVote(mp); if (mi != null) mp = mi; } // v1：Platt 概率 + iso 过渡校准
-          const wb = (bot.suspicionW != null ? bot.suspicionW : parseFloat(process.env.BOT_SUSPICION_W || '0.6')); // 1.7.17（V5.2 轻量 B）：per-bot 混合权重（多样化变体）优先于 env
+          const wb = (bot.suspicionW != null ? bot.suspicionW : parseFloat(process.env.BOT_SUSPICION_W || ((process.env.VOTE_MODEL_MODE || 'v2') === 'v3' ? '0.4' : '0.6'))); // 1.7.18：权重扫描（12a 300 局配对）——v3 模型 P(wolf) 质量提升后 0.4 最优（信念 0.4+模型 0.6：投狼 +4.2pp/狼胜 -4.0pp）；v2 保持 0.6；env 可覆盖
           s = wb * s + (1 - wb) * mp;
         }
       }
