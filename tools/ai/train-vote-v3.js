@@ -23,7 +23,7 @@ const FEAT_END = parseInt(get('--feat', '25'), 10) // 特征维度裁剪：13=v2
 const BOOT = parseInt(get('--boot', '100'), 10);
 const MAX_TRAIN = parseInt(get('--max-train', '80000'), 10);
 const SPLIT_SEED = 42;
-const DATA_DIR = path.resolve(root, 'data/vote-v3');
+const DATA_DIR = path.resolve(root, get('--dir', 'data/vote-v3-online')); // 1.7.18：默认在线采集数据（A-2 同源——重放数据已废弃，见 conv-voteaudit）
 const NBINS = parseInt(get('--bins', '8'), 10); // 1.7.17：分箱 stump（架构创新——训练加速 ~50×）
 
 const FEATURE_NAMES = ['seat_norm', 'ring_dist', 'talk_count', 'checked_wolf', 'checked_good', 'votes_against', 'prev_votes', 'claims_seer', 'claims_god', 'accused_count', 'counter_seer', 'vote_lead', 'bot_prev_same',
