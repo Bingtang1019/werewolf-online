@@ -71,9 +71,11 @@ function fitAdaBoost(X, y, valX, valY, T, shrinkage, NBINS) {
 }
 
 /* 1.7.18：分箱 AdaBoost 的 trees（fi/th/flip）→ 统一 stumps（f/thr/dir）——与 v1/v2 模型格式一致，model-loader 复用
- * 预测等价：flip 语义 (x<th?1:-1)*(flip?-1:1) = (x<th?1:-1)*dir（dir = flip?-1:1） */
+ * 方向修正（1.7.18 bug）：训练 predict = (x<=th ? -1 : 1)*(flip?-1:1)；loader = (x<thr ? 1 : -1)*dir
+ * 等价条件：dir = flip ? 1 : -1（比较方向相反，dir 取反）——未修正时推理反向（AUC 0.15）
+ * 边界差异（<= vs <，x=th 时训练 -1/loader +1）：分箱特征 th 为箱边界值，边界点极少，影响可忽略 */
 function treesToStumps(trees) {
-  return trees.map(tr => ({ f: tr.fi, thr: tr.th, dir: tr.flip ? -1 : 1, alpha: tr.alpha }));
+  return trees.map(tr => ({ f: tr.fi, thr: tr.th, dir: tr.flip ? 1 : -1, alpha: tr.alpha }));
 }
 function predict(trees, x) {
   let s = 0;
