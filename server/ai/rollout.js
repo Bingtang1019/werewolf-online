@@ -215,6 +215,20 @@ function rolloutVote(world, state, rng, { worlds = 64 } = {}) {
   const allVoters = (world.allVoters || []).filter(id => id !== world.me);
   if (allVoters.length < 2) return null;
   const sc = world.scores || {};
+  // 1.7.17（视角多样性判定实验）：LAB_ROLLOUT_NOISE=σ → 模拟其他玩家投票时对 sc 注入高斯噪声（模拟"视角差异"）
+  // 检验：rollout 的"自信错误"是否因单视角模拟（所有人用 bot 自己的 scores）——加噪后模拟更接近现实多 agent 异质
+  const noiseSig = parseFloat(process.env.LAB_ROLLOUT_NOISE || '0');
+  const noiseBuf = new Float64Array(allVoters.length * pool.length);
+  let ni = 0;
+  if (noiseSig > 0) {
+    // Box-Muller 高斯（派生自 r，保持确定性）
+    for (let i = 0; i < noiseBuf.length; i += 2) {
+      const u1 = Math.max(1e-12, r.next()), u2 = r.next();
+      noiseBuf[i] = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2) * noiseSig;
+      if (i + 1 < noiseBuf.length) noiseBuf[i + 1] = Math.sqrt(-2 * Math.log(u1)) * Math.sin(2 * Math.PI * u2) * noiseSig;
+    }
+  }
+  const scN = (cid) => { const s = sc[cid] == null ? 0.5 : sc[cid]; return noiseSig > 0 ? Math.max(0.001, Math.min(0.999, s + noiseBuf[ni++ % noiseBuf.length])) : s; };
 
   const W = pool.length > 10 ? Math.max(4, worlds >> 1) : worlds; // 预算感知
   const score = {};
@@ -239,14 +253,14 @@ function rolloutVote(world, state, rng, { worlds = 64 } = {}) {
       let pick = null;
       if (wolfSet.has(voter)) {
         let bv = Infinity;
-        for (const c of pool) { if (teammates.includes(c)) continue; const s = sc[c] == null ? 0.5 : sc[c]; if (s < bv) { bv = s; pick = c; } }
+        for (const c of pool) { if (teammates.includes(c)) continue; const s = scN(c); if (s < bv) { bv = s; pick = c; } }
       } else {
         let lead = null, leadN = 0;
         for (const k of Object.keys(counts)) if (counts[k] > leadN) { leadN = counts[k]; lead = k; } // 当前最高票
         let bv = -Infinity;
-        for (const c of pool) { const s = sc[c] == null ? 0.5 : sc[c]; if (s > bv) bv = s; }
+        for (const c of pool) { const s = scN(c); if (s > bv) bv = s; }
         const top = [];
-        for (const c of pool) { const s = sc[c] == null ? 0.5 : sc[c]; if (Math.abs(s - bv) < 1e-9) top.push(c); }
+        for (const c of pool) { const s = scN(c); if (Math.abs(s - bv) < 1e-9) top.push(c); }
         if (lead && top.includes(lead)) pick = lead;          // 已有票的高分候选 → 跟票（防分票）
         else if (top.length) pick = top[r.int(top.length)];   // 否则最高分（平局 rng 打破）
       }
