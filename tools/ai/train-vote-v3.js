@@ -19,6 +19,7 @@ const STAGE = get('--stage', 'auto');
 const ONLY = get('--tags', '');
 const SHRINKAGE = parseFloat(get('--shrinkage', '0.7'));
 const T_MAX = parseInt(get('--tmax', '200'), 10);
+const FEAT_END = parseInt(get('--feat', '25'), 10) // 特征维度裁剪：13=v2 基准 / 25=v3 全特征
 const BOOT = parseInt(get('--boot', '100'), 10);
 const MAX_TRAIN = parseInt(get('--max-train', '80000'), 10);
 const SPLIT_SEED = 42;
@@ -119,7 +120,7 @@ function toXY(games, maxN) {
   let cnt = 0;
   for (const [gid, samples] of games) {
     for (const s of samples) {
-      X.push(s.f); y.push(s.tIsWolf ? 1 : -1);
+      X.push((s.f || []).slice(0, FEAT_END)); y.push(s.tIsWolf ? 1 : -1);
       if (++cnt >= maxN) return { X, y, n: cnt };
     }
   }
