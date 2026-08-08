@@ -585,7 +585,24 @@ function buildVoteWorld(room, bot) {
     // 模型输出 mp（仅 adaboost，校准用）、特征 f、目标真相；离线分析，生产零影响
     if (process.env.LAB_AUDIT_VOTE === '1') {
       if (!global._voteAudit) { global._voteAudit = []; }
-      global._voteAudit.push({ v: global._voteAuditSeq, f, mp, s, tIsWolf: campOf(p) === 'wolf', useModel });
+      // 1.7.17（vote-v3）：信念特征埋点——决策时刻信念状态（bel_posterior/credibility/vote_share），
+      // 与 voteFeatures 13 维并列（A-2 同源：训练/推理消费同一 belief-engine 事件流）
+      let belF = null;
+      if (room._beliefEngine) {
+        try {
+          const { getBeliefs } = require('./server/ai/belief-engine.js');
+          const bel = getBeliefs(room._beliefEngine);
+          const vv = room.votes || {};
+          const tot = {}; for (const k of Object.keys(vv)) { const t = vv[k]; if (t) tot[t] = (tot[t] || 0) + 1; }
+          belF = [
+            bel.posterior[p.id] != null ? bel.posterior[p.id] : 0.5,
+            bel.credibility[p.id] != null ? bel.credibility[p.id] : 0.5,
+            bel.credibility[bot.id] != null ? bel.credibility[bot.id] : 0.5,
+            (tot[p.id] || 0) / Math.max(1, Object.keys(tot).length),
+          ];
+        } catch (e) { belF = null; }
+      }
+      global._voteAudit.push({ v: global._voteAuditSeq, f, belF, mp, s, tIsWolf: campOf(p) === 'wolf', useModel });
     }
     scores[p.id] = s;
   }

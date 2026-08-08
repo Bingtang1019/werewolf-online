@@ -73,7 +73,8 @@ function pushEvent(room, type, data) {
   if (room.events.length > 200) room.events.splice(0, room.events.length - 200);
   // 1.7.17（V5.2）：信念引擎增量（仅 VOTE_STRATEGY=pi 的信念版 π 需要——生产默认零开销）
   // 事件驱动：与训练侧 belief-engine 消费同一事件流（A-2 同源）；首次投票前挂载
-  if (process.env.VOTE_STRATEGY === 'pi' && room.players && room.players.length) {
+  // 1.7.17（vote-v3）：VOTE_STRATEGY=pi/pi-snap 或 LAB_AUDIT_VOTE=1（采集）时挂载——信念特征进感知层特征
+  if ((process.env.VOTE_STRATEGY === 'pi' || process.env.VOTE_STRATEGY === 'pi-snap' || process.env.LAB_AUDIT_VOTE === '1') && room.players && room.players.length) {
     try {
       if (!room._beliefEngine) {
         const { createBeliefEngine } = require('./server/ai/belief-engine.js');
@@ -1278,11 +1279,12 @@ function dayAction(room, p, action, data) {
       const target = data.target || null;
       if (target) { const t = byId(room, target); if (!t || !t.alive) return { error: '玩家不存在或已出局' }; }
       room.votes[p.id] = target;
-      // 1.7.17（V5 实验 1 数据源）：逐票事件——每票落定时刻快照（含本次，不含后续票；训练投票预测器 P(vote_i = j)，特征严格用"决策时刻前"信息，结算快照会泄漏后续票）
+      // 1.7.17（V5 实验 1 数据源）：逐票事件——每票落定时刻快照（排除本次票——决策时刻语义，训练/推理特征对齐；结算快照会泄漏后续票）
       if (room.phase === 'vote') {
         const snap = [];
         for (const q of room.players) {
           if (!q.alive || !room.votes.hasOwnProperty(q.id)) continue;
+          if (q.id === p.id) continue; // 1.7.17：排除本次票（voteFeatures A-2 排除自己，两边一致）
           const v = room.votes[q.id];
           if (!v) continue;
           snap.push({ voter: q.id, target: v });

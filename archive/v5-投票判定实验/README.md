@@ -337,3 +337,29 @@ node tools/ai/exp-vote-bc.js --quick
 - 收益 = 性能（π 等价 113×）+ 边缘增益（+3.3pp 局部排序信息）
 - "超越 dv"未兑现：RWR 三版、校准修复、多样化池、方向修复——dv 的规则最优性在信息结构下稳健
 - **V5 终局形态判断**：性能 + 边缘增益（"超越"受信息结构限制——除非声明/NLU 证据源带来 dv 没有的新信息，AUC 0.61 地基已修复，C 路径现在可以安全加楼层）
+
+## 十七、超时问题的架构解法（taskd + 分箱 AdaBoost——2026-08-08）
+
+### 问题（9 次事故 ≈ 2 小时）
+训练/采集 20-40 分钟 vs 执行窗口 120s——手动 spawn/轮询/日志反复出现：
+超时杀进程（execFileSync 语义误用）、spawn 竞态（删临时文件过早）、
+done 死锁（stall 局不写 done）、并发 OOM（96 worker）。
+
+### 解法 1：taskd 任务守护进程（tools/taskd.js）
+长任务移入常驻守护进程，工具调用只做"提交 + 查询"（秒回）：
+  submit → 队列（data/tasks/*.json）→ daemon 顺序执行（max-procs 预算）
+  status/wait → 窗口内查询
+checkpoint 语义：任务自身断点续跑（run-batch done / 训练 merge），守护崩溃重启续。
+实测：16 配置训练 40 分钟+9 次事故 → 6 分钟零中断。
+
+### 解法 2：分箱 AdaBoost（train-vote-v3 --bins=8）
+stump 搜索从"逐样本扫描"改"预计算箱索引 + 前缀和"：
+  O(样本×阈值×特征) → O(样本×特征) 建箱 + O(箱×特征) 搜索
+实测：150 树 6 万样本 240s → 4s（50 倍）；16 配置 40 分钟 → 6 分钟。
+正确性：12a AUC 0.8503 → 0.8504（等价）。
+
+### 教训
+1. execFileSync timeout = 杀进程（不是放弃等待）——长任务必须 spawn detached + taskd
+2. 临时脚本 spawn 后不能立即删（竞态）——用 node -e 内联
+3. done 判定必须容忍 stall（-2 容差）——死锁预防
+4. 并发预算：96 worker OOM → taskd max-procs 控制

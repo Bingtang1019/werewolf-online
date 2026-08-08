@@ -40,7 +40,7 @@ const TAGS = { 0: '4p', 1: '6p', 2: '8p', 3: '9a', 6: '9d', 7: '12a', 8: '12b', 
       const audit = global._voteAudit || [];
       for (let k = prev; k < audit.length; k++) {
         const a = audit[k];
-        if (a.useModel && a.mp != null) lines.push(JSON.stringify({ gameId: `${tag}-${i}`, f: a.f, tIsWolf: a.tIsWolf ? 1 : 0 }));
+        if (a.useModel && a.mp != null) lines.push(JSON.stringify({ gameId: `${tag}-${i}`, f: a.f, belF: a.belF || null, tIsWolf: a.tIsWolf ? 1 : 0 }));
       }
     }
     fs.writeFileSync(file, lines.join('\n'));
