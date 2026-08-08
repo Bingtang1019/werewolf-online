@@ -44,3 +44,6 @@ models/value-hicvn-smoke.json
 
 # 内部工作清单（不公开）
 工作清单.md
+
+# 跑批输出（统一在 data/batch——test/lab/data 仅保留必要小文件）
+test/lab/data/

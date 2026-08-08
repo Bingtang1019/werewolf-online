@@ -27,7 +27,7 @@ const has = k => a.includes(k);
 
 const total = parseInt(get('--total', '2000'), 10);
 const tag = get('--tag', `batch-${Date.now()}`);
-const outDir = get('--out-dir', path.join(__dirname, 'data'));
+const outDir = get('--out-dir', path.join(__dirname, '..', '..', 'data', 'batch')); // 1.7.18：统一跑批输出目录（data/batch——防文件夹膨胀散落）
 const seedBase = get('--seed-base', null) || null;
 const wallBudget = parseInt(get('--wall-budget', '8000'), 10);
 const timeoutMs = parseInt(get('--timeout-ms', String(60 * 60 * 1000)), 10);

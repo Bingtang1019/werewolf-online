@@ -14,7 +14,7 @@ const { createBeliefEngine, applyEvent, getBeliefs } = require(path.join(root, '
 
 const args = process.argv.slice(2);
 const get = (k, d) => { const eq = args.find(a => a.startsWith(k + '=')); if (eq) return eq.slice(k.length + 1); const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
-const inDir = path.resolve(root, get('--dir', 'test/lab/data'));
+const inDir = path.resolve(root, get('--dir', 'data/batch'));
 const outDir = path.resolve(root, get('--out', 'data/vote-v3'));
 const tagsArg = get('--tags', 'all');
 const TAGS = ['4p', '6p', '8p', '9a', '9b', '9c', '9d', '12a', '12b', '12c', '12d', '12e', '12f', '12g', '12h', '15p'];
