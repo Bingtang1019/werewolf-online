@@ -41,9 +41,8 @@ function ensure() {
 /** 记录一条真人发言（调用方已过滤 bot；任何失败静默——绝不阻塞对局） */
 function record(room, p, ch, text) {
   if (!ENABLED) return;
+  if (!room || room.phase === 'lobby') return; // v1.8.0 修复：lobby 等待消息（测试/占位噪声）不进语料
   if (!ensure()) return;
-  const cfg = room.config || {};
-  const st = room.settings || {};
   const rec = {
     ts: Date.now(),
     roomId: room.id || null,
@@ -54,8 +53,8 @@ function record(room, p, ch, text) {
     pid: p.id,
     name: p.name || '', // v1.7.18: 玩家名——按"人机"前缀剔除测试 bot 发言（收集器原版缺名字段，无法按名筛选）
     role: p.role || null,
-    cap: cfg.cap != null ? cfg.cap : (st.cap != null ? st.cap : null),
-    preset: cfg.presetKey || cfg.preset || null,
+    cap: room.playerCap != null ? room.playerCap : null, // v1.8.0 修复：生产 room 字段是 playerCap（config.cap 不存在——此前全 null）
+    preset: room.presetKey || null, // v1.8.0 修复：生产 room 字段是 presetKey 直接字段
     text: String(text).slice(0, 200),
   };
   try {
