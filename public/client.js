@@ -512,10 +512,12 @@ function renderPlayers() {
       : (p.mood ? `<span class="mood-tag">${escapeHtml(p.mood)}</span>` : '');
     const role = p.role ? `<div class="prole ${ROLE_CAMP_TEXT[p.role] || ''}">${ROLE_EMOJI_TEXT[p.role] || ''} ${escapeHtml(p.role)}</div>` : '';
     const deadTxt = p.alive ? '' : `<div class="pdead">💀 ${DEATH_TEXT[p.deadBy] || p.deadBy}${p.deadNote ? '（' + escapeHtml(p.deadNote) + '）' : ''}</div>`;
+    const dmark = p.alive ? '' : `<span class="dmark dm-${p.deadBy || 'left'}"></span>`; // v1.7.18 死亡标记（死因 SVG 图形）
     return `<div class="player ${p.isMe ? 'me' : ''} ${p.alive ? '' : 'dead'}${flashCls} ${draft.target === p.id || draft.target2 === p.id ? 'selected' : ''}" data-id="${p.id}">
       <div class="phead"><div class="avatar ${p.alive ? '' : 'dead'}">${avatarOf(p)}</div>
       <div class="pmeta"><div class="pname">${name}${moodHtml}<span class="pseat">#${p.seat}</span></div>${role}${deadTxt}</div></div>
       ${pickIc ? `<span class="pick-ic">${pickIc}</span>` : ''}
+      ${dmark}
     </div>`;
   };
   // 座位排序 + 墓地分区（3 轻量版）：存活区按 seat 升序，墓地带分组头、死者保留座位号（hover 展开详情）
@@ -1736,8 +1738,7 @@ function sfxEnter() { if (!sfxFlags.enter) return; tone(660, .12, 'sine', .05, 0
 function setSfxMaster(on) {
   sfxOn = !!on;
   try { localStorage.ww_sfx = sfxOn ? '1' : '0'; } catch (e) {}
-  const sb = $('btn-sound');
-  if (sb) sb.textContent = sfxOn ? '🔊' : '🔇';
+  document.querySelectorAll('.js-sound-btn').forEach(el => { el.textContent = sfxOn ? '🔊' : '🔇'; }); // v1.7.17：首页/顶栏双入口同步
   if (sfxOn) { ensureAudio(); sfxTick(); }
   renderSoundPop();
 }
@@ -1912,6 +1913,8 @@ $('btn-leave').addEventListener('click', async () => {
     try { ttsOn = localStorage.ww_tts === '1'; } catch (e) {}
     renderSoundPop();
     sb.addEventListener('click', e => { e.stopPropagation(); toggleSoundPop(); });
+    const sbh = $('btn-sound-home'); // v1.7.17：首页音效入口（面板已全局化）
+    if (sbh) sbh.addEventListener('click', e => { e.stopPropagation(); toggleSoundPop(); });
     $('sp-master').addEventListener('change', () => setSfxMaster($('sp-master').checked));
     $('sp-wolf').addEventListener('change', () => setSfxFlag('wolf', $('sp-wolf').checked));
     $('sp-morning').addEventListener('change', () => setSfxFlag('morning', $('sp-morning').checked));
@@ -1920,7 +1923,7 @@ $('btn-leave').addEventListener('click', async () => {
     $('sp-flip').addEventListener('change', () => setSfxFlag('flip', $('sp-flip').checked));
     $('sp-enter').addEventListener('change', () => setSfxFlag('enter', $('sp-enter').checked));
     $('sp-tts').addEventListener('change', () => setTTS($('sp-tts').checked));
-    document.addEventListener('click', e => { const pop = $('sound-pop'); if (pop && !pop.classList.contains('hidden') && !(e.target.closest && e.target.closest('.sound-wrap'))) pop.classList.add('hidden'); });
+    document.addEventListener('click', e => { const pop = $('sound-pop'); if (pop && !pop.classList.contains('hidden') && !(e.target.closest && e.target.closest('.sound-pop-wrap, .js-sound-btn'))) pop.classList.add('hidden'); });
   }
   document.addEventListener('pointerdown', () => {
     ensureAudio();
