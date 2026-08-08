@@ -9,7 +9,7 @@ const path = require('path');
 const { FEATURE_NAMES } = require('./features.js'); // 1.7.3（P1-1）：特征数量/名称联动校验（features.js 无副作用依赖，require 安全）
 const MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v1.json');
 const V2_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v2.json');
-const V3_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v3-25d.json'); // 1.7.18：vote-v3（25 维信念特征，16 配置）
+const V3_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v3-v2.json'); // 1.7.18+：vote-v3 干净数据重训版（v3-25d 脏数据退役，见模型卡二十四节）
 /* 1.7.16：回退链（三级）——v2 → v1+iso过渡 → v1原始 → heuristic（null）
  * VOTE_MODEL_MODE: v3（1.7.18 起可用，16 配置+25 维）| v2（默认生产目标）| adaboost（v1+iso过渡）| heuristic（纯信念，最后保底） */
 let _model = null;

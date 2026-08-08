@@ -599,7 +599,13 @@ function beliefFeatures25(room, botId, candId) {
   const p = bel.posterior[candId] != null ? bel.posterior[candId] : 0.5;
   const cc = bel.credibility[candId] != null ? bel.credibility[candId] : 0.5;
   const cv = bel.credibility[botId] != null ? bel.credibility[botId] : 0.5;
-  const share = (room.votes[candId] || 0) / Math.max(1, idx.totKey);
+  // 1.7.18：vote_share 语义修复——room.votes 是 {投票者: 目标} 映射，旧公式取 room.votes[candId]（候选投给了谁）→ 目标 id 字符串 → NaN → null 脏值；正确语义 = 候选被投票数/当前总票数
+  let share = 0;
+  if (room.votes && Object.keys(room.votes).length) {
+    let vc = 0;
+    for (const t of Object.values(room.votes)) if (t === candId) vc++;
+    share = vc / Object.keys(room.votes).length;
+  }
   const deathInferV = Math.min(1, (idx.deathInfer[candId] || 0) / 3);
   const claimSuspectV = Math.min(1, (idx.claimSuspect[candId] || 0) / 2);
   const voteLeadOrder = idx.leadId === candId ? 1 : 0;

@@ -12,6 +12,7 @@
 class MLP {
   constructor(o = {}) {
     this.hidden = o.hidden || 128;
+    this.linearOut = !!o.linearOut; // 1.8.0：线性输出（raw 回归——蒸馏/价值模型用；BCE 对软 sigmoid 梯度弱）
     this.lr = o.lr != null ? o.lr : 1e-3;
     this.epochs = o.epochs || 20;
     this.batch = o.batch || 256;
@@ -92,7 +93,7 @@ class MLP {
     for (let i = 0; i < n; i++) idx[i] = i;
 
     let bestP = this._snapshot(p);
-    let bestVal = valY ? MLP._auc(valY, valX.map(x => this.predict(x))) : 0;
+    let bestVal = valY ? (this.linearOut ? (() => { const pr = valX.map(x => this.predict(x)); let mse = 0; for (let _i = 0; _i < valY.length; _i++) { const d = pr[_i] - valY[_i]; mse += d * d; } return mse / valY.length; })() : MLP._auc(valY, valX.map(x => this.predict(x)))) : (this.linearOut ? Infinity : 0);
     let noImprov = 0;
     let t = 0;
 
@@ -134,7 +135,7 @@ class MLP {
           }
           let acc = p.b2;
           for (let j = 0; j < h; j++) acc += relu[i * h + j] * p.W2T[j];
-          out[i] = 1 / (1 + Math.exp(-acc));
+          out[i] = this.linearOut ? acc : 1 / (1 + Math.exp(-acc));
         }
         /* output-layer gradients（V5.2a：weights 乘入——RWR/PPO 重要性加权） */
         for (let i = 0; i < m; i++) dout[i] = (out[i] - y[idx[off + i]]) * (weights ? weights[idx[off + i]] : 1) / m;
@@ -178,10 +179,19 @@ class MLP {
         p.b2 -= lrT * gm[3] / (Math.sqrt(gv[3]) + eps);
       }
 
-      /* early stop on val AUC */
+      /* early stop：linearOut → val MSE（越小越好）；否则 val AUC（越大越好） */
       if (valY && valY.length >= 8) {
-        const va = MLP._auc(valY, valX.map(x => this.predict(x)));
-        if (va > bestVal + 1e-6) { bestVal = va; bestP = this._snapshot(p); noImprov = 0; }
+        let va, better;
+        if (this.linearOut) {
+          const pr = valX.map(x => this.predict(x));
+          let mse = 0; for (let _i = 0; _i < valY.length; _i++) { const d = pr[_i] - valY[_i]; mse += d * d; }
+          mse /= valY.length;
+          va = mse; better = mse < bestVal - 1e-9;
+        } else {
+          va = MLP._auc(valY, valX.map(x => this.predict(x)));
+          better = va > bestVal + 1e-6;
+        }
+        if (better) { bestVal = va; bestP = this._snapshot(p); noImprov = 0; }
         else if (++noImprov >= this.patience) break;
       }
     }
@@ -200,7 +210,7 @@ class MLP {
       const a = acc > 0 ? acc : 0;
       acc2 += a * p.W2T[j];
     }
-    return 1 / (1 + Math.exp(-acc2));
+    return this.linearOut ? acc2 : 1 / (1 + Math.exp(-acc2));
   }
 
   toJSON() {

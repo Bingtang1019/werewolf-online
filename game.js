@@ -91,7 +91,7 @@ function pushEvent(room, type, data) {
         }
         room._beliefEngine = createBeliefEngine(room.players, counts);
       }
-      if (type === 'deaths' || type === 'exile' || type === 'vote_cast' || type === 'claim') {
+      if (type === 'deaths' || type === 'exile' || type === 'vote_cast' || type === 'claim' || type === 'wolf_kill') { // 1.7.18：补 wolf_kill——death_infer 特征源（此前漏喂 → eng.kills 恒空 → death_infer 恒 0）
         const { applyEvent } = require('./server/ai/belief-engine.js');
         // 事件字段归一：pushEvent 存 {type, data}，belief-engine 消费 {t, night, data}
         applyEvent(room._beliefEngine, { t: type, night: room.nightNum || 0, data });

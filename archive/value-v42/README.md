@@ -72,3 +72,16 @@ node server/ai/fit-value-v4.js --out models/value-hicvn-v42.json --records data/
 - **数据卫生**：跨时段对比先做同 seed 重跑一致性检测（漂移检测救 M3.5）；world TDZ bug（27,500 局报废）——新代码路径 smoke 后再全量
 - **模型卡规范**：报告用数据不进模型文件（vote-v2 40MB 教训，压缩 47.4MB→268KB）；>5MB 即疑似审计混入
 - **A-2 纪律**：train/infer 特征同源；lab 未知 key 抛错、生产显式降级
+
+---
+
+## 二十二节：命名规范（v1.8.0 立规——防混用）
+
+| 线 | 命名 | 资产 |
+|---|---|---|
+| 变革线 | D0 决策骨架（π）/ D1 信念引擎 / D2 自博弈（PPO）/ D3 交流（NLU） | D0: vote-pi；D1: belief-engine |
+| 投票线 | vote-vN 全称 | vote-v2（生产）/ vote-v3（25d 在线）/ vote-v4（蒸馏目标） |
+| 价值线 | VN.M | V3.1 / V4.2；"V5"仅指价值模型下一代 |
+
+- 废弃表述：P1/P2/P3（架构革命）归入 D 线基础设施；"V5 范式/BDPL"不再使用
+- 消费方（模型卡/公告/脚本/注释）一律按此表命名

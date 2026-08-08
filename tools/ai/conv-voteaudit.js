@@ -13,7 +13,7 @@ const DIR = path.resolve(root, get('--dir', 'data/batch'));
 const OUT = path.resolve(root, get('--out', 'data/vote-v3-online'));
 fs.mkdirSync(OUT, { recursive: true });
 for (const tag of TAGS) {
-  const src = path.join(DIR, 'v3og-' + tag + '.voteaudit.jsonl');
+  const src = path.join(DIR, get('--src-prefix', 'v3og-') + tag + '.voteaudit.jsonl');
   if (!fs.existsSync(src)) { console.log('跳过 ' + tag + '（无源）'); continue; }
   const lines = fs.readFileSync(src, 'utf8').split('\n').filter(Boolean);
   let kept = 0, skipped = 0;
