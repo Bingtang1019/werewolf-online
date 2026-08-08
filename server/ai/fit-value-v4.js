@@ -502,4 +502,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { buildX, FEAT_V4, FEAT_V4_FRAC, main };
+module.exports = { buildX, FEAT_V4, FEAT_V4_FRAC, main, rebuildEventStatesV5 }; // 1.7.18：导出重建器（DynEns Phase 0 诊断/价值域集成复用）
