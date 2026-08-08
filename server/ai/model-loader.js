@@ -115,4 +115,19 @@ function modelProb(m, features, configKey) {
   const p = 1 / (1 + Math.exp(-(m.platt.A * s + m.platt.B)));
   return p;
 }
-module.exports = { getVoteModel, modelProb, MODEL_PATH };
+
+// 1.7.18：v2 模型独立缓存——per-config 回退用（12c 劣化配置：v3 特征在特殊机制上误导投票 → 分配置回退 v2）
+let _v2Model = null, _v2Tried = false;
+function getVoteModelV2() {
+  if (_v2Tried) return _v2Model;
+  _v2Tried = true;
+  try {
+    const p = process.env.MODEL_VOTE_V2 || path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v2.json');
+    if (!fs.existsSync(p)) { _v2Model = null; return _v2Model; }
+    const m = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (!validModelV2(m)) { _v2Model = null; return _v2Model; }
+    _v2Model = m;
+  } catch (e) { _v2Model = null; }
+  return _v2Model;
+}
+module.exports = { getVoteModel, getVoteModelV2, modelProb, MODEL_PATH };

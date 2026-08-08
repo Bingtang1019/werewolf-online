@@ -1,7 +1,7 @@
 'use strict';
 /* v1.6.4（A5-1/A2-5）：统一置信度入口 + 发言语料库（组合式生成）——C1 意图层未来只消费这两处 */
 const { confidenceOf } = require('./server/ai/confidence.js');
-const { getVoteModel, modelProb } = require('./server/ai/model-loader.js'); // 1.7.0（B1-4）：vote 模型（fail-open）
+const { getVoteModel, getVoteModelV2, modelProb } = require('./server/ai/model-loader.js'); // 1.7.18：getVoteModelV2——v2 独立缓存（12c per-config 回退用） // 1.7.0（B1-4）：vote 模型（fail-open）
 const { voteFeatures } = require('./server/ai/features.js'); // 1.7.0（B1-2）：vote 特征（训练/推理共用）
 const { rolloutVote } = require('./server/ai/rollout.js'); // 1.7.0（B1-5）：rollout 规划层（新 simulate 档）
 const { piVote } = require('./server/ai/vote-pi.js'); // 1.7.17（V5.0）：π 投票策略网络（VOTE_STRATEGY=pi）
@@ -604,7 +604,8 @@ function buildVoteWorld(room, bot) {
   const b = bot.botMemory || {};
   const beliefs = b.beliefs || {};
   const suspicion = b.suspicion || {};
-  const model = getVoteModel(); // 1.7.0（B1-4）：fail-open——模型缺失/损坏回退纯信念；仅好人侧注入（狼侧用模型会反向增强）
+  const modelBase = getVoteModel(); // 1.7.0（B1-4）：fail-open——模型缺失/损坏回退纯信念；仅好人侧注入（狼侧用模型会反向增强）
+  const model = (process.env.VOTE_MODEL_MODE || 'v2') === 'v3' && (room.presetKey || (room.cap ? room.cap + 'p' : null)) === '12c' ? getVoteModelV2() || modelBase : modelBase; // 1.7.18：12c 配对劣化（狼+15.7pp）→ per-config 回退 v2（分配置灰度）
   if (process.env.LAB_AUDIT_VOTE === '1') global._voteAuditSeq = (global._voteAuditSeq || 0) + 1; // 1.7.15：审计——每次投票决策一个时刻 id
   const useModel = (process.env.VOTE_MODEL_MODE || 'v2') !== 'heuristic' && !!model && factionOf(room, bot) === 'good'; // v1.7.16：生产默认 v2
   const scores = {};
