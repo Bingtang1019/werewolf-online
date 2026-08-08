@@ -570,8 +570,9 @@ function beliefFeatures25(room, botId, candId) {
   const eng = room._beliefEngine;
   const getBeliefs = _getBeliefsRef; // 1.7.18：模块顶部预加载（TDZ 修复——const 声明必须在函数顶部，函数内先使用后声明会触发 TDZ）
   // 1.7.18：getBeliefs 缓存（每票每候选重建排名对象 = V8 堆碎片化崩溃根源——同 bot 同轮信念状态不变）
-  if (!room._belCache || room._belCache.key !== (room.day + ':' + botId)) {
-    room._belCache = { key: room.day + ':' + botId + ':' + (room._voteCastCount || 0), bel: getBeliefs(eng) }; // _voteCastCount 由 game.js 在每次 vote_cast 时 +1（缓存失效）
+  const _belKey = room.day + ':' + botId + ':' + (room._voteCastCount || 0); // 1.7.18：缓存 key 三段一致（修复比较/存储格式错位——原代码比较 2 段、存储 3 段 → 永不命中 → 每候选全量重建 getBeliefs → V8 堆碎片崩溃）
+  if (!room._belCache || room._belCache.key !== _belKey) {
+    room._belCache = { key: _belKey, bel: getBeliefs(eng) };
   }
   const bel = room._belCache.bel;
   if (!eng) return base.concat([0.5, 0.5, 0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
