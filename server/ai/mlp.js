@@ -13,6 +13,7 @@ class MLP {
   constructor(o = {}) {
     this.hidden = o.hidden || 128;
     this.linearOut = !!o.linearOut; // 1.8.0：线性输出（raw 回归——蒸馏/价值模型用；BCE 对软 sigmoid 梯度弱）
+    this.softTarget = !!o.softTarget; // 1.7.18+：sigmoid 输出 + MSE 早停（soft 概率蒸馏）——构造函数缺失曾导致 softTarget 静默失效（Spearman 0.0009）
     this.lr = o.lr != null ? o.lr : 1e-3;
     this.epochs = o.epochs || 20;
     this.batch = o.batch || 256;
@@ -137,7 +138,9 @@ class MLP {
           for (let j = 0; j < h; j++) acc += relu[i * h + j] * p.W2T[j];
           out[i] = this.linearOut ? acc : 1 / (1 + Math.exp(-acc));
         }
-        /* output-layer gradients（V5.2a：weights 乘入——RWR/PPO 重要性加权） */
+        /* output-layer gradients（V5.2a：weights 乘入——RWR/PPO 重要性加权）
+         * 1.7.18+：softTarget = sigmoid 输出 + MSE 早停；梯度用 (out-y)（BCE 形式——对 soft 目标在排序层面有效，知识蒸馏标准做法；
+         * 乘 sigmoid 导数 out*(1-out) 的 MSE 梯度实测 MSE 不降反升（梯度方向/量级问题）——Spearman 0.0009 事故两次复现后定案 */
         for (let i = 0; i < m; i++) dout[i] = (out[i] - y[idx[off + i]]) * (weights ? weights[idx[off + i]] : 1) / m;
         const gW2 = new Float64Array(h);
         let gb2 = 0;
@@ -182,7 +185,7 @@ class MLP {
       /* early stop：linearOut → val MSE（越小越好）；否则 val AUC（越大越好） */
       if (valY && valY.length >= 8) {
         let va, better;
-        if (this.linearOut) {
+        if (this.linearOut || this.softTarget) {
           const pr = valX.map(x => this.predict(x));
           let mse = 0; for (let _i = 0; _i < valY.length; _i++) { const d = pr[_i] - valY[_i]; mse += d * d; }
           mse /= valY.length;

@@ -10,6 +10,7 @@ const { FEATURE_NAMES } = require('./features.js'); // 1.7.3（P1-1）：特征�
 const MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v1.json');
 const V2_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v2.json');
 const V3_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v3-v2.json'); // 1.7.18+：vote-v3 干净数据重训版（v3-25d 脏数据退役，见模型卡二十四节）
+const V4_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v4.json'); // 1.7.18+：vote-v4 蒸馏版（MLP，25d AdaBoost → 概率输出）
 /* 1.7.16：回退链（三级）——v2 → v1+iso过渡 → v1原始 → heuristic（null）
  * VOTE_MODEL_MODE: v3（1.7.18 起可用，16 配置+25 维）| v2（默认生产目标）| adaboost（v1+iso过渡）| heuristic（纯信念，最后保底） */
 let _model = null;
@@ -36,6 +37,33 @@ function pickV2(m, configKey) {
  * configs 结构：{ [presetKey]: { local: { stumps, useLocal } } } + global；cap 级走 global fallback（v3 未训 cap 专属）
  * 特征校验：前 13 维必须与 FEATURE_NAMES 一致（前缀），总维 = m.features.length（25）——
  * 信念特征（后 12 维）由 bot-brain 实时构造（belief-engine 输出），模型文件自描述 */
+function validModelV4(m) {
+  if (!m || m.schema !== 'vote-mlp@1') return false;
+  if (!Array.isArray(m.features) || m.features.length < FEATURE_NAMES.length) return false;
+  for (let i = 0; i < FEATURE_NAMES.length; i++) if (m.features[i] !== FEATURE_NAMES[i]) return false; // 前缀校验（13 快照）
+  if (!m.norm || !Array.isArray(m.norm.mean) || !Array.isArray(m.norm.std) || m.norm.mean.length !== m.features.length || m.norm.std.length !== m.features.length) return false;
+  if (!m.params || !Array.isArray(m.params.W1T) || !Array.isArray(m.params.W2T) || !Array.isArray(m.params.b1)) return false;
+  if (typeof m.params.b2 !== 'number' || !isFinite(m.params.b2)) return false;
+  const h = m.hidden;
+  if (!Number.isInteger(h) || h <= 0 || m.params.W1T.length !== h * m.features.length || m.params.W2T.length !== h || m.params.b1.length !== h) return false;
+  return true;
+}
+
+// 1.7.18+：vote-v4 MLP 前向（sigmoid 概率输出——消费端直接当概率用）
+function mlpProb(m, features) {
+  const { mean, std } = m.norm;
+  const d = mean.length, h = m.hidden;
+  const p = m.params;
+  let acc2 = p.b2;
+  for (let j = 0; j < h; j++) {
+    let acc = p.b1[j];
+    for (let k = 0; k < d; k++) acc += ((features[k] - mean[k]) / std[k]) * p.W1T[j * d + k];
+    const a = acc > 0 ? acc : 0;
+    acc2 += a * p.W2T[j];
+  }
+  return 1 / (1 + Math.exp(-acc2));
+}
+
 function validModelV3(m) {
   if (!m || m.schema !== 'adaboost-vote@3') return false;
   if (!Array.isArray(m.features) || m.features.length < FEATURE_NAMES.length) return false;
@@ -79,9 +107,16 @@ function getVoteModel() {
   if (process.env.LAB_NO_MODEL === '1') { _model = null; return _model; } // 1.7.0（B1-4）：对照实验禁用模型（lab 平台）
   if (process.env.VOTE_MODEL_MODE === 'heuristic') { _model = null; return _model; } // 1.7.15：感知层门控（审计止血）——启发式
   const mode = process.env.VOTE_MODEL_MODE || 'v2'; // v1.7.16：生产默认 v2（分层 AdaBoost；adaboost=v1+iso 过渡对照）
-  // 1.7.18：v3 优先（schema@3，16 配置+25 维），故障回退 v2（schema@2），再回退 v1+iso，最后 null（heuristic）
+  // 1.7.18：v3-fast（vote-v4 蒸馏 MLP）优先 → v3（schema@3）→ v2（schema@2）→ v1+iso → null（heuristic）
   try {
-    if (mode === 'v3') {
+    if (mode === 'v3-fast') {
+      _model = JSON.parse(fs.readFileSync(V4_MODEL_PATH, 'utf8'));
+      if (validModelV4(_model)) return _model;
+      _model = null; // v4 损坏 → 回退 v3 路径
+    }
+  } catch (e) { _model = null; }
+  try {
+    if (mode === 'v3' || mode === 'v3-fast') {
       _model = JSON.parse(fs.readFileSync(V3_MODEL_PATH, 'utf8'));
       if (validModelV3(_model)) return _model;
       _model = null; // v3 损坏 → 回退 v2 路径
@@ -107,11 +142,13 @@ function modelProb(m, features, configKey) {
   let stumps = m.stumps;
   if (m.schema === 'adaboost-vote@2') stumps = pickV2(m, configKey).stumps; // 1.7.16：v2 configKey 路由（local/cap/global）
   if (m.schema === 'adaboost-vote@3') stumps = pickV3(m, configKey).stumps; // 1.7.18：v3 configKey 路由（configs.local/global）
+  if (m.schema === 'vote-mlp@1') return mlpProb(m, features); // 1.7.18+：vote-v4 MLP 概率输出（sigmoid 内建）
   for (const st of stumps) {
     const pred = (features[st.f] < st.thr ? 1 : -1) * st.dir;
     s += st.alpha * pred;
   }
   if (m.schema === 'adaboost-vote@2' || m.schema === 'adaboost-vote@3') return s; // v2/v3：raw score（未校准——禁止概率下游消费，bot-brain 侧仅做单调 sigmoid 供排序）
+  if (m.schema === 'vote-mlp@1') return s; // 不会到达（上方已 return）
   const p = 1 / (1 + Math.exp(-(m.platt.A * s + m.platt.B)));
   return p;
 }

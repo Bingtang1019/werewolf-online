@@ -658,7 +658,7 @@ function buildVoteWorld(room, bot) {
     // 1.7.0（B1-4）：每轮投票前动态似然——模型 P(wolf) 混合（0.6 信念 + 0.4 模型；不改 beliefs 防累积饱和）
     let f = null, mp = null;
     if (useModel) {
-      f = model.schema === 'adaboost-vote@3' ? beliefFeatures25(room, bot.id, p.id) : (_vsEnabled ? voteFeatures13(room._vs.base, bot.id, p.id) : voteFeatures(room, bot.id, p.id)); // 1.8.0（P1）：v1/v2 走房间级快照（LAB_VS=0 回退原实现——配对验证）
+      f = model.schema === 'adaboost-vote@3' || model.schema === 'vote-mlp@1' ? beliefFeatures25(room, bot.id, p.id) : (_vsEnabled ? voteFeatures13(room._vs.base, bot.id, p.id) : voteFeatures(room, bot.id, p.id)); // 1.8.0（P1）：v1/v2 走房间级快照（LAB_VS=0 回退原实现——配对验证）；1.7.18+：v4（MLP）与 v3 同用 25 维
       if (f && process.env.LAB_VS_DBG === '1' && _vsEnabled) {
         const _fa = voteFeatures(room, bot.id, p.id);
         if (_fa && f.length === _fa.length) {
@@ -669,6 +669,7 @@ function buildVoteWorld(room, bot) {
         mp = modelProb(model, f, room.presetKey || (room.cap ? room.cap + 'p' : null)); // 1.7.16：v2 configKey 路由（local/cap/global；用 room 而非 world——world 在函数末尾构造，投票循环内不可引用）
         if (mp != null) {
           if (model.schema === 'adaboost-vote@2' || model.schema === 'adaboost-vote@3') mp = 1 / (1 + Math.exp(-mp)); // v2/v3：raw score → 单调 sigmoid（仅排序消费，未校准——禁止概率阈值/置信度下游）
+          else if (model.schema === 'vote-mlp@1') { /* v4：概率输出（sigmoid 内建）——直接消费 */ }
           else { const mi = isoVote(mp); if (mi != null) mp = mi; } // v1：Platt 概率 + iso 过渡校准
           // 1.7.18：动态权重（数学方法——最优线性组合形态：各按信度反比加权）
 // 信念信度 α = 证据量 ev（查验/票型/死亡/发言 7 类证据源的贝叶斯更新次数）
