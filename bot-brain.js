@@ -677,7 +677,7 @@ function buildVoteWorld(room, bot) {
 // wb(p) = α/(α + k·β)——证据少→模型主导；模型不确定(mp≈0.5)→信念主导；配置 AUC 高→模型更重
 // 固定档保留（BOT_SUSPICION_W env 覆盖 + LAB_DYN_W=0 禁用动态回固定档）：
 //   v3→0.4（扫描最优）/ v2→0.6（未扫描，保守）
-const dynW = process.env.LAB_DYN_W !== '0' && bot.suspicionW == null && !process.env.BOT_SUSPICION_W;
+const dynW = process.env.LAB_DYN_W === '1' && bot.suspicionW == null && !process.env.BOT_SUSPICION_W; // 1.7.18+：动态权重实验门控（二十二节重验：静态 0.4 优于动态 +6.2pp——生产默认静态；LAB_DYN_W=1 启用动态实验）
 const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? bot.suspicionW : parseFloat(process.env.BOT_SUSPICION_W || ((process.env.VOTE_MODEL_MODE || 'v3') === 'v3' ? '0.4' : '0.6'))); // 1.7.18+：生产默认 v3→0.4（权重扫描最优；v2 回退时 0.6）
           s = wb * s + (1 - wb) * mp;
         }
