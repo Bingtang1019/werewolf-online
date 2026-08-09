@@ -652,6 +652,7 @@ function buildVoteWorld(room, bot) {
   if (process.env.LAB_AUDIT_VOTE === '1') global._voteAuditSeq = (global._voteAuditSeq || 0) + 1; // 1.7.15：审计——每次投票决策一个时刻 id
   const useModel = (process.env.VOTE_MODEL_MODE || 'v3') !== 'heuristic' && !!model && factionOf(room, bot) === 'good'; // v1.7.18+：生产默认 v3（VOTE_MODEL_MODE=v2 一键回退）
   const scores = {};
+  let wbCur = null; // 1.7.18+：候选循环内 wb 的审计快照（LAB_AUDIT_VOTE=1 埋点用）
   for (const p of room.players) {
     if (p.id === bot.id || !p.alive) continue;
     let s = beliefs[p.id] ? beliefs[p.id].wolf : Math.min(1, (suspicion[p.id] || 0) / 100); // smart/simulate 用信念，easy 用关键词嫌疑（归一化到 0..1）
@@ -679,6 +680,7 @@ function buildVoteWorld(room, bot) {
 //   v3→0.4（扫描最优）/ v2→0.6（未扫描，保守）
 const dynW = process.env.LAB_DYN_W === '1' && bot.suspicionW == null && !process.env.BOT_SUSPICION_W; // 1.7.18+：动态权重实验门控（二十二节重验：静态 0.4 优于动态 +6.2pp——生产默认静态；LAB_DYN_W=1 启用动态实验）
 const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? bot.suspicionW : parseFloat(process.env.BOT_SUSPICION_W || ((process.env.VOTE_MODEL_MODE || 'v3') === 'v3' ? '0.4' : '0.6'))); // 1.7.18+：生产默认 v3→0.4（权重扫描最优；v2 回退时 0.6）
+          wbCur = wb; // 1.7.18+：审计用（候选循环内记录，LAB_AUDIT_VOTE=1 时写入埋点）
           s = wb * s + (1 - wb) * mp;
         }
       }
@@ -690,6 +692,7 @@ const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? b
       // 1.7.17（vote-v3）：信念特征埋点——决策时刻信念状态（bel_posterior/credibility/vote_share），
       // 与 voteFeatures 13 维并列（A-2 同源：训练/推理消费同一 belief-engine 事件流）
       let belF = null;
+      const wbAudit = wbCur; // 1.7.18+：动态权重审计（候选循环内记录）
       if (room._beliefEngine) {
         try {
           const getBeliefs = _getBeliefsRef;
@@ -707,7 +710,7 @@ const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? b
       // 1.7.18（vote-v3 A-2 修复）：在线采集 25 维特征（beliefFeatures25 独立于模型——任何模式都存，训练/推理同源）
       // 消除"重放训练 vs 在线推理"生态错配（v3 偏狼根因：离线 0.85/上线 32.4% 背离）
       const fAudit = (beliefFeatures25(room, bot.id, p.id) || f);
-      global._voteAudit.push({ v: global._voteAuditSeq, f: fAudit, belF, mp, s, tIsWolf: campOf(p) === 'wolf', useModel, schema: model ? model.schema : null });
+      global._voteAudit.push({ v: global._voteAuditSeq, f: fAudit, belF, wb: wbAudit, mp, s, tIsWolf: campOf(p) === 'wolf', useModel, schema: model ? model.schema : null });
     }
     scores[p.id] = s;
   }
