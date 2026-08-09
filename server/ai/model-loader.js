@@ -11,8 +11,8 @@ const MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v1.
 const V2_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v2.json');
 const V3_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v3-v2.json'); // 1.7.18+：vote-v3 干净数据重训版（v3-25d 脏数据退役，见模型卡二十四节）
 const V4_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v4.json'); // 1.7.18+：vote-v4 蒸馏版（MLP，25d AdaBoost → 概率输出）
-/* 1.7.16：回退链（三级）——v2 → v1+iso过渡 → v1原始 → heuristic（null）
- * VOTE_MODEL_MODE: v3（1.7.18 起可用，16 配置+25 维）| v2（默认生产目标）| adaboost（v1+iso过渡）| heuristic（纯信念，最后保底） */
+/* 1.7.18+：回退链（三级）——v3 → v2 → v1+iso过渡 → v1原始 → heuristic（null）
+ * VOTE_MODEL_MODE: v3（1.7.18+ 生产默认，干净数据版 v3v2）| v2（env 一键回退）| adaboost（v1+iso过渡）| heuristic（纯信念，最后保底） */
 let _model = null;
 let _tried = false;
 /* v1.7.16：schema@2 校验——9 配置路由 + 特征联动 + local/capLocal 结构 */
@@ -106,7 +106,7 @@ function getVoteModel() {
   _tried = true;
   if (process.env.LAB_NO_MODEL === '1') { _model = null; return _model; } // 1.7.0（B1-4）：对照实验禁用模型（lab 平台）
   if (process.env.VOTE_MODEL_MODE === 'heuristic') { _model = null; return _model; } // 1.7.15：感知层门控（审计止血）——启发式
-  const mode = process.env.VOTE_MODEL_MODE || 'v2'; // v1.7.16：生产默认 v2（分层 AdaBoost；adaboost=v1+iso 过渡对照）
+  const mode = process.env.VOTE_MODEL_MODE || 'v3'; // 1.7.18+：生产默认 v3（干净数据版 v3v2；VOTE_MODEL_MODE=v2 可一键回退——验收链闭环 2026-08）
   // 1.7.18：v3-fast（vote-v4 蒸馏 MLP）优先 → v3（schema@3）→ v2（schema@2）→ v1+iso → null（heuristic）
   try {
     if (mode === 'v3-fast') {

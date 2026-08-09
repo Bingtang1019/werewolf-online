@@ -632,7 +632,7 @@ function buildVoteWorld(room, bot) {
   const beliefs = b.beliefs || {};
   const suspicion = b.suspicion || {};
   const modelBase = getVoteModel(); // 1.7.0（B1-4）：fail-open——模型缺失/损坏回退纯信念；仅好人侧注入（狼侧用模型会反向增强）
-  const model = (process.env.VOTE_MODEL_MODE || 'v2') === 'v3' && (room.presetKey || (room.cap ? room.cap + 'p' : null)) === '12c' ? getVoteModelV2() || modelBase : modelBase; // 1.7.18：12c 配对劣化（狼+15.7pp）→ per-config 回退 v2（分配置灰度）
+  const model = (process.env.VOTE_MODEL_MODE || 'v3') === 'v3' && (room.presetKey || (room.cap ? room.cap + 'p' : null)) === '12c' ? getVoteModelV2() || modelBase : modelBase; // 1.7.18+：12c 配对劣化（狼+15.7pp）→ per-config 回退 v2（分配置灰度；生产默认 v3 同步 2026-08）
   const _vsEnabled = process.env.LAB_VS !== '0'; // 1.8.0（P1）：LAB_VS=0 禁用房间级快照（配对验证对照——原实现）
   const _vsKey = room.day + ':' + (room.phase || '') + ':' + (room._voteCastCount || 0) + ':' + (room.messages ? room.messages.length : 0); // 1.8.0（P1）：快照失效键 day+phase+voteCastCount+messages.length——messages 投票轮内动态追加（talkCount 等发言派生字段随新发言重建）；票型实时读 room.votes
   if (_vsEnabled) {
@@ -650,7 +650,7 @@ function buildVoteWorld(room, bot) {
     return 0.7;
   })();
   if (process.env.LAB_AUDIT_VOTE === '1') global._voteAuditSeq = (global._voteAuditSeq || 0) + 1; // 1.7.15：审计——每次投票决策一个时刻 id
-  const useModel = (process.env.VOTE_MODEL_MODE || 'v2') !== 'heuristic' && !!model && factionOf(room, bot) === 'good'; // v1.7.16：生产默认 v2
+  const useModel = (process.env.VOTE_MODEL_MODE || 'v3') !== 'heuristic' && !!model && factionOf(room, bot) === 'good'; // v1.7.18+：生产默认 v3（VOTE_MODEL_MODE=v2 一键回退）
   const scores = {};
   for (const p of room.players) {
     if (p.id === bot.id || !p.alive) continue;
@@ -678,7 +678,7 @@ function buildVoteWorld(room, bot) {
 // 固定档保留（BOT_SUSPICION_W env 覆盖 + LAB_DYN_W=0 禁用动态回固定档）：
 //   v3→0.4（扫描最优）/ v2→0.6（未扫描，保守）
 const dynW = process.env.LAB_DYN_W !== '0' && bot.suspicionW == null && !process.env.BOT_SUSPICION_W;
-const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? bot.suspicionW : parseFloat(process.env.BOT_SUSPICION_W || ((process.env.VOTE_MODEL_MODE || 'v2') === 'v3' ? '0.4' : '0.6')));
+const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? bot.suspicionW : parseFloat(process.env.BOT_SUSPICION_W || ((process.env.VOTE_MODEL_MODE || 'v3') === 'v3' ? '0.4' : '0.6'))); // 1.7.18+：生产默认 v3→0.4（权重扫描最优；v2 回退时 0.6）
           s = wb * s + (1 - wb) * mp;
         }
       }
