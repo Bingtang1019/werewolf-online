@@ -40,6 +40,7 @@ const ROOM_CODE_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 /* ---------------------------- 工具函数 ---------------------------- */
 const rooms = new Map();
 function uid() { return crypto.randomBytes(8).toString('hex'); }
+function newToken() { return crypto.randomBytes(16).toString('hex'); } // 安全加固（C1/C2/C3）：会话 token 128bit 熵，永不进视图
 /* 1.7.0（B1-8）：随机统一走显式 RNG——房间级 rng（从全局派生），保证同种子对局确定性 */
 function roomRng(room) { return (room && room.rng) || global.rng; }
 function randInt(room, n) { return roomRng(room).int(n); }
@@ -164,6 +165,7 @@ function lastwordTimeout(room) {
   afterLastWord(room);
 }
 function byId(room, id) { return room.players.find(p => p.id === id) || null; }
+function byToken(room, tok) { if (!tok) return null; return room.players.find(q => q.sess === tok) || null; } // 安全加固：token 定位玩家（凭证不落视图）
 function rolePlayer(room, key) { return room.players.find(p => effRole(p) === key) || null; }
 function expandCounts(c) { const arr = []; for (const k in c) { for (let i = 0; i < (c[k] || 0); i++) arr.push(k); } return arr; }
 function effRole(p) { return p.role; } // v1.6.2：pickedRole 从未被赋值（盗贼选牌即替换 role），简化
@@ -292,7 +294,7 @@ function createRoom(hostName) {
   const host = addPlayer(room, hostName);
   room.host = host.id;
   bump(room);
-  return { roomId: id, playerId: host.id, view: viewFor(room, host.id) };
+  return { roomId: id, token: host.sess, playerId: host.id, view: viewFor(room, host.id) };
 }
 /* 1.7.18 修复：座位号分配改"最小空缺"——玩家退出（splice）后 length+1 会与剩余
  * 玩家座位冲突（3号退出后新加入者 seat=length+1=6，与现有6号重复——"全是6号"bug
@@ -306,7 +308,7 @@ function nextFreeSeat(room) {
   return s;
 }
 function addPlayer(room, name) {
-  const p = { id: uid(), name: name || '玩家', seat: nextFreeSeat(room), role: null, alive: true, deadBy: null, deadNote: null, leftGame: false, confirmed: false, lastWordUsed: false };
+  const p = { id: uid(), sess: newToken(), name: name || '玩家', seat: nextFreeSeat(room), role: null, alive: true, deadBy: null, deadNote: null, leftGame: false, confirmed: false, lastWordUsed: false };
   room.players.push(p);
   return p;
 }
@@ -317,7 +319,7 @@ function joinRoom(roomId, name) {
   if (room.players.length >= room.playerCap) return { error: `房间已满（${room.playerCap} 人）` };
   const p = addPlayer(room, name);
   bump(room);
-  return { playerId: p.id, view: viewFor(room, p.id) };
+  return { playerId: p.id, token: p.sess, view: viewFor(room, p.id) };
 }
 
 /* ---------------------------- 准备阶段（房主配置） ---------------------------- */
@@ -1986,7 +1988,7 @@ function viewFor(room, pid, chatSince) {
       mood: q.mood || null,
     })),
     my: { id: pid, name: me ? me.name : '', alive: me ? me.alive : false, isHost: room.host === pid, role: me ? roleText(room, me) : null, roleKey: me ? effRole(me) : null, camp: me ? ((me.role === 'thief') ? null : campText(room, me)) : null, // v1.7.6：丘比特可得知自己当前阵营（cupidCamp）
-      mood: me ? (me.mood || null) : null },
+      mood: me ? (me.mood || null) : null }, // 安全加固：token 永不进视图（前端从 create/join 响应获取）
     myChannels: me ? (['all'].filter(() => room.phase !== 'night').concat(isWolfRole(me) && room.phase === 'night' ? ['wolf'] : []).concat(isLoverParty(room, me.id) ? ['lover'] : [])) : ['all'],
     phaseTimed: !!room.phaseDeadline,
     phaseDeadline: room.phaseDeadline,
@@ -2181,7 +2183,7 @@ function resumeRoom(room) {
 
 module.exports = {
   debugRoom,
-  ROLE_INFO, rooms, createRoom, joinRoom, handleAction, handleChat, handleAdvance, handleLeave, handleKick, viewFor, resumeRoom,
+  ROLE_INFO, rooms, createRoom, joinRoom, handleAction, handleChat, handleAdvance, handleLeave, handleKick, viewFor, resumeRoom, byToken, // 安全加固（C1/C2/C3）：token 定位玩家
   checkWin, // 1.7.4：导出供规则测试/实验室直接判定
   // v1.6.1：钩子用 setter 导出（CommonJS 值导出会让外部赋值不生效）
   setOnChange(fn) { onChange = fn; },

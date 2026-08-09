@@ -7,7 +7,7 @@
 const $ = id => document.getElementById(id);
 let view = null;
 let roomId = null;
-let me = null;
+let me = null, token = null; // 安全加固（C1/C2/C3）：me=玩家id（视图归属判断），token=会话凭证（只发服务端）
 let pollTimer = null;
 let pollMs = 0;
 let pollBusy = false; // 轮询在途标记：慢网络下跳过重叠轮询，防止增量叠加
@@ -50,7 +50,7 @@ function nextToast() {
     setTimeout(() => { t.classList.add('hidden'); nextToast(); }, 260);
   }, dur);
 }
-function saveSession() { try { localStorage.setItem('ww_session', JSON.stringify({ room: roomId, me })); } catch (e) {} }
+function saveSession() { try { localStorage.setItem('ww_session', JSON.stringify({ room: roomId, me, token })); } catch (e) {} }
 function loadSession() { try { return JSON.parse(localStorage.getItem('ww_session')); } catch (e) { return null; } }
 function clearSession() { try { localStorage.removeItem('ww_session'); } catch (e) {} }
 
@@ -146,7 +146,7 @@ async function api(path, body) {
   }
 }
 async function act(action, data) {
-  const payload = { room: roomId, me, action, data: data || {}, chatSince: lastChatTs() };
+  const payload = { room: roomId, token, action, data: data || {}, chatSince: lastChatTs() };
   if (IDEMPOTENT_ACTIONS.includes(action)) payload.opId = genOpId(); // v1.6.4（A1-P1-1）：幂等操作带 opId，网络失败自动重试（同 opId 服务端去重）
   let r = await api('api/action', payload);
   for (let i = 0; i < 2 && r && r.netFail; i++) { // 最多重试 2 次（间隔 500ms）——隧道 50% 失败率下“点不动”体感显著改善
@@ -162,7 +162,7 @@ async function act(action, data) {
   return view;
 }
 async function chatSend(ch, text) {
-  const payload = { room: roomId, me, data: { ch, text }, chatSince: lastChatTs(), opId: genOpId() }; // v1.6.4（A1-P1-1）：聊天重试靠 opId 防“一句话说两遍”
+  const payload = { room: roomId, token, data: { ch, text }, chatSince: lastChatTs(), opId: genOpId() }; // v1.6.4（A1-P1-1）：聊天重试靠 opId 防“一句话说两遍”
   let r = await api('api/chat', payload);
   for (let i = 0; i < 2 && r && r.netFail; i++) {
     await new Promise(res => setTimeout(res, 500));
@@ -174,7 +174,7 @@ async function chatSend(ch, text) {
   render();
 }
 async function doAdvance() {
-  const r = await api('api/advance', { room: roomId, me, chatSince: lastChatTs() });
+  const r = await api('api/advance', { room: roomId, token, chatSince: lastChatTs() });
   if (r.error) { toast(r.error); return; }
   applyView(r.view);
   resetPollTimer();
@@ -256,12 +256,12 @@ function needsFastPoll() {
   }
 }
 async function poll() {
-  if (!roomId || !me) return;
+  if (!roomId || !token) return;
   if (pollBusy) return; // 上一轮轮询尚未返回：跳过本次（避免慢网络下请求堆积、增量重叠）
   pollBusy = true;
   try {
     const ver = view ? view.v : -1;
-    const res = await fetch(`api/state?room=${encodeURIComponent(roomId)}&me=${encodeURIComponent(me)}&v=${ver}&since=${lastChatTs()}`);
+    const res = await fetch(`api/state?room=${encodeURIComponent(roomId)}&token=${encodeURIComponent(token)}&v=${ver}&since=${lastChatTs()}`);
     const j = await res.json();
     pollFail = 0; hideNetBanner(); // 服务器有响应即视为网络正常（29）
     if (j.error) {
@@ -289,13 +289,13 @@ async function poll() {
 
 /* 立即执行一次轮询（SSE 推送触发；pollBusy 防重入） */
 function pollNow() {
-  if (!roomId || !me) return;
+  if (!roomId || !token) return;
   poll();
 }
 
 /* ============ SSE 推送唤醒（可选优化，失败自动回退轮询） ============ */
 function connectSSE() {
-  if (!roomId || !me) return;
+  if (!roomId || !token) return;
   if (sseDisabled) return; // v1.5.4：已降级为纯轮询，不再尝试长连接
   // v1.6.4（A1-P1-3）：快速隧道（trycloudflare）对 SSE 长连接不友好（http2 边缘取消）→ 直接纯轮询，省掉每次进房的失败风暴
   const hn = (location.hostname || '').toLowerCase();
@@ -303,7 +303,7 @@ function connectSSE() {
   try { if (sse) sse.close(); } catch (e) {}
   sseConnected = false;
   try {
-    sse = new EventSource(`api/stream?room=${encodeURIComponent(roomId)}&me=${encodeURIComponent(me)}`);
+    sse = new EventSource(`api/stream?room=${encodeURIComponent(roomId)}&token=${encodeURIComponent(token)}`);
     sse.onopen = () => { sseConnected = true; ensurePollTimer(); }; // 切到 30s 心跳
     sse.onmessage = e => {
       try {
@@ -1065,6 +1065,83 @@ function campClass(c) {
 }
 
 /* ---------------------------- 聊天 ---------------------------- */
+/* 移动端聊天悬浮窗（v1.7.18）：底端隐藏露把手 + 上拉半屏/全屏——三档位移、
+ * 拖拽跟手、松手吸附最近档位、隐藏时未读计数。桌面/横屏侧栏模式不受影响 */
+const CHAT_HANDLE_H = 44; // 把手高度（与 style.css #chat-handle 同步）
+const CHAT_DRAG_TOL = 8; // 拖动判定阈值（px）——超过才算拖拽（抑制后续 click）
+let chatUnread = 0;
+let chatDrag = null;
+let chatSuppressClick = false; // 拖拽松手后抑制浏览器派发的 click（防二次 toggle）
+function chatVh() { // 动态视口高（移动端浏览器工具栏存在时 innerHeight/vh 偏大——输入框被盖"打不了字"的根因）
+  const vv = window.visualViewport;
+  return vv && vv.height ? vv.height : (window.innerHeight || document.documentElement.clientHeight || 600);
+}
+function chatHalfH() { return Math.max(320, Math.round(chatVh() * 0.55)); } // 半屏高（px）
+function chatHideY() { return chatVh() - CHAT_HANDLE_H; } // 隐藏位移（px）
+function chatHalfY() { return Math.max(0, chatVh() - chatHalfH()); } // 半屏位移
+function chatYNow() {
+  const r = $('right');
+  if (!r) return chatHideY();
+  const m = /translateY\((-?[\d.]+)px\)/.exec(r.style.transform);
+  return m ? parseFloat(m[1]) : (document.body.classList.contains('chat-open') ? chatHalfY() : chatHideY());
+}
+function applyChatY(y, animate) {
+  const r = $('right');
+  if (!r) return;
+  r.style.transition = animate ? '' : 'none';
+  r.style.transform = 'translateY(' + y + 'px)';
+}
+function chatSetOpen(open, full) {
+  document.body.classList.toggle('chat-open', !!open);
+  document.body.classList.toggle('chat-full', !!(open && full));
+  applyChatY(open ? (full ? 0 : chatHalfY()) : chatHideY(), true);
+  if (open) { chatUnread = 0; updateChatHandle(); }
+}
+function chatToggle() {
+  const open = document.body.classList.contains('chat-open');
+  const full = document.body.classList.contains('chat-full');
+  if (open && !full) chatSetOpen(false);           // 半屏 → 收起
+  else if (open && full) chatSetOpen(true, false); // 全屏 → 半屏
+  else chatSetOpen(true);                           // 隐藏 → 半屏
+}
+function chatDragStart(y) { chatDrag = { startY: y, startYp: chatYNow(), moved: false }; }
+function chatDragMove(y) {
+  if (!chatDrag) return;
+  if (!chatDrag.moved && Math.abs(y - chatDrag.startY) > CHAT_DRAG_TOL) {
+    chatDrag.moved = true;
+    chatSuppressClick = true; // 进入拖拽——本次 touch 序列的 click 作废
+  }
+  const yp = Math.max(0, Math.min(chatHideY(), chatDrag.startYp + (y - chatDrag.startY)));
+  applyChatY(yp, false);
+}
+function chatDragEnd() {
+  if (!chatDrag) return;
+  const cur = chatYNow();
+  const moved = chatDrag.moved;
+  chatDrag = null;
+  const half = chatHalfY(), hide = chatHideY();
+  let y = hide;
+  if (cur < (half + 0) / 2) y = 0;        // 顶部区 → 全屏
+  else if (cur < (hide + half) / 2) y = half; // 中部 → 半屏
+  chatSetOpen(y < hide, y === 0);
+  if (moved) setTimeout(() => { chatSuppressClick = false; }, 350); // 拖拽后抑制松手 click
+}
+function updateChatHandle() {
+  const el = $('chat-handle-label');
+  if (!el) return;
+  el.textContent = document.body.classList.contains('chat-open') ? '' : (chatUnread ? '聊天 · ' + chatUnread : '聊天');
+}
+/* 聊天自动滚动（v1.7.18 强化）：nearBottom 智能滚（用户上翻不打断）/ force
+ * （自己发消息）强制滚到底；rAF 延后一帧等布局稳定（emoji/内容渲染后
+ * scrollHeight 才最终——同步滚会因高度未定而无效，这是"自动下拉消失"的诱因） */
+function scrollChatIfNeeded(force) {
+  const box = $('chat-msgs');
+  if (!box) return;
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  if (force || nearBottom) {
+    requestAnimationFrame(() => { try { box.scrollTop = box.scrollHeight; } catch (e) {} });
+  }
+}
 function renderChat() {
   // 夜晚自动切私聊频道（48）：全体频道夜晚关闭时，直接切到狼/情侣
   if (view.phase === 'night' && chatTab === 'all') {
@@ -1113,12 +1190,16 @@ function renderChat() {
         ${m.marker && m.marker !== '遗言' ? `<span class="cm-marker">${escapeHtml(m.marker)}</span>` : ''}
         <span class="cm-name">${escapeHtml(m.name)}</span><span class="cm-text">${escapeHtml(m.text)}</span></div>`;
     }).join('');
+    // 隐藏时新消息未读计数（悬浮窗把手提示；打开即清零）
+    if (!document.body.classList.contains('chat-open') && msgs.length > lastChatCount) {
+      chatUnread += msgs.length - lastChatCount;
+      updateChatHandle();
+    }
     lastChatCount = msgs.length;
     lastChatTab = chatTab;
-    // 智能滚动（24）：距底部 <40px 才自动滚到底，用户上翻历史不被打断
-    const box = $('chat-msgs');
-    const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
-    if (nearBottom) box.scrollTop = box.scrollHeight;
+    // 智能滚动（24）v1.7.18：距底部 <40px 才自动滚（上翻不打断）；最后一条是
+    // 自己发的 → 强制滚到底（聊天 UX 标准：自己发消息总是可见）
+    scrollChatIfNeeded(!!(msgs.length && msgs[msgs.length - 1].from === me));
   }
   if (msgs.length) lastTabTs[chatTab] = msgs[msgs.length - 1].ts;
   // 发送权限：与服务端 chatAccess 一致（全体频道夜晚关闭；私密频道仅成员可发）
@@ -1263,7 +1344,7 @@ function onSetting(key, val) { act('settings', { [key]: val }); }
 function onWinMode(v) { act('settings', { winMode: v }); }
 function onTieRule(v) { act('settings', { tieRule: v }); }
 function onThief(v) { act('settings', { thief: v }); }
-function kick(id) { api('api/kick', { room: roomId, me, target: id }).then(r => { if (r.error) toast(r.error); else { applyView(r.view); resetPollTimer(); render(); } }); }
+function kick(id) { api('api/kick', { room: roomId, token, target: id }).then(r => { if (r.error) toast(r.error); else { applyView(r.view); resetPollTimer(); render(); } }); }
 
 /* ---------------------------- 首页（v1.2.0） ---------------------------- */
 /* 离线模式（v1.4.1）：一键建房 + 自动加满智能人机（默认 6 人局），单机陪练 */
@@ -1273,12 +1354,13 @@ async function startOffline() {
   const r = await api('api/create', { name });
   if (r.error || !r.roomId || !r.playerId) { $('home-err').textContent = r.error || '创建失败，请重试'; return; }
   const room = r.roomId, me = r.playerId;
+  token = r.token;
   const cap = 6; // 1 真人 + 5 智能人机
   for (let i = 0; i < cap - 1; i++) {
-    const br = await api('api/action', { room, me, action: 'add_bot', data: { level: 'smart' } });
+    const br = await api('api/action', { room, token, action: 'add_bot', data: { level: 'smart' } });
     if (br.error) break;
   }
-  await api('api/action', { room, me, action: 'setCap', data: { cap } });
+  await api('api/action', { room, token, action: 'setCap', data: { cap } });
   localStorage.lwName = name;
   localStorage.lwRoom = room;
   enterRoom(room, me, r.view);
@@ -1850,7 +1932,7 @@ $('btn-leave').addEventListener('click', async () => {
       return;
     }
     leaveArmed = false;
-    await api('api/leave', { room: roomId, me });
+    await api('api/leave', { room: roomId, token });
     clearSession();
     location.reload();
   });
@@ -1859,15 +1941,28 @@ $('btn-leave').addEventListener('click', async () => {
   // 身份芯片点击 → 大卡弹窗（8）
   const elChip = $('my-role-chip'); if (elChip) elChip.addEventListener('click', openRolePop);
   const elPop = $('role-pop'); if (elPop) elPop.addEventListener('click', closeRolePop);
-  // 移动端聊天抽屉（2）
-  const bco = $('btn-chat-open');
-  if (bco) bco.classList.remove('hidden');
-  if (bco) bco.addEventListener('click', e => { e.stopPropagation(); document.body.classList.toggle('chat-open'); });
+  // 移动端聊天悬浮窗（v1.7.18+）：底端把手（唯一入口——聊天按钮已移除）+
+  // 拖拽区 = 把手 + 标签页 + touchcancel + 拖拽后抑制 click + 外部点击收起
+  const chd = $('chat-handle');
+  const cht = $('chat-tabs');
+  const bindChatDrag = el => {
+    if (!el) return;
+    el.addEventListener('touchstart', e => { if (e.touches[0]) chatDragStart(e.touches[0].clientY); }, { passive: true });
+    el.addEventListener('touchmove', e => { if (chatDrag && e.touches[0]) { e.preventDefault(); chatDragMove(e.touches[0].clientY); } }, { passive: false });
+    el.addEventListener('touchend', () => chatDragEnd());
+    el.addEventListener('touchcancel', () => chatDragEnd());
+  };
+  if (chd) {
+    chd.addEventListener('click', e => { e.stopPropagation(); if (chatSuppressClick) return; chatToggle(); });
+    bindChatDrag(chd);
+  }
+  if (cht) bindChatDrag(cht);
   document.addEventListener('click', e => {
-    if (document.body.classList.contains('chat-open') && !e.target.closest('#right') && !e.target.closest('#btn-chat-open')) {
-      document.body.classList.remove('chat-open');
+    if (document.body.classList.contains('chat-open') && !e.target.closest('#right')) {
+      chatSetOpen(false);
     }
   });
+  updateChatHandle();
   $('btn-force').addEventListener('click', () => { if (view && view.my && view.my.isHost) doAdvance(); });
   $('btn-chat').addEventListener('click', sendChat);
   $('chat-text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) sendChat(); });
@@ -1947,11 +2042,11 @@ $('btn-leave').addEventListener('click', async () => {
 
   // 重连
   const s = loadSession();
-  if (s && s.room && s.me) {
+  if (s && s.room && s.me && s.token) {
     (async () => {
-      const res = await fetch(`api/state?room=${encodeURIComponent(s.room)}&me=${encodeURIComponent(s.me)}`);
+      const res = await fetch(`api/state?room=${encodeURIComponent(s.room)}&token=${encodeURIComponent(s.token)}`);
       const j = await res.json();
-      if (!j.error) enterRoom(s.room, s.me, j);
+      if (!j.error) { token = s.token; enterRoom(s.room, s.me, j); }
       else clearSession();
     })();
   }

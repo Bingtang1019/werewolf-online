@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const zlib = require('zlib');
+const crypto = require('crypto'); // 安全加固（M2）：快照 HMAC 完整性校验
 const Game = require('./game.js');
 const { createRng } = require('./server/ai/rng.js'); // 1.7.0（B1-8）
 
@@ -153,6 +154,10 @@ function saveSnapshot() {
       c.rngState = r.rng ? r.rng.state() : null; delete c.rng; // 1.7.0（B1-8）：快照记录 RNG 状态（s 数组），恢复后随机序列连续不重演
       return c;
     }) };
+    // 安全加固（M2）：快照 HMAC 完整性校验（SNAPSHOT_SECRET 配置后启用——防离线改档）
+    if (process.env.SNAPSHOT_SECRET) {
+      data.sig = crypto.createHmac('sha256', process.env.SNAPSHOT_SECRET).update(JSON.stringify(data)).digest('hex');
+    }
     const tmp = SNAPSHOT_FILE + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(data, SNAPSHOT_REPLACER));
     if (fs.existsSync(SNAPSHOT_FILE)) fs.copyFileSync(SNAPSHOT_FILE, SNAPSHOT_FILE + '.bak'); // C2：先备份上一次成功版本
@@ -200,6 +205,13 @@ function loadSnapshot() {
         if (fs.existsSync(SNAPSHOT_FILE + '.bak')) { data = JSON.parse(fs.readFileSync(SNAPSHOT_FILE + '.bak', 'utf8'), SNAPSHOT_REVIVER); src = SNAPSHOT_FILE + '.bak'; }
       } catch (e2) { data = null; }
     }
+    // 安全加固（M2）：快照 HMAC 校验（SNAPSHOT_SECRET 配置后启用——防离线改档）
+    if (process.env.SNAPSHOT_SECRET && data && data.sig) {
+      const sig = data.sig; delete data.sig;
+      const calc = crypto.createHmac('sha256', process.env.SNAPSHOT_SECRET).update(JSON.stringify(data, SNAPSHOT_REPLACER)).digest('hex');
+      if (calc !== sig) { console.warn('[snapshot] 校验失败，拒绝恢复（可能被离线篡改）'); return 0; }
+      data.sig = sig;
+    }
     if (!data || data.version !== 1 || !Array.isArray(data.rooms)) return 0; // 格式不兼容 → 安全丢弃，绝不崩启动
     let n = 0;
     for (const r of data.rooms) {
@@ -226,9 +238,25 @@ function clientIp(req) {
   return remote;
 }
 const LOCAL_IPS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
-/* v1.6.2：POST 会话参数格式校验（与 /api/state 的 GET 校验同规则，防垃圾请求打到引擎） */
+/* 安全加固（H1 防 DNS rebinding）：Host 白名单——私有网段默认放行，公网部署用 PUBLIC_HOST 配置域名（逗号分隔） */
+const PRIVATE_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\]|::1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
+const PUBLIC_HOSTS = new Set((process.env.PUBLIC_HOST || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
+/* 安全加固（H1 辅助）：POST Origin 校验——同源/无 Origin（脚本/curl）/PUBLIC_HOST 白名单放行 */
+function originOk(req) {
+  const o = req.headers.origin;
+  if (!o) return true;
+  try {
+    const oh = new URL(o).host.toLowerCase();
+    const hh = String(req.headers.host || '').toLowerCase();
+    if (oh === hh) return true;
+    const port = process.env.PORT || '3000';
+    return (process.env.PUBLIC_HOST || '').split(',').some(h => oh === h.trim().toLowerCase() + ':' + port);
+  } catch (e) { return false; }
+}
+/* v1.6.2：POST 会话参数格式校验（与 /api/state 的 GET 校验同规则，防垃圾请求打到引擎）
+ * 安全加固（C1/C2/C3）：me（玩家 id）改为 token（服务端会话凭证，128bit 熵，永不进视图） */
 function validSession(body) {
-  return /^[0-9A-Z]{6}$/.test(String(body && body.room || '')) && /^[0-9a-f]{16}$/.test(String(body && body.me || ''));
+  return /^[0-9A-Z]{6}$/.test(String(body && body.room || '')) && /^[0-9a-f]{32}$/.test(String(body && body.token || ''));
 }
 function rateLimit(ip, key, limit, windowMs) {
   if (!ip) return true;
@@ -264,6 +292,10 @@ function serveStatic(req, res, file) {
     const hit = staticCache.get(key);
     const mime = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
     const headers = { 'Content-Type': mime, 'Cache-Control': 'no-cache', 'Vary': 'Accept-Encoding' };
+    // 安全加固（M3）：CSP 纵深防御（模板含内联 style 属性，style-src 需 'unsafe-inline'；无内联 script）
+    if (mime.startsWith('text/html')) {
+      headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'";
+    }
     const useGzip = acceptsGzip(req) && st.size > 512;
     if (hit && hit.mtimeMs === st.mtimeMs) {
       if (useGzip) { headers['Content-Encoding'] = 'gzip'; res.writeHead(200, headers); res.end(hit.gz); }
@@ -333,6 +365,15 @@ const server = http.createServer((req, res) => {
     recordHttp(ms, res.statusCode >= 400);
     if (ms > 500) logSlow(pathname, ms);
   });
+  // 安全加固（H1 防 DNS rebinding）：Host 不在白名单/私有网段 → 403
+  const hostHdr = String(req.headers.host || '').toLowerCase().split(':')[0];
+  if (!PRIVATE_HOST_RE.test(hostHdr) && !PUBLIC_HOSTS.has(hostHdr)) {
+    res.writeHead(403); res.end('Forbidden'); return;
+  }
+  // 安全加固（H1 辅助）：POST 请求 Origin 校验（同源/白名单/无 Origin 放行）
+  if (req.method === 'POST' && !originOk(req)) {
+    res.writeHead(403); res.end('Forbidden'); return;
+  }
   let pathname;
   try { pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname); }
   catch (e) { res.writeHead(400); res.end('Bad Request'); return; }
@@ -381,7 +422,7 @@ const server = http.createServer((req, res) => {
       return readBody(req, res, body => {
         const r = Game.createRoom(String(body.name || '').slice(0, 12) || '玩家');
         markDirty();
-        sendJSON(res, { roomId: r.roomId, playerId: r.playerId, view: r.view });
+        sendJSON(res, { roomId: r.roomId, token: r.token, playerId: r.playerId, view: r.view });
       });
     }
     if (pathname === '/api/join' && req.method === 'POST') {
@@ -392,38 +433,43 @@ const server = http.createServer((req, res) => {
         const r = Game.joinRoom(roomId, String(body.name || '').slice(0, 12) || '玩家');
         if (r.error) return sendJSON(res, { error: r.error });
         markDirty();
-        sendJSON(res, { playerId: r.playerId, view: r.view });
+        sendJSON(res, { token: r.token, playerId: r.playerId, view: r.view });
       });
     }
     if (pathname === '/api/state' && req.method === 'GET') {
       const url = new URL(req.url, 'http://x');
       const roomId = (url.searchParams.get('room') || '').toUpperCase();
-      const me = url.searchParams.get('me') || '';
-      // 参数格式校验：房间号 6 位字母数字，玩家 ID 16 位 hex（顺手挡掉垃圾请求）
+      const token = url.searchParams.get('token') || '';
+      // 安全加固（H2）：state 限流——未知房间 10 次/分，已知房间 300 次/分（8 人正常轮询 1~2s 足够）
+      if (!rateLimit(clientIp(req), 'state-miss', 10, 60000) || !rateLimit(clientIp(req), 'state', 300, 60000)) return sendJSON(res, { error: 'rate-limit' });
+      // 参数格式校验：房间号 6 位字母数字，会话 token 32 位 hex（安全加固 C1/C2/C3：me→token，id 不再作为凭证）
       if (!/^[0-9A-Z]{6}$/.test(roomId)) return sendJSON(res, { error: 'room-not-found' });
-      if (!/^[0-9a-f]{16}$/.test(me)) return sendJSON(res, { error: 'player-not-found' });
+      if (!/^[0-9a-f]{32}$/.test(token)) return sendJSON(res, { error: 'player-not-found' });
       const room = Game.rooms.get(roomId);
       if (!room) return sendJSON(res, { error: 'room-not-found' });
       room.lastActive = Date.now(); // 记录活跃时间，供 TTL 清理使用
-      const p = room.players.find(q => q.id === me);
+      const p = Game.byToken(room, token);
       if (!p) return sendJSON(res, { error: 'player-not-found' });
       // 版本一致 → 返回极小的“未变化”响应，避免每次轮询都传输完整状态（隧道带宽/CPU 关键优化）
       const clientV = parseInt(url.searchParams.get('v') || '-1', 10);
       if (clientV === room.version) return sendJSON(res, { v: room.version, changed: false });
       // 聊天增量：客户端带上最后一条消息的 ts（since），服务端只发新消息，避免全量重发
       const chatSince = parseInt(url.searchParams.get('since') || '0', 10) || 0;
-      return sendJSON(res, Game.viewFor(room, me, chatSince));
+      return sendJSON(res, Game.viewFor(room, p.id, chatSince));
     }
     if (pathname === '/api/stream' && req.method === 'GET') {
       const url = new URL(req.url, 'http://x');
       const roomId = (url.searchParams.get('room') || '').toUpperCase();
-      const me = url.searchParams.get('me') || '';
+      const token = url.searchParams.get('token') || '';
       if (!/^[0-9A-Z]{6}$/.test(roomId)) { res.writeHead(404); res.end(); return; }
-      if (!/^[0-9a-f]{16}$/.test(me)) { res.writeHead(404); res.end(); return; }
+      if (!/^[0-9a-f]{32}$/.test(token)) { res.writeHead(404); res.end(); return; }
       const room = Game.rooms.get(roomId);
       if (!room) { res.writeHead(404); res.end(); return; }
-      const p = room.players.find(q => q.id === me);
+      const p = Game.byToken(room, token);
       if (!p) { res.writeHead(404); res.end(); return; }
+      // 安全加固（M1）：SSE 每房间连接数上限 64（防单 IP 挂大量长连接占内存）
+      const curEntry = sseClients.get(roomId);
+      if (curEntry && curEntry.res.size >= 64) { res.writeHead(429); res.end('Too Many Connections'); return; }
       // SSE：只推送版本号，数据仍走 /api/state（保持单一数据源）
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -446,9 +492,14 @@ const server = http.createServer((req, res) => {
     if (pathname === '/api/action' && req.method === 'POST') {
       return readBody(req, res, body => {
         if (!validSession(body)) return sendJSON(res, { error: '参数格式错误' });
+        // 安全加固（H2）：action 每 IP 60 次/分钟（正常玩家远用不到）
+        if (!rateLimit(clientIp(req), 'action', 60, 60000)) return sendJSON(res, { error: '操作过于频繁' });
         const op = opCheck(body); // v1.6.4（A1-P1-1）：opId 幂等去重（重试命中 → 直接返回缓存确认）
         if (op.replay) return sendJSON(res, { ok: op.ok, code: op.code, replayed: true });
-        const r = Game.handleAction(body.room, body.me, body.action, body.data || {}, body.chatSince || 0);
+        const room = Game.rooms.get(body.room);
+        const p = room && Game.byToken(room, body.token); // 安全加固：凭证 = token（id 不再可冒充）
+        if (!p) return sendJSON(res, { error: '玩家不存在' });
+        const r = Game.handleAction(body.room, p.id, body.action, body.data || {}, body.chatSince || 0);
         if (r.error) { opCommit(op.opId, false, 400); return sendJSON(res, { error: r.error }); }
         markDirty();
         opCommit(op.opId, true, 200);
@@ -460,7 +511,10 @@ const server = http.createServer((req, res) => {
         if (!validSession(body)) return sendJSON(res, { error: '参数格式错误' });
         const op = opCheck(body);
         if (op.replay) return sendJSON(res, { ok: op.ok, code: op.code, replayed: true });
-        const r = Game.handleChat(body.room, body.me, body.data || {}, body.chatSince || 0);
+        const room = Game.rooms.get(body.room);
+        const p = room && Game.byToken(room, body.token);
+        if (!p) return sendJSON(res, { error: '玩家不存在' });
+        const r = Game.handleChat(body.room, p.id, body.data || {}, body.chatSince || 0);
         if (r.error) { opCommit(op.opId, false, 400); return sendJSON(res, { error: r.error }); }
         markDirty();
         opCommit(op.opId, true, 200);
@@ -472,7 +526,10 @@ const server = http.createServer((req, res) => {
         if (!validSession(body)) return sendJSON(res, { error: '参数格式错误' });
         const op = opCheck(body); // v1.6.4（A1-P1-1）：advance 也去重——重试不会把阶段连跳两格
         if (op.replay) return sendJSON(res, { ok: op.ok, code: op.code, replayed: true });
-        const r = Game.handleAdvance(body.room, body.me, body.chatSince || 0);
+        const room = Game.rooms.get(body.room);
+        const p = room && Game.byToken(room, body.token);
+        if (!p) return sendJSON(res, { error: '玩家不存在' });
+        const r = Game.handleAdvance(body.room, p.id, body.chatSince || 0);
         if (r.error) { opCommit(op.opId, false, 400); return sendJSON(res, { error: r.error }); }
         markDirty();
         opCommit(op.opId, true, 200);
@@ -482,13 +539,19 @@ const server = http.createServer((req, res) => {
     if (pathname === '/api/leave' && req.method === 'POST') {
       return readBody(req, res, body => {
         if (!validSession(body)) return sendJSON(res, { error: '参数格式错误' });
-        Game.handleLeave(body.room, body.me); markDirty(); sendJSON(res, { ok: true });
+        const room = Game.rooms.get(body.room);
+        const p = room && Game.byToken(room, body.token);
+        if (!p) return sendJSON(res, { error: '玩家不存在' });
+        Game.handleLeave(body.room, p.id); markDirty(); sendJSON(res, { ok: true });
       });
     }
     if (pathname === '/api/kick' && req.method === 'POST') {
       return readBody(req, res, body => {
         if (!validSession(body) || (body.target && !/^[0-9a-f]{16}$/.test(String(body.target)))) return sendJSON(res, { error: '参数格式错误' });
-        const r = Game.handleKick(body.room, body.me, body.target, body.chatSince || 0);
+        const room = Game.rooms.get(body.room);
+        const p = room && Game.byToken(room, body.token);
+        if (!p) return sendJSON(res, { error: '玩家不存在' });
+        const r = Game.handleKick(body.room, p.id, body.target, body.chatSince || 0);
         if (r.error) return sendJSON(res, { error: r.error });
         markDirty();
         sendJSON(res, { ok: true, view: r.view });
