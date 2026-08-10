@@ -433,10 +433,10 @@ const server = http.createServer((req, res) => {
       return readBody(req, res, body => {
         const roomId = String(body.roomId || '').toUpperCase().trim();
         if (!/^[0-9A-Z]{6}$/.test(roomId)) return sendJSON(res, { error: '房间号格式错误（6 位数字或字母）' });
-        const r = Game.joinRoom(roomId, String(body.name || '').slice(0, 12) || '玩家');
+        const r = Game.joinRoom(roomId, String(body.name || '').slice(0, 12) || '玩家', String(body.token || ''));
         if (r.error) return sendJSON(res, { error: r.error });
         markDirty();
-        sendJSON(res, { token: r.token, playerId: r.playerId, view: r.view });
+        sendJSON(res, { token: r.token, playerId: r.playerId, reused: !!r.reused, view: r.view });
       });
     }
     if (pathname === '/api/state' && req.method === 'GET') {
@@ -453,6 +453,7 @@ const server = http.createServer((req, res) => {
       room.lastActive = Date.now(); // 记录活跃时间，供 TTL 清理使用
       const p = Game.byToken(room, token);
       if (!p) return sendJSON(res, { error: 'player-not-found' });
+      if (p._disconnectedAt) p._disconnectedAt = null; // v1.7.21：活跃轮询 = 未断线（清除标记）
       // 版本一致 → 返回极小的“未变化”响应，避免每次轮询都传输完整状态（隧道带宽/CPU 关键优化）
       const clientV = parseInt(url.searchParams.get('v') || '-1', 10);
       if (clientV === room.version) return sendJSON(res, { v: room.version, changed: false });
@@ -484,11 +485,24 @@ const server = http.createServer((req, res) => {
       let entry = sseClients.get(roomId);
       if (!entry) { entry = { lastV: room.version, res: new Set() }; sseClients.set(roomId, entry); }
       entry.res.add(res);
+      if (p._disconnectedAt) { p._disconnectedAt = null; } // v1.7.21：断线后重连——清除断线标记（不清理）
       const hb = setInterval(() => { try { res.write(': ping\n\n'); } catch (e) {} }, 25000); // 防中间设备掐空闲连接
       req.on('close', () => {
         clearInterval(hb);
         entry.res.delete(res);
         if (!entry.res.size) sseClients.delete(roomId);
+        // v1.7.21（双占位修复）：SSE 断开 → 标记断线，60s 未重连则移除玩家（防清理后台残留双占位）
+        // 延迟窗口防误伤：浏览器刷新/短暂断网会在 60s 内重连（清除标记）
+        p._disconnectedAt = Date.now();
+        setTimeout(() => {
+          const r2 = Game.rooms.get(roomId);
+          if (!r2) return;
+          const p2 = Game.byToken(r2, token);
+          if (p2 && p2._disconnectedAt && Date.now() - p2._disconnectedAt >= 60000) {
+            // 仍断线且超时：若 token 未续期（byToken 用旧 token 还能找到 = 玩家未重连/未重新 join）→ 移除
+            Game.removePlayer(r2, p2.id);
+          }
+        }, 61000);
       });
       return;
     }

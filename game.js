@@ -312,9 +312,18 @@ function addPlayer(room, name) {
   room.players.push(p);
   return p;
 }
-function joinRoom(roomId, name) {
+function joinRoom(roomId, name, token) {
   const room = rooms.get(roomId);
   if (!room) return { error: '房间不存在或已解散' };
+  // v1.7.21（双占位修复）：断线重连——token 匹配房间内玩家则复用（不新建、不占新位）；
+  // 场景：清理后台/页面被杀时 leave 来不及发 → 服务端玩家滞留；重进带旧 token → 认领旧位
+  // 注意：token 复用不受 phase 限制（游戏中途断线也能重连回自己的位置）
+  const old = byToken(room, token);
+  if (old) {
+    old.sess = newToken(); // 会话续期（旧 token 作废——防已离开页面残留 token 继续使用）
+    bump(room);
+    return { playerId: old.id, token: old.sess, reused: true, view: viewFor(room, old.id) };
+  }
   if (room.phase !== 'lobby') return { error: '游戏已开始，无法加入' };
   if (room.players.length >= room.playerCap) return { error: `房间已满（${room.playerCap} 人）` };
   const p = addPlayer(room, name);
@@ -2183,7 +2192,7 @@ function resumeRoom(room) {
 
 module.exports = {
   debugRoom,
-  ROLE_INFO, rooms, createRoom, joinRoom, handleAction, handleChat, handleAdvance, handleLeave, handleKick, viewFor, resumeRoom, byToken, // 安全加固（C1/C2/C3）：token 定位玩家
+  ROLE_INFO, rooms, createRoom, joinRoom, handleAction, handleChat, handleAdvance, handleLeave, handleKick, viewFor, resumeRoom, byToken, removePlayer, // 安全加固（C1/C2/C3）：token 定位玩家；v1.7.21：断线超时清理用 removePlayer
   checkWin, // 1.7.4：导出供规则测试/实验室直接判定
   // v1.6.1：钩子用 setter 导出（CommonJS 值导出会让外部赋值不生效）
   setOnChange(fn) { onChange = fn; },

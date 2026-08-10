@@ -1855,7 +1855,8 @@ function init() {
     const code = localStorage.lwRoom; if (!code) return;
     const name = nickValue();
     $('home-err').textContent = '';
-    const r = await api('api/join', { roomId: code, name });
+    const s = loadSession();
+    const r = await api('api/join', { roomId: code, name, token: (s && s.token) || '' }); // v1.7.21：带旧 token join——断线重连复用旧位
     if (r.error || !r.playerId) { toast('无法进入上次房间：' + (r.error || '房间可能已解散'), 'err'); return; }
     localStorage.lwName = name;
     localStorage.lwRoom = code;
@@ -1935,6 +1936,13 @@ $('btn-leave').addEventListener('click', async () => {
     await api('api/leave', { room: roomId, token });
     clearSession();
     location.reload();
+  });
+
+  // v1.7.21（双占位修复）：页面关闭/后台清理时主动发 leave（navigator.sendBeacon 不受页面销毁影响，
+  // fetch 在页面销毁时可能被取消）；pagehide 兼容移动端清理后台 + 桌面关页
+  window.addEventListener('pagehide', () => {
+    if (!roomId || !token) return;
+    try { navigator.sendBeacon('api/leave', new Blob([JSON.stringify({ room: roomId, token })], { type: 'application/json' })); } catch (e) {}
   });
   // 房号点击即复制（9）→ v1.3.0：复制邀请链接
   $('room-code').addEventListener('click', copyInvite);
