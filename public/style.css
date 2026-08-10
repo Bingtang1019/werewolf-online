@@ -294,6 +294,7 @@ button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 #cap-slider:active::-webkit-slider-thumb { transform: scale(1.25); box-shadow: 0 0 10px rgba(232, 182, 76, .5); }
 
 /* ---------- 聊天 ---------- */
+#chat-handle { display: none; } /* 桌面/横屏侧栏模式隐藏把手（移动端 @media 内显示） */
 #chat-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
 .chat-tab { padding: 5px 14px; border-radius: 20px; background: var(--bg3); border: 1px solid var(--line); cursor: pointer; font-size: 13px; transition: border-color .15s; }
 .chat-tab:hover { border-color: #3d4a68; }
@@ -372,18 +373,33 @@ button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 @media (max-width: 900px) {
   #main { grid-template-columns: 1fr; gap: 10px; padding: 10px; }
   #info { position: static; }
-  /* 聊天抽屉：点击“💬 聊天”展开，点遮罩收起 */
+  /* 聊天悬浮窗（v1.7.18+）：底端隐藏露把手 + 上拉半屏/全屏——位移档位：
+   * 隐藏 translateY(100% - 44px) / 半屏 100% - 55dvh / 全屏 0
+   * 高度用 dvh（动态视口）——移动端浏览器底部工具栏会让 100vh > 实际
+   * 可视区（面板底部/输入行被工具栏盖住"打不了字"——1.7.18 修复） */
   #right {
     position: fixed; left: 0; right: 0; bottom: 0; top: auto;
-    width: 100%; height: 72vh; z-index: 40;
-    transform: translateY(105%); transition: transform .3s ease;
+    width: 100%; height: 92vh; height: calc(100dvh - 10px); z-index: 40;
+    transform: translateY(calc(100% - 44px)); transition: transform .32s cubic-bezier(.22,.9,.3,1);
     border-radius: 16px 16px 0 0; border-top: 1px solid var(--line);
     box-shadow: 0 -12px 40px rgba(0,0,0,.55); background: var(--bg);
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    padding: 0 12px calc(10px + env(safe-area-inset-bottom));
   }
-  body.chat-open #right { transform: translateY(0); }
+  body.chat-open #right { transform: translateY(calc(100% - 55vh)); transform: translateY(calc(100% - 55dvh)); }
+  body.chat-full #right { transform: translateY(0); }
   body.chat-open::after { content: ''; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 39; }
-  #btn-chat-open { display: inline-block; }
+  /* 底端把手条 + 标签页 = 拖拽区（合计 ~80px——面板区域也能下拉收回，
+   * 消息区 #chat-msgs 不绑、保持滚动） */
+  #chat-handle {
+    height: 44px; flex: none; display: flex; align-items: center; justify-content: center;
+    gap: 8px; cursor: pointer; -webkit-user-select: none; user-select: none;
+    touch-action: none; position: relative; z-index: 1;
+  }
+  #chat-handle .ch-grip { width: 56px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.18); }
+  #chat-handle-label { font-size: 12px; color: var(--muted); }
+  body.chat-open #chat-handle-label { display: none; }
+  #chat-tabs { margin-top: 6px; touch-action: none; -webkit-user-select: none; user-select: none; }
+  #chat-input-row { position: relative; z-index: 1; }
   #chat-input-row { padding-bottom: env(safe-area-inset-bottom); }
   button.mini { min-height: 40px; }
   #chat-text { min-height: 40px; }
@@ -392,11 +408,12 @@ button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
   .role-card { flex: 1 1 120px; }
   #players { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 }
-@media (min-width: 901px) { #btn-chat-open { display: none !important; } }
+/* 1.7.18：聊天按钮已移除——移动端入口 = 底端把手（#chat-handle） */
 /* 横屏移动端回到双栏（平板友好） */
 @media (max-width: 900px) and (orientation: landscape) {
   #main { grid-template-columns: minmax(0, 1fr) 300px; }
   #right { position: sticky; top: 60px; height: calc(100vh - 90px); width: auto; transform: none; border-radius: 0; box-shadow: none; padding: 10px 12px; }
+  #chat-handle { display: none !important; }
   body.chat-open #right { transform: none; }
   #btn-chat-open { display: none !important; }
 }

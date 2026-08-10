@@ -1,18 +1,20 @@
-// tools/ai/exp-belief.js —— V5.1a 验收：信念引擎（证据图+贝叶斯更新）后验校准
+// tools/ai/exp-belief.js —— D1（V5.1a）验收：信念引擎（证据图+贝叶斯更新）后验校准
 // 判定：后验 vs 真实身份（ROC AUC + 桶偏差）——信念引擎自身的验收（在 π 配对之前）
-// 数据：data/records-v5-vote/*.jsonl（vote_cast 事件已就位）
-// 用法：node tools/ai/exp-belief.js [--quick]
+// 数据：data/batch/v4re-*.jsonl（2026-08-09 重采：wolf_kill 修复后的事件流，25 维特征源）
+// 用法：node tools/ai/exp-belief.js [--quick] [--tags=12a,9a]
 const fs = require('fs');
 const path = require('path');
 const root = path.join(__dirname, '..', '..');
 const { createBeliefEngine, applyEvent, getBeliefs } = require(path.join(root, 'server', 'ai', 'belief-engine.js'));
 
 const quick = process.argv.includes('--quick');
-const dataDir = path.join(root, 'test', 'lab', 'data');
-const files = fs.existsSync(dataDir) ? fs.readdirSync(dataDir).filter(f => f.startsWith('belief4') && f.endsWith('.jsonl')) : [];
-if (!files.length) { console.log('未找到 belief.jsonl（需先采集：node test/lab/run-batch.js --tag belief ...）'); process.exit(1); }
+const tagArg = process.argv.find(a => a.startsWith('--tags='));
+const tags = tagArg ? tagArg.slice(7).split(',') : (quick ? ['12a'] : ['4p','6p','8p','9a','9b','9c','9d','12a','12b','12c','12d','12e','12f','12g','12h','15p']);
+const dataDir = path.join(root, 'data', 'batch');
+const files = tags.map(t => 'v4re-' + t + '.jsonl').filter(f => fs.existsSync(path.join(dataDir, f)));
+if (!files.length) { console.log('未找到 v4re 数据（data/batch/v4re-*.jsonl）'); process.exit(1); }
 const use = quick ? files.slice(0, 1) : files;
-console.log('数据文件: ' + use.length + ' 个（' + (quick ? 'quick' : '全量') + '）');
+console.log('数据文件: ' + use.length + ' 个（' + tags.join(',') + '）');
 
 // 收集：每天每个存活玩家 { posterior, isWolf }
 const samples = []; // { p, y }

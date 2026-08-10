@@ -200,7 +200,7 @@ function valuePayoffV4Wolf(world, xIsWolf, base) {
  * state: 候选 id 数组
  * 返回：{ target, margin }（margin 为相对量：top1-top2 除以 W×单世界得分幅度；调用方用 0.05 相对阈值）
  */
-function rolloutVote(world, state, rng, { worlds = 64 } = {}) {
+function rolloutVote(world, state, rng, { worlds = 64, useValue } = {}) { // 1.8.0（人机三档）：useValue 按档位路由价值前瞻（undefined → 沿用 PAYOFF_MODE env）
   if (!state || state.length < 2) return null;
   // 1.7.3（P1-2）：rng 必须由调用方注入——兜底 Date.now 是原生墙钟，虚拟时钟实验室里会悄悄破掉确定性（B1-7 P0②）。
   if (!rng) throw new Error('rolloutVote requires injected rng（确定性纪律 B1-7 P0②）');
@@ -278,7 +278,8 @@ function rolloutVote(world, state, rng, { worlds = 64 } = {}) {
       if (top === x) {
         // 1.7.4（Q1）：阵营分流——此前狼 bot 也在用好人视角 payoff（放逐狼+3），与 decideVote argmin 直接打架
         // 1.7.4（二期）：PAYOFF_MODE=value 时用数据驱动 V 差分，否则解析幂律（默认 p=1,q=0）
-        const g = process.env.PAYOFF_MODE === 'value' ? valuePayoff(world, wolfSet.has(x)) : payoffFor(world, wolfSet.has(x));
+        const useVal = opts.useValue !== undefined ? opts.useValue : process.env.PAYOFF_MODE === 'value'; // 1.8.0（人机三档）：简单→解析版 payoffFor；普通/困难→V_wolf（env 门控保留为默认）
+        const g = useVal ? valuePayoff(world, wolfSet.has(x)) : payoffFor(world, wolfSet.has(x));
         score[x] += g;
         scaleW += Math.abs(g);
       }

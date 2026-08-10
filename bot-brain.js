@@ -632,7 +632,12 @@ function buildVoteWorld(room, bot) {
   const beliefs = b.beliefs || {};
   const suspicion = b.suspicion || {};
   const modelBase = getVoteModel(); // 1.7.0（B1-4）：fail-open——模型缺失/损坏回退纯信念；仅好人侧注入（狼侧用模型会反向增强）
-  const model = (process.env.VOTE_MODEL_MODE || 'v3') === 'v3' && (room.presetKey || (room.cap ? room.cap + 'p' : null)) === '12c' ? getVoteModelV2() || modelBase : modelBase; // 1.7.18+：12c 配对劣化（狼+15.7pp）→ per-config 回退 v2（分配置灰度；生产默认 v3 同步 2026-08）
+  // 1.8.0（人机三档）：投票感知按 bot 等级路由——简单/普通（easy/smart）→ v2（13 维）；困难（simulate）→ v3（25 维干净版）
+  const _cfgKey = room.presetKey || (room.cap ? room.cap + 'p' : null);
+  const _isHard = (bot.botLevel || 'easy') === 'simulate';
+  const model = _isHard
+    ? ((process.env.VOTE_MODEL_MODE || 'v3') === 'v3' && _cfgKey === '12c' ? getVoteModelV2() || modelBase : modelBase) // 困难档：v3 主 + 12c per-config 回退 v2（配对劣化特例）
+    : (getVoteModelV2() || modelBase); // 简单/普通档：v2（12c 自然在 v2 内——无需特例）
   const _vsEnabled = process.env.LAB_VS !== '0'; // 1.8.0（P1）：LAB_VS=0 禁用房间级快照（配对验证对照——原实现）
   const _vsKey = room.day + ':' + (room.phase || '') + ':' + (room._voteCastCount || 0) + ':' + (room.messages ? room.messages.length : 0); // 1.8.0（P1）：快照失效键 day+phase+voteCastCount+messages.length——messages 投票轮内动态追加（talkCount 等发言派生字段随新发言重建）；票型实时读 room.votes
   if (_vsEnabled) {
@@ -1625,7 +1630,7 @@ function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRol
       resTarget = piRes.target === dvT ? piRes.target : dvT; // 一致→π（快）；分歧→dv（准）
       if (auditRollout) { const rec = room._rolloutAuditBuf[room._rolloutAuditBuf.length - 1]; if (rec && rec.bot === bot.id) { rec.pi = piRes.target; rec.piMargin = piRes.margin; rec.dv = dvT; rec.final = resTarget; rec.margin = null; rec.mix = resTarget === piRes.target ? 'pi' : 'dv'; } }
     } else if (useRollout && !wolfNoRollout) {
-      const rv = rolloutVote(world, state, rng());
+      const rv = rolloutVote(world, state, rng(), { useValue: (bot.botLevel || 'easy') !== 'easy' }); // 1.8.0（人机三档）：普通/困难→V_wolf 价值前瞻；简单→解析版
       if (process.env.LAB_DEBUG_ROLLOUT === '1') console.log('[rollout-dbg] scores=' + JSON.stringify(Object.fromEntries(Object.entries(world.scores).map(([k, v]) => [k, +v.toFixed(2)]))) + ' rv=' + (rv && rv.target));
       // v1.7.2（4-①）：rollout 得分差距 <ε 时回退 decideVote 的跟票目标——低信息局（无查杀/票数接近）
       // 64 世界采样噪声大，rollout 可能与公众票型冲突 → 分票 → 狼渔利；跟票在低信息时是防分票的正确策略
@@ -1729,7 +1734,7 @@ function createBotDecision(room, bot) {
   if (room.phase === 'lastword') return botLastWord(room, bot, level === 'idle' ? 'idle' : 'smart'); // 1.7.0：阶梯后 easy/smart/simulate 均按智能遗言
   if (room.phase === 'handover') return { action: 'handover', data: { target: null } }; // 人机警长默认撕毁警徽
   if (room.phase === 'sheriff_campaign') return { action: 'campaign', data: { run: level === 'idle' ? false : rng().next() < 0.5 } };
-  if (room.phase === 'discuss') return eff === 'simulate_v2' || eff === 'simulate' ? decisionSimulateV2(room, bot, eff === 'simulate_v2') : botTalk(room, bot, level === 'idle' ? 'idle' : 'smart'); // 1.7.0：阶梯后发言——新simulate 走态度+rollout，其余走组合式发言（含新easy=现smart）
+  if (room.phase === 'discuss') return (eff === 'simulate_v2' || eff === 'simulate') ? decisionSimulateV2(room, bot, true) : botTalk(room, bot, level === 'idle' ? 'idle' : 'smart'); // 1.8.0（人机三档）：简单（easy→botTalk 无价值前瞻）；普通（smart→rollout+V_wolf）；困难（simulate→rollout+V_wolf+v3）——普通/困难均启用 rollout 价值前瞻
   if (room.phase === 'night') {
     switch (room.nightStep) {
       case 'cupid': {

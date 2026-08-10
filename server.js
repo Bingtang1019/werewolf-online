@@ -137,7 +137,7 @@ try {
     console.warn('[snapshot] 检测到根目录旧 rooms.json —— v1.6.4 起快照改存 data/rooms.json；如需保留旧对局请手动移动该文件到 data/ 目录');
   }
 } catch (e) { /* ignore */ }
-const SNAPSHOT_SEC = SNAPSHOT_ENABLED ? Math.max(3, parseInt(process.env.SNAPSHOT_SEC, 10)) : 0;
+const SNAPSHOT_SEC = SNAPSHOT_ENABLED ? Math.max(3, parseInt(process.env.SNAPSHOT_SEC || '60', 10)) : 0; // v1.7.19：补默认值——未设 env 时 parseInt(undefined)=NaN → setInterval(NaN) 触发 TimeoutNaNWarning
 const SNAPSHOT_REPLACER = (k, v) => {
   if (v instanceof Set) return { __set: [...v] };
   if (v instanceof Map) return { __map: [...v] }; // v1.6.1：防御未来加入 Map
