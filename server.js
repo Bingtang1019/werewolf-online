@@ -238,8 +238,11 @@ function clientIp(req) {
   return remote;
 }
 const LOCAL_IPS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
-/* 安全加固（H1 防 DNS rebinding）：Host 白名单——私有网段默认放行，公网部署用 PUBLIC_HOST 配置域名（逗号分隔） */
+/* 安全加固（H1 防 DNS rebinding）：Host 白名单——私有网段默认放行，公网部署用 PUBLIC_HOST 配置域名（逗号分隔）
+ * v1.7.21：cloudflared 免费隧道（开启公网联机.bat）域名动态生成（xxx.trycloudflare.com），无法预配置——
+ * 放行该后缀（cloudflared 专用域，DNS rebinding 攻击者无法伪造；且仅当隧道实际转发时才可达） */
 const PRIVATE_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\]|::1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
+const TUNNEL_HOST_RE = /\.trycloudflare\.com$/;
 const PUBLIC_HOSTS = new Set((process.env.PUBLIC_HOST || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
 /* 安全加固（H1 辅助）：POST Origin 校验——同源/无 Origin（脚本/curl）/PUBLIC_HOST 白名单放行 */
 function originOk(req) {
@@ -365,9 +368,9 @@ const server = http.createServer((req, res) => {
     recordHttp(ms, res.statusCode >= 400);
     if (ms > 500) logSlow(pathname, ms);
   });
-  // 安全加固（H1 防 DNS rebinding）：Host 不在白名单/私有网段 → 403
+  // 安全加固（H1 防 DNS rebinding）：Host 不在白名单/私有网段/隧道域 → 403
   const hostHdr = String(req.headers.host || '').toLowerCase().split(':')[0];
-  if (!PRIVATE_HOST_RE.test(hostHdr) && !PUBLIC_HOSTS.has(hostHdr)) {
+  if (!PRIVATE_HOST_RE.test(hostHdr) && !PUBLIC_HOSTS.has(hostHdr) && !TUNNEL_HOST_RE.test(hostHdr)) {
     res.writeHead(403); res.end('Forbidden'); return;
   }
   // 安全加固（H1 辅助）：POST 请求 Origin 校验（同源/白名单/无 Origin 放行）
