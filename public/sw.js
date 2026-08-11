@@ -5,7 +5,7 @@
  *   子资源仍网络优先（保证新 client.js/style.css 立即生效）。
  * /api/ 请求一律不缓存（由服务器实时应答）。
  * 发版时只需更新 CACHE 版本号，activate 阶段自动清理旧缓存。 */
-const CACHE = 'ww-v1.7.20'; // v1.7.17：前端美化 + 音效面板全局化（分项开关首页可见）
+const CACHE = 'ww-v1.7.23'; // v1.7.23：音频透传（/music/ 不拦截不缓存）+ 重连认领修复
 const PRECACHE = ['/', 'index.html', 'style.css', 'client.js', 'manifest.json', 'icon.svg'];
 
 self.addEventListener('install', e => {
@@ -29,6 +29,12 @@ self.addEventListener('fetch', e => {
   try { url = new URL(req.url); } catch (err) { return; }
   if (url.origin !== location.origin) return;
   if (url.pathname.startsWith('/api/')) return; // API 永不缓存
+  // v1.7.23（音频）：/music/ 音频文件不缓存不拦截——直接透传（播放器需要 Range/渐进流，
+  // SW 的 clone 会缓冲整个大文件导致无声/卡顿 + Cache Storage 膨胀）
+  if (url.pathname.startsWith('/music/')) {
+    e.respondWith(fetch(req).catch(() => Response.error()));
+    return;
+  }
 
   // v1.6.4（P3-1）：导航请求 stale-while-revalidate
   if (req.mode === 'navigate') {

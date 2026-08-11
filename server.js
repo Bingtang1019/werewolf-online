@@ -304,9 +304,29 @@ function serveStatic(req, res, file) {
       headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'";
     }
     const useGzip = acceptsGzip(req) && st.size > 512 && st.size <= 1024 * 1024;
-    // 大文件（音频/视频）：不缓存不压缩，直接流式传输（防内存爆炸）
+    // 大文件（音频/视频）：不缓存不压缩，流式传输（防内存爆炸）；支持 Range（206）——浏览器
+    // <audio> 播放大文件依赖 Range/渐进播放，200 全量响应会导致无声/长时间缓冲
     if (st.size > 1024 * 1024) {
       headers['Accept-Ranges'] = 'bytes';
+      const rng = /bytes=(\d*)-(\d*)/.exec(String(req.headers.range || ''));
+      if (rng) {
+        let start = rng[1] ? parseInt(rng[1], 10) : 0;
+        let end = rng[2] ? parseInt(rng[2], 10) : st.size - 1;
+        if (isNaN(start) || start < 0) start = 0;
+        if (isNaN(end) || end >= st.size) end = st.size - 1;
+        if (start > end) {
+          res.writeHead(416, { 'Content-Range': 'bytes */' + st.size });
+          res.end(); return;
+        }
+        res.writeHead(206, Object.assign({}, headers, {
+          'Content-Range': 'bytes ' + start + '-' + end + '/' + st.size,
+          'Content-Length': end - start + 1
+        }));
+        const rs = fs.createReadStream(file, { start, end });
+        rs.pipe(res);
+        rs.on('error', () => { try { res.destroy(); } catch (e) {} });
+        return;
+      }
       res.writeHead(200, headers);
       const rs = fs.createReadStream(file);
       rs.pipe(res);
