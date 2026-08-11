@@ -2036,7 +2036,7 @@ $('btn-leave').addEventListener('click', async () => {
     list: [],
     reviews: [
     ],
-    idx: -1, playing: false, vol: 40, prog: 0, timer: null, audio: null
+    idx: -1, playing: false, vol: 40, prog: 0, timer: null, audio: null, mode: 0
   };
   // 官方歌单：运行时从 playlist.json 加载（tools/music/ 生成——加歌无需改前端代码）
     // 官方歌单（一/二）：运行时从 playlist.json / playlist2.json 加载
@@ -2054,7 +2054,20 @@ $('btn-leave').addEventListener('click', async () => {
   function musicAudio() {
     if (!musicState.audio) {
       musicState.audio = new Audio();
+      // 切歌/换 src 后数据就绪再播放（流式响应下 load+立即 play 可能被拒）
+      musicState.audio.addEventListener('canplay', () => {
+        if (musicState.playing) {
+          musicState.audio.play().catch(() => {});
+        }
+      });
       musicState.audio.addEventListener('ended', () => mpNext());
+      // 兜底：timeupdate 检测到播完但 ended 未触发（流式中断）→ 手动切
+      musicState.audio.addEventListener('timeupdate', () => {
+        const a = musicState.audio;
+        if (a && isFinite(a.duration) && a.duration > 0 && a.currentTime >= a.duration - 0.3 && musicState.playing) {
+          mpNext();
+        }
+      });
     }
     return musicState.audio;
   }
@@ -2114,13 +2127,17 @@ $('btn-leave').addEventListener('click', async () => {
     try {
       const abs = new URL(s.url, location.origin).href;
       if (a.src !== abs) { a.src = abs; a.load(); }
-      a.play().then(() => {
-        musicState.playing = true;
-      }).catch(err => {
-        musicState.playing = false;
-        console.warn('[music] 播放失败:', err && err.name, err && err.message, s.url);
-        if (err && err.name === 'NotAllowedError') toast('浏览器阻止自动播放——请再点一次播放');
-      });
+      const tryPlay = () => {
+        a.play().then(() => {
+          musicState.playing = true;
+        }).catch(err => {
+          musicState.playing = false;
+          console.warn('[music] 播放失败:', err && err.name, err && err.message, s.url);
+          if (err && err.name === 'NotAllowedError') toast('浏览器阻止自动播放——请再点一次播放');
+        });
+      };
+      // 数据就绪直接播（缓存命中）；未就绪等 canplay（已绑定）
+      if (a.readyState >= 2) tryPlay(); else { musicState.playing = true; a.play().catch(() => {}); }
     } catch (e) { musicState.playing = false; console.warn('[music] 播放异常:', e); }
     if (musicState.timer) clearInterval(musicState.timer);
     musicState.timer = setInterval(updateMusicNow, 500);
@@ -2136,7 +2153,17 @@ $('btn-leave').addEventListener('click', async () => {
   }
   function mpNext() {
     if (!musicState.list.length) return;
-    mpPlay(musicState.list[(musicState.idx + 1) % musicState.list.length].id);
+    if (musicState.mode === 2) { // 单曲循环：重播当前
+      if (musicState.idx >= 0) { mpPlay(musicState.list[musicState.idx].id); return; }
+    }
+    let nidx;
+    if (musicState.mode === 1) { // 随机
+      nidx = Math.floor(Math.random() * musicState.list.length);
+      if (musicState.list.length > 1 && nidx === musicState.idx) nidx = (nidx + 1) % musicState.list.length;
+    } else { // 顺序
+      nidx = (musicState.idx + 1) % musicState.list.length;
+    }
+    mpPlay(musicState.list[nidx].id);
   }
   function mpPrev() {
     if (!musicState.list.length) return;
@@ -2170,6 +2197,24 @@ $('btn-leave').addEventListener('click', async () => {
   $('mp-play') && $('mp-play').addEventListener('click', e => { e.stopPropagation(); mpToggle(); });
   $('mp-next') && $('mp-next').addEventListener('click', e => { e.stopPropagation(); mpNext(); });
   $('mp-prev') && $('mp-prev').addEventListener('click', e => { e.stopPropagation(); mpPrev(); });
+  const MODE_ICONS = ['🔀', '🔁', '🔂'];
+  const MODE_TIPS = ['顺序播放', '随机播放', '单曲循环'];
+  function mpModeBtn() {
+    const b = $('mp-mode');
+    if (b) {
+      b.textContent = MODE_ICONS[musicState.mode || 0];
+      b.title = '播放模式：' + MODE_TIPS[musicState.mode || 0] + '（点击切换）';
+    }
+  }
+  $('mp-mode') && $('mp-mode').addEventListener('click', e => {
+    e.stopPropagation();
+    musicState.mode = ((musicState.mode || 0) + 1) % 3;
+    try { localStorage.ww_music_mode = String(musicState.mode); } catch (err) {}
+    mpModeBtn();
+    toast(MODE_TIPS[musicState.mode] + '已开启');
+  });
+  try { if (localStorage.ww_music_mode) musicState.mode = +localStorage.ww_music_mode || 0; } catch (err) {}
+  mpModeBtn();
   $('mp-vol') && $('mp-vol').addEventListener('input', e => {
     musicState.vol = +e.target.value;
     if (musicState.audio) musicState.audio.volume = musicState.vol / 100;
