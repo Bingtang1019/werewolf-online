@@ -2032,6 +2032,9 @@ $('btn-leave').addEventListener('click', async () => {
     sb.addEventListener('click', e => { e.stopPropagation(); toggleSoundPop(); });
     const sbh = $('btn-sound-home'); // v1.7.17：首页音效入口（面板已全局化）
     if (sbh) sbh.addEventListener('click', e => { e.stopPropagation(); toggleSoundPop(); });
+    // v1.7.25：歌单按钮（房间歌单面板——播放/点歌/审批）
+    const bm = $('btn-music');
+    if (bm) bm.addEventListener('click', e => { e.stopPropagation(); toggleMusicPop(); });
     $('sp-master').addEventListener('change', () => setSfxMaster($('sp-master').checked));
     $('sp-wolf').addEventListener('change', () => setSfxFlag('wolf', $('sp-wolf').checked));
     $('sp-morning').addEventListener('change', () => setSfxFlag('morning', $('sp-morning').checked));
