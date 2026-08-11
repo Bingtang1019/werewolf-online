@@ -36,4 +36,25 @@ files.forEach((f, i) => {
     console.log('bgm-' + String(i + 1).padStart(2, '0') + '  ' + f + '  ' + r.inMB + 'MB → ' + r.outMB + 'MB ✓');
   } catch (e) { console.log(f, '❌', e.message); }
 });
-console.log('完成 →', dst);
+/* ===== 官方歌单清单生成（v1.7.22+）：7 wav + D:/Music 全部 mp3 = playlist.json =====
+ * 运行: node tools/music/convert-wav.js   （转码 wav + 复制 mp3 + 生成 playlist.json）
+ */
+function buildPlaylist(dst) {
+  const cleanName = f => f.replace(/\.(mp3|wav)$/i, '').replace(/ *[（(][^）)]*[）)] */g, ' ').replace(/ +/g, ' ').trim();
+  const pl = [];
+  const wavs = fs.readdirSync(dst).filter(f => /^bgm-\d+\.wav$/.test(f)).sort();
+  const wavNames = ['🌅 大厅舒缓', '🌙 夜晚悬疑', '☀️ 白天紧张', '🎵 氛围四', '🎵 氛围五', '🎵 氛围六', '🎵 氛围七'];
+  wavs.forEach((f, i) => pl.push({ id: 'off' + (i + 1), name: wavNames[i] || ('BGM ' + (i + 1)), url: '/music/' + f, src: 'official' }));
+  const mp3Src = process.argv[4] || 'D:/Music';
+  let mp3s = [];
+  try { mp3s = fs.readdirSync(mp3Src).filter(f => /\.mp3$/i.test(f)).sort(); } catch (e) {}
+  let n = wavs.length;
+  for (const f of mp3s) {
+    const safe = 'song-' + String(++n).padStart(2, '0') + '.mp3';
+    try { fs.copyFileSync(path.join(mp3Src, f), path.join(dst, safe)); } catch (e) { continue; }
+    pl.push({ id: 'off' + pl.length + 1, name: cleanName(f), url: '/music/' + safe, src: 'official' });
+  }
+  fs.writeFileSync(path.join(dst, 'playlist.json'), JSON.stringify(pl, null, 1), 'utf8');
+  console.log('playlist.json:', pl.length, '首（wav', wavs.length, '+ mp3', mp3s.length, '）');
+}
+buildPlaylist(dst);

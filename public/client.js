@@ -2032,20 +2032,19 @@ $('btn-leave').addEventListener('click', async () => {
 
   /* ---- 歌单面板（v1.7.22）：BGM 氛围音 + 成员点歌（UI 版——播放后端待接入） ---- */
   const musicState = {
-    list: [
-      { id: 'off1', name: '🌅 大厅舒缓', url: '/music/bgm-01.wav', src: 'official', dur: 243, playing: false },
-      { id: 'off2', name: '🌙 夜晚悬疑', url: '/music/bgm-02.wav', src: 'official', dur: 276, playing: false },
-      { id: 'off3', name: '☀️ 白天紧张', url: '/music/bgm-03.wav', src: 'official', dur: 241, playing: false },
-      { id: 'off4', name: '🎵 氛围四', url: '/music/bgm-04.wav', src: 'official', dur: 249, playing: false },
-      { id: 'off5', name: '🎵 氛围五', url: '/music/bgm-05.wav', src: 'official', dur: 210, playing: false },
-      { id: 'off6', name: '🎵 氛围六', url: '/music/bgm-06.wav', src: 'official', dur: 209, playing: false },
-      { id: 'off7', name: '🎵 氛围七', url: '/music/bgm-07.wav', src: 'official', dur: 268, playing: false }
-    ],
+    list: [],
     reviews: [
       { id: 'r1', url: 'https://example.com/song.mp3', note: '房主加的试听申请', by: '玩家·阿青' }
     ],
     idx: -1, playing: false, vol: 40, prog: 0, timer: null, audio: null
   };
+  // 官方歌单：运行时从 playlist.json 加载（tools/music/ 生成——加歌无需改前端代码）
+  fetch('music/playlist.json').then(r => r.ok ? r.json() : null).then(pl => {
+    if (Array.isArray(pl) && pl.length) {
+      musicState.list = pl.map(s => ({ id: s.id, name: s.name, url: s.url, src: 'official', dur: 0, playing: false }));
+      renderMusicPop();
+    }
+  }).catch(() => {});
   function musicAudio() {
     if (!musicState.audio) {
       musicState.audio = new Audio();
