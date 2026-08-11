@@ -2041,11 +2041,13 @@ $('btn-leave').addEventListener('click', async () => {
     // 官方歌单（一/二）：运行时从 playlist.json / playlist2.json 加载
   Promise.all([
     fetch('music/playlist.json').then(r => r.ok ? r.json() : null).catch(() => null),
-    fetch('music/playlist2.json').then(r => r.ok ? r.json() : null).catch(() => null)
-  ]).then(([pl1, pl2]) => {
+    fetch('music/playlist2.json').then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch('music/playlist3.json').then(r => r.ok ? r.json() : null).catch(() => null)
+  ]).then(([pl1, pl2, pl3]) => {
     const list = [];
     (pl1 || []).forEach(s => list.push({ id: s.id, name: s.name, url: s.url, src: 'official', dur: 0, playing: false }));
     (pl2 || []).forEach(s => list.push({ id: 'b' + s.id, name: s.name, url: s.url, src: 'official2', dur: 0, playing: false }));
+    (pl3 || []).forEach(s => list.push({ id: 'x' + s.id, name: s.name, url: s.url, src: 'official3', dur: 0, playing: false }));
     if (list.length) { musicState.list = list; renderMusicPop(); }
   }).catch(() => {});
   function musicAudio() {
@@ -2069,6 +2071,9 @@ $('btn-leave').addEventListener('click', async () => {
     // 官方歌单二
     const off2 = $('mp-official2');
     if (off2) off2.innerHTML = musicState.list.filter(s => s.src === 'official2').map(s => mpItemHtml(s)).join('');
+    // 官方歌单三
+    const off3 = $('mp-official3');
+    if (off3) off3.innerHTML = musicState.list.filter(s => s.src === 'official3').map(s => mpItemHtml(s)).join('');
     // 成员歌单
     const mem = musicState.list.filter(s => s.src === 'member');
     $('mp-member-cnt').textContent = mem.length ? mem.length + ' 首' : '空';
