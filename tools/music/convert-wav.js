@@ -36,25 +36,46 @@ files.forEach((f, i) => {
     console.log('bgm-' + String(i + 1).padStart(2, '0') + '  ' + f + '  ' + r.inMB + 'MB → ' + r.outMB + 'MB ✓');
   } catch (e) { console.log(f, '❌', e.message); }
 });
-/* ===== 官方歌单清单生成（v1.7.22+）：7 wav + D:/Music 全部 mp3 = playlist.json =====
- * 运行: node tools/music/convert-wav.js   （转码 wav + 复制 mp3 + 生成 playlist.json）
- */
+const EN_MAP = {
+ "Boogie! (摇摆！) - Yung Bae.mp3": "Boogie-Yung-Bae.mp3",
+ "RUSH HOUR - 角松敏生.mp3": "Rush-Hour-Toshiki-Kadomatsu.mp3",
+ "Sailing To The Future - 小清水亜美.mp3": "Sailing-To-The-Future-Ami-Koshimizu.mp3",
+ "YOUR EYES - 山下達郎.mp3": "Your-Eyes-Tatsuro-Yamashita.mp3",
+ "お久しぶりね (好久不见) - 小柳留美子.mp3": "Ohisashiburine-Rumiko-Koyanagi.mp3",
+ "ひとり上手 (习惯孤独) - 中岛美雪 (中島みゆき).mp3": "Hitori-Uwate-Miyuki-Nakajima.mp3",
+ "トキヲ・ファンカ (东京不夜城) - takamatt.mp3": "Tokio-Funka-takamatt.mp3",
+ "モニカ (莫妮卡) - 吉川晃司 (きっかわ こうじ).mp3": "Monica-Koji-Kikkawa.mp3",
+ "人生のメリーゴーランド (人生的旋转木马) (Jazz Ver_) - 織田浩司 _ シエナ・ウインド・オーケストラ _ 久石让.mp3": "Jinsei-no-Merry-Go-Round-Jazz-Ver.mp3",
+ "四季の歌 (四季的歌) - 芹洋子 (せり ようこ;伊东洋子).mp3": "Shiki-no-Uta-Yoko-Seri.mp3",
+ "恋人も濡れる街角 (恋人沾湿的街角) (恋人也在被淋湿的街角、恋人沾湿的街角、淋湿恋人的街角) - 中村雅俊.mp3": "Koibito-mo-Nureru-Machikado-Masatoshi-Nakamura.mp3",
+ "悲しい気持ち - 桑田佳祐.mp3": "Kanashii-Kimochi-Keisuke-Kuwata.mp3",
+ "時の過ぎゆくままに (任时间流逝) (任时间流逝) (Single Version) - 沢田研二.mp3": "Toki-no-Sugiyuku-Mama-ni-Kenji-Sawada.mp3",
+ "最愛 (最爱) - 柏原芳恵.mp3": "Saiai-Yoshie-Kashiwabara.mp3",
+ "淋しい热帯鱼 (寂寞热带鱼) - Wink.mp3": "Samishii-Nettaigyo-Wink.mp3",
+ "異邦人 (你到底是谁啊) (你到底是谁啊) - 久保田早紀.mp3": "Ihojin-Saki-Kubota.mp3",
+ "翼をください (请给我翅膀) - 赤い鳥.mp3": "Tsubasa-o-Kudasai-Akai-Tori.mp3",
+ "青いスタスィオン - 河合その子.mp3": "Aoi-Station-Sonoko-Kawai.mp3"
+};
+const WAV_EN = ['Morning-Lounge', 'Midnight-Suspense', 'Daylight-Tension', 'Ambience-04', 'Ambience-05', 'Ambience-06', 'Ambience-07'];
+
+/* ===== 官方歌单清单生成（英文命名）：7 wav + D:/Music mp3 → playlist.json ===== */
 function buildPlaylist(dst) {
-  const cleanName = f => f.replace(/\.(mp3|wav)$/i, '').replace(/ *[（(][^）)]*[）)] */g, ' ').replace(/ +/g, ' ').trim();
   const pl = [];
-  const wavs = fs.readdirSync(dst).filter(f => /^bgm-\d+\.wav$/.test(f)).sort();
-  const wavNames = ['🌅 大厅舒缓', '🌙 夜晚悬疑', '☀️ 白天紧张', '🎵 氛围四', '🎵 氛围五', '🎵 氛围六', '🎵 氛围七'];
-  wavs.forEach((f, i) => pl.push({ id: 'off' + (i + 1), name: wavNames[i] || ('BGM ' + (i + 1)), url: '/music/' + f, src: 'official' }));
+  WAV_EN.forEach((en, i) => {
+    if (fs.existsSync(path.join(dst, en + '.wav'))) pl.push({ id: 'off' + (i + 1), name: en.replace(/-/g, ' '), url: '/music/' + en + '.wav', src: 'official' });
+  });
   const mp3Src = process.argv[4] || 'D:/Music';
   let mp3s = [];
   try { mp3s = fs.readdirSync(mp3Src).filter(f => /\.mp3$/i.test(f)).sort(); } catch (e) {}
-  let n = wavs.length;
+  let n = pl.length;
   for (const f of mp3s) {
-    const safe = 'song-' + String(++n).padStart(2, '0') + '.mp3';
+    const safe = EN_MAP[f] || ('song-' + String(++n).padStart(2, '0') + '.mp3');
     try { fs.copyFileSync(path.join(mp3Src, f), path.join(dst, safe)); } catch (e) { continue; }
-    pl.push({ id: 'off' + pl.length + 1, name: cleanName(f), url: '/music/' + safe, src: 'official' });
+    const name = EN_MAP[f] ? safe.replace(/\.mp3$/i, '').replace(/-/g, ' ') : f.replace(/\.mp3$/i, '');
+    pl.push({ id: 'off' + pl.length + 1, name, url: '/music/' + safe, src: 'official' });
   }
   fs.writeFileSync(path.join(dst, 'playlist.json'), JSON.stringify(pl, null, 1), 'utf8');
-  console.log('playlist.json:', pl.length, '首（wav', wavs.length, '+ mp3', mp3s.length, '）');
+  console.log('playlist.json:', pl.length, '首');
 }
 buildPlaylist(dst);
+
