@@ -2109,11 +2109,18 @@ $('btn-leave').addEventListener('click', async () => {
     if (!s.url) { toast('该歌曲没有可用链接'); musicState.playing = false; updateMusicNow(); return; }
     const a = musicAudio();
     a.volume = (musicState.vol || 40) / 100;
+    a.preload = 'auto';
     try {
-      if (a.src && a.src !== location.origin + s.url) a.src = s.url;
-      if (!a.src) a.src = s.url;
-      a.play().catch(() => { musicState.playing = false; updateMusicNow(); });
-    } catch (e) { musicState.playing = false; updateMusicNow(); }
+      const abs = new URL(s.url, location.origin).href;
+      if (a.src !== abs) { a.src = abs; a.load(); }
+      a.play().then(() => {
+        musicState.playing = true;
+      }).catch(err => {
+        musicState.playing = false;
+        console.warn('[music] 播放失败:', err && err.name, err && err.message, s.url);
+        if (err && err.name === 'NotAllowedError') toast('浏览器阻止自动播放——请再点一次播放');
+      });
+    } catch (e) { musicState.playing = false; console.warn('[music] 播放异常:', e); }
     if (musicState.timer) clearInterval(musicState.timer);
     musicState.timer = setInterval(updateMusicNow, 500);
     renderMusicPop();
