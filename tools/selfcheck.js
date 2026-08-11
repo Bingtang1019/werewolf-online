@@ -53,8 +53,12 @@ function walkJs(dir, base, acc) {
 function collect(scope) {
   const acc = [];
   if (scope === 'core') {
-    for (const f of ['server.js', 'game.js', 'loverCore.js', 'bot-brain.js', 'public/client.js', 'public/sw.js']) {
+    for (const f of ['server.js', 'game.js', 'loverCore.js', 'bot-brain.js', 'public/sw.js']) {
       if (fs.existsSync(path.join(root, f))) acc.push(f);
+    }
+    const jsc = path.join(root, 'public', 'js');
+    if (fs.existsSync(jsc)) {
+      for (const f of fs.readdirSync(jsc)) if (f.endsWith('.js')) acc.push(path.join('public', 'js', f));
     }
     const fa = [];
     if (fs.existsSync(path.join(root, 'favens'))) walkJs(path.join(root, 'favens'), root, fa);
