@@ -1427,6 +1427,7 @@ async function refreshStats() {
   if (!$('home') || $('home').classList.contains('hidden')) return;
   try {
     const res = await fetch('api/stats');
+    if (!res.ok) return; // 404/403（隧道/局域网访问时 stats 受 token 控制）静默忽略
     const j = await res.json();
     if (!j || typeof j.rooms !== 'number') return;
     const el = $('stats-line');
@@ -1879,7 +1880,7 @@ function init() {
     const bar = document.getElementById('phase-bar-fill');
     if (bar) {
       const dl2 = view && (view.phaseDeadline || view.nightDeadline || view.hunterDeadline || view.revealDeadline);
-      const totalSec = view && view.phaseDeadline ? (view.phaseTimeout || 30) : (view.nightTimeout || 30);
+      const totalSec = view && dl2 ? (view.phaseDeadline ? (view.phaseTimeout || 30) : (view.nightTimeout || 30)) : 0;
       if (view && dl2 && totalSec) {
         const leftMs = dl2 - Date.now();
         const pct = Math.max(0, Math.min(100, leftMs / (totalSec * 1000) * 100));
