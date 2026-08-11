@@ -278,7 +278,7 @@ function rolloutVote(world, state, rng, { worlds = 64, useValue } = {}) { // 1.8
       if (top === x) {
         // 1.7.4（Q1）：阵营分流——此前狼 bot 也在用好人视角 payoff（放逐狼+3），与 decideVote argmin 直接打架
         // 1.7.4（二期）：PAYOFF_MODE=value 时用数据驱动 V 差分，否则解析幂律（默认 p=1,q=0）
-        const useVal = opts.useValue !== undefined ? opts.useValue : process.env.PAYOFF_MODE === 'value'; // 1.8.0（人机三档）：简单→解析版 payoffFor；普通/困难→V_wolf（env 门控保留为默认）
+        const useVal = useValue !== undefined ? useValue : process.env.PAYOFF_MODE === 'value'; // 1.8.0（人机三档）：简单→解析版 payoffFor；普通/困难→V_wolf（env 门控保留为默认）
         const g = useVal ? valuePayoff(world, wolfSet.has(x)) : payoffFor(world, wolfSet.has(x));
         score[x] += g;
         scaleW += Math.abs(g);
