@@ -2034,7 +2034,6 @@ $('btn-leave').addEventListener('click', async () => {
   const musicState = {
     list: [],
     reviews: [
-      { id: 'r1', url: 'https://example.com/song.mp3', note: '房主加的试听申请', by: '玩家·阿青' }
     ],
     idx: -1, playing: false, vol: 40, prog: 0, timer: null, audio: null
   };
