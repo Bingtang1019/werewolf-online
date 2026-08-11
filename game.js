@@ -253,7 +253,7 @@ function newRoomCode() {
 }
 
 /* ---------------------------- 房间创建 / 加入 ---------------------------- */
-function createRoom(hostName) {
+function createRoom(hostName, deviceId) {
   const id = newRoomCode();
   const room = {
     id, version: 1, host: null,
@@ -291,7 +291,7 @@ function createRoom(hostName) {
     lastActive: clock.now(), // 最近一次被轮询的时间（供服务端 TTL 清理无活动房间）
   };
   rooms.set(id, room);
-  const host = addPlayer(room, hostName);
+  const host = addPlayer(room, hostName, deviceId);
   room.host = host.id;
   bump(room);
   return { roomId: id, token: host.sess, playerId: host.id, view: viewFor(room, host.id) };
@@ -307,12 +307,12 @@ function nextFreeSeat(room) {
   while (used.has(s)) s++;
   return s;
 }
-function addPlayer(room, name) {
-  const p = { id: uid(), sess: newToken(), name: name || '玩家', seat: nextFreeSeat(room), role: null, alive: true, deadBy: null, deadNote: null, leftGame: false, confirmed: false, lastWordUsed: false };
+function addPlayer(room, name, deviceId) {
+  const p = { id: uid(), sess: newToken(), deviceId: deviceId || null, name: name || '玩家', seat: nextFreeSeat(room), role: null, alive: true, deadBy: null, deadNote: null, leftGame: false, confirmed: false, lastWordUsed: false };
   room.players.push(p);
   return p;
 }
-function joinRoom(roomId, name, token) {
+function joinRoom(roomId, name, token, deviceId) {
   const room = rooms.get(roomId);
   if (!room) return { error: '房间不存在或已解散' };
   // v1.7.21（双占位修复）：断线重连——token 匹配房间内玩家则复用（不新建、不占新位）；
@@ -321,12 +321,30 @@ function joinRoom(roomId, name, token) {
   const old = byToken(room, token);
   if (old) {
     old.sess = newToken(); // 会话续期（旧 token 作废——防已离开页面残留 token 继续使用）
+    if (old.leftGame) { // 刷新竞态兜底：被 pagehide leave 标记离场的玩家认领回来时重置状态
+      old.leftGame = false;
+      if (!old.alive && old.deadBy === 'left') { old.alive = true; old.deadBy = null; }
+    }
     bump(room);
     return { playerId: old.id, token: old.sess, reused: true, view: viewFor(room, old.id) };
   }
+  // v1.7.24（设备校验）：token 已失效（被续期/刷新竞态）时——按设备指纹找同设备旧玩家复用
+  // （不新建占位——彻底消灭刷新分身：旧页 leave 删人 + 新页 join 新建 = 两个自己）
+  if (deviceId && room.phase !== 'lobby') {
+    const dev = room.players.find(q => q.deviceId === deviceId && !q.isBot);
+    if (dev) {
+      dev.sess = newToken();
+      if (dev.leftGame) {
+        dev.leftGame = false;
+        if (!dev.alive && dev.deadBy === 'left') { dev.alive = true; dev.deadBy = null; }
+      }
+      bump(room);
+      return { playerId: dev.id, token: dev.sess, reused: true, view: viewFor(room, dev.id) };
+    }
+  }
   if (room.phase !== 'lobby') return { error: '游戏已开始，无法加入' };
   if (room.players.length >= room.playerCap) return { error: `房间已满（${room.playerCap} 人）` };
-  const p = addPlayer(room, name);
+  const p = addPlayer(room, name, deviceId);
   bump(room);
   return { playerId: p.id, token: p.sess, view: viewFor(room, p.id) };
 }

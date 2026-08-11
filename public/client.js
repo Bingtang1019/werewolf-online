@@ -53,6 +53,17 @@ function nextToast() {
 function saveSession() { try { localStorage.setItem('ww_session', JSON.stringify({ room: roomId, me, token })); } catch (e) {} }
 function loadSession() { try { return JSON.parse(localStorage.getItem('ww_session')); } catch (e) { return null; } }
 function clearSession() { try { localStorage.removeItem('ww_session'); } catch (e) {} }
+// v1.7.24（设备校验）：设备指纹持久化——刷新后 token 失效时服务端按 deviceId 认领旧位（消灭刷新分身）
+function deviceId() {
+  try {
+    let d = localStorage.getItem('ww_device');
+    if (!d) {
+      d = Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, '0')).join('');
+      localStorage.setItem('ww_device', d);
+    }
+    return d;
+  } catch (e) { return ''; }
+}
 
 /* 趣味昵称生成器（v1.2.0）：与座位动物头像风格统一，告别“玩家123” */
 const NICK_A = ['神秘', '熬夜', '迷糊', '暴躁', '温柔', '社恐', '早起', '咸鱼', '佛系', '炫酷'];
@@ -1352,7 +1363,7 @@ function kick(id) { api('api/kick', { room: roomId, token, target: id }).then(r 
 async function startOffline() {
   if (!$('home') || $('home').classList.contains('hidden')) return;
   const name = nickValue();
-  const r = await api('api/create', { name });
+  const r = await api('api/create', { name, deviceId: deviceId() });
   if (r.error || !r.roomId || !r.playerId) { $('home-err').textContent = r.error || '创建失败，请重试'; return; }
   const room = r.roomId, me = r.playerId;
   token = r.token;
@@ -1374,7 +1385,7 @@ async function createRoom() {
   $('home-err').textContent = '';
   const card = $('card-create');
   card.classList.add('busy'); // 忙碌态防连点（16）
-  const r = await api('api/create', { name });
+  const r = await api('api/create', { name, deviceId: deviceId() });
   card.classList.remove('busy');
   if (r.error || !r.roomId || !r.playerId) { $('home-err').textContent = r.error || '创建失败，请重试'; return; }
   localStorage.lwName = name;
@@ -1392,7 +1403,7 @@ async function joinRoom() {
   const name = nickValue();
   if (!/^[0-9A-Z]{6}$/.test(code)) { joinBusy = false; markCodeInvalid('房间号格式错误（6 位数字或字母）'); return; }
   $('home-err').textContent = '';
-  const r = await api('api/join', { roomId: code, name });
+  const r = await api('api/join', { roomId: code, name, deviceId: deviceId() });
   joinBusy = false;
   if (r.error || !r.playerId) { markCodeInvalid(r.error || '加入失败，请检查房间号'); $('home-err').textContent = r.error || '加入失败，请检查房间号'; return; }
   localStorage.lwName = name;
@@ -2261,7 +2272,7 @@ $('btn-leave').addEventListener('click', async () => {
     (async () => {
       const res = await fetch('api/join', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId: s.room, token: s.token, name: '' })
+        body: JSON.stringify({ roomId: s.room, token: s.token, name: '', deviceId: deviceId() })
       });
       const j = await res.json();
       if (!j.error && j.token) { token = j.token; enterRoom(s.room, j.playerId, j.view); }

@@ -456,7 +456,7 @@ const server = http.createServer((req, res) => {
       if (!rateLimit(cip, 'create', 10, 60000)) return sendJSON(res, { error: '创建房间过于频繁，请稍后再试' });
       if (Game.rooms.size >= 300) return sendJSON(res, { error: '服务器房间已满，请稍后再试' });
       return readBody(req, res, body => {
-        const r = Game.createRoom(String(body.name || '').slice(0, 12) || '玩家');
+        const r = Game.createRoom(String(body.name || '').slice(0, 12) || '玩家', String(body.deviceId || ''));
         markDirty();
         sendJSON(res, { roomId: r.roomId, token: r.token, playerId: r.playerId, view: r.view });
       });
@@ -466,7 +466,7 @@ const server = http.createServer((req, res) => {
       return readBody(req, res, body => {
         const roomId = String(body.roomId || '').toUpperCase().trim();
         if (!/^[0-9A-Z]{6}$/.test(roomId)) return sendJSON(res, { error: '房间号格式错误（6 位数字或字母）' });
-        const r = Game.joinRoom(roomId, String(body.name || '').slice(0, 12) || '玩家', String(body.token || ''));
+        const r = Game.joinRoom(roomId, String(body.name || '').slice(0, 12) || '玩家', String(body.token || ''), String(body.deviceId || ''));
         if (r.error) return sendJSON(res, { error: r.error });
         markDirty();
         sendJSON(res, { token: r.token, playerId: r.playerId, reused: !!r.reused, view: r.view });
