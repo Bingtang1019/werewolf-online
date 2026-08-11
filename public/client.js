@@ -2207,13 +2207,18 @@ $('btn-leave').addEventListener('click', async () => {
   refreshStats();
   setInterval(refreshStats, 30000);
 
-  // 重连
+  // 重连（v1.7.23 修复：改为 join 认领——服务端 byToken 找旧位 → 会话续期返回新 token；
+  // 旧实现只调 state（只读）→ 页面刷新后旧位滞留 + 重进产生分身（两个自己））
   const s = loadSession();
   if (s && s.room && s.me && s.token) {
     (async () => {
-      const res = await fetch(`api/state?room=${encodeURIComponent(s.room)}&token=${encodeURIComponent(s.token)}`);
+      const res = await fetch('api/join', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room: s.room, token: s.token, name: '' })
+      });
       const j = await res.json();
-      if (!j.error) { token = s.token; enterRoom(s.room, s.me, j); }
+      if (!j.error && j.token) { token = j.token; enterRoom(s.room, j.playerId, j.view); }
+      else if (!j.error) { token = s.token; enterRoom(s.room, s.me, j.view || j); }
       else clearSession();
     })();
   }
