@@ -2150,7 +2150,7 @@ function musicSync(v) {
   // v1.7.25（房间全局播放）：view.music 变化 → 统一执行（房主/跟随端同路径）
   const m = v && v.music;
   if (!m) return;
-  const key = m.idx + '|' + (m.playing ? 1 : 0) + '|' + m.mode + '|' + m.list.length + '|' + m.reviews.length;
+  const key = (m.cur ? m.cur.url : '') + '|' + (m.playing ? 1 : 0) + '|' + m.mode + '|' + m.list.length + '|' + m.reviews.length;
   const changed = key !== lastMusicKey;
   lastMusicKey = key;
   if (changed) {
@@ -2160,7 +2160,7 @@ function musicSync(v) {
     musicState.mode = m.mode;
     renderMusicPop();
   }
-  const cur = (m.idx >= 0 && m.list[m.idx]) ? musicState.list.find(s => s.id === 'srv' + m.list[m.idx].url.slice(-8)) : null;
+  const cur = m.cur ? (musicState.list.find(s => s.url === m.cur.url) || null) : null;
   if (changed && cur) {
     musicState.idx = musicState.list.indexOf(cur);
     if (m.playing && !musicState.playing) {
@@ -2243,8 +2243,28 @@ function mpPlay(sid) {
     if (musicState.idx < 0) { if (musicState.list.length) mpPlay(musicState.list[0].id); return; }
     postMusic(musicState.playing ? 'pause' : 'play', {});
   }
-  function mpNext() { postMusic('next', {}); }
-  function mpPrev() { postMusic('prev', {}); }
+  function pickSong(dir) {
+    // v1.7.26：按模式在客户端算下一首（官方歌单在本地）→ playAt 广播
+    const list = musicState.list;
+    if (!list.length) return null;
+    const mode = musicState.mode || 0;
+    if (mode === 2) return musicState.idx >= 0 ? list[musicState.idx] : list[0];
+    if (mode === 1) {
+      if (list.length === 1) return list[0];
+      let r; do { r = Math.floor(Math.random() * list.length); } while (r === musicState.idx);
+      return list[r];
+    }
+    const base = musicState.idx >= 0 ? musicState.idx : (dir > 0 ? -1 : 0);
+    return list[(base + dir + list.length) % list.length];
+  }
+  function mpNext() {
+    const s = pickSong(1);
+    if (s && s.url) postMusic('playAt', { url: s.url, name: s.name, src: s.src });
+  }
+  function mpPrev() {
+    const s = pickSong(-1);
+    if (s && s.url) postMusic('playAt', { url: s.url, name: s.name, src: s.src });
+  }
   function mpModeBtn() {
     const b = $('mp-mode');
     if (b) {

@@ -331,7 +331,7 @@ function joinRoom(roomId, name, token, deviceId) {
   }
   // v1.7.24（设备校验）：token 已失效（被续期/刷新竞态）时——按设备指纹找同设备旧玩家复用
   // （不新建占位——彻底消灭刷新分身：旧页 leave 删人 + 新页 join 新建 = 两个自己）
-  if (deviceId && room.phase !== 'lobby') {
+  if (deviceId) { // v1.7.26：设备认领无条件（含 lobby——建房/组局中刷新同样防分身）
     const dev = room.players.find(q => q.deviceId === deviceId && !q.isBot);
     if (dev) {
       dev.sess = newToken();
@@ -1798,7 +1798,7 @@ function handleMusic(roomId, pid, action, data) {
   const p = byId(room, pid);
   if (!p) return { error: '玩家不存在' };
   if (room.host !== pid && action !== 'apply') return { error: '只有房主可以控制播放' };
-  if (!room.music) room.music = { list: [], reviews: [], idx: -1, playing: false, mode: 0, prog: 0, ts: 0, who: '' };
+  if (!room.music) room.music = { list: [], reviews: [], idx: -1, cur: null, playing: false, mode: 0, prog: 0, ts: 0, who: '' };
   const m = room.music;
   if (action === 'play' || action === 'pause') {
     m.playing = action === 'play';
@@ -1827,10 +1827,11 @@ function handleMusic(roomId, pid, action, data) {
     return { ok: true, music: m };
   }
   if (action === 'playAt') {
-    if (!data || data.url === undefined) return { error: '参数错误' };
-    const idx = m.list.findIndex(s => s.url === data.url);
-    if (idx === -1) return { error: '歌曲不在歌单' };
-    m.idx = idx; m.playing = true; m.prog = 0; m.ts = Date.now(); m.who = p.name;
+    // v1.7.26：官方歌单在客户端本地（playlist.json 全员同源）——服务端只记录当前歌（url/name/src）广播；不校验 list（成员歌/官方歌统一处理）
+    if (!data || !data.url) return { error: '参数错误' };
+    if (!/^https?:\/\//i.test(String(data.url))) return { error: '仅支持 http/https 链接' };
+    m.cur = { url: String(data.url).slice(0, 300), name: String(data.name || '未知歌曲').slice(0, 40), src: String(data.src || 'official').slice(0, 12) };
+    m.playing = true; m.prog = 0; m.ts = Date.now(); m.who = p.name;
     bump(room);
     return { ok: true, music: m };
   }
