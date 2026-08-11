@@ -327,7 +327,7 @@ function serveStatic(req, res, file) {
         rs.on('error', () => { try { res.destroy(); } catch (e) {} });
         return;
       }
-      res.writeHead(200, headers);
+      res.writeHead(200, Object.assign({}, headers, { 'Content-Length': st.size }));
       const rs = fs.createReadStream(file);
       rs.pipe(res);
       rs.on('error', () => { try { res.destroy(); } catch (e) {} });
