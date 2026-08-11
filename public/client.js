@@ -209,6 +209,7 @@ function applyView(v) {
     }
   }
   view = v;
+  if (window.__setMusicView) window.__setMusicView(view); // v1.7.22：歌单面板同步房主身份（审批区显隐）
 }
 /* 重置轮询计时器（API 提交成功后调用，避免紧邻的旧请求干扰） */
 function resetPollTimer() {
@@ -2028,6 +2029,147 @@ $('btn-leave').addEventListener('click', async () => {
     $('sp-tts').addEventListener('change', () => setTTS($('sp-tts').checked));
     document.addEventListener('click', e => { const pop = $('sound-pop'); if (pop && !pop.classList.contains('hidden') && !(e.target.closest && e.target.closest('.sound-pop-wrap, .js-sound-btn'))) pop.classList.add('hidden'); });
   }
+
+  /* ---- 歌单面板（v1.7.22）：BGM 氛围音 + 成员点歌（UI 版——播放后端待接入） ---- */
+  const musicState = {
+    list: [
+      { id: 'off1', name: '🌅 大厅舒缓', url: '/music/bgm-01.wav', src: 'official', dur: 243, playing: false },
+      { id: 'off2', name: '🌙 夜晚悬疑', url: '/music/bgm-02.wav', src: 'official', dur: 276, playing: false },
+      { id: 'off3', name: '☀️ 白天紧张', url: '/music/bgm-03.wav', src: 'official', dur: 241, playing: false },
+      { id: 'off4', name: '🎵 氛围四', url: '/music/bgm-04.wav', src: 'official', dur: 249, playing: false },
+      { id: 'off5', name: '🎵 氛围五', url: '/music/bgm-05.wav', src: 'official', dur: 210, playing: false },
+      { id: 'off6', name: '🎵 氛围六', url: '/music/bgm-06.wav', src: 'official', dur: 209, playing: false },
+      { id: 'off7', name: '🎵 氛围七', url: '/music/bgm-07.wav', src: 'official', dur: 268, playing: false }
+    ],
+    reviews: [
+      { id: 'r1', url: 'https://example.com/song.mp3', note: '房主加的试听申请', by: '玩家·阿青' }
+    ],
+    idx: -1, playing: false, vol: 40, prog: 0, timer: null, audio: null
+  };
+  function musicAudio() {
+    if (!musicState.audio) {
+      musicState.audio = new Audio();
+      musicState.audio.addEventListener('ended', () => mpNext());
+    }
+    return musicState.audio;
+  }
+  function toggleMusicPop() {
+    const pop = $('music-pop');
+    if (!pop) return;
+    if (pop.classList.contains('hidden')) { renderMusicPop(); pop.classList.remove('hidden'); }
+    else pop.classList.add('hidden');
+  }
+  function renderMusicPop() {
+    const isHost = !!(window.__wwView && window.__wwView.my && window.__wwView.my.isHost);
+    // 官方歌单
+    const off = $('mp-official');
+    off.innerHTML = musicState.list.filter(s => s.src === 'official').map(s => mpItemHtml(s)).join('');
+    // 成员歌单
+    const mem = musicState.list.filter(s => s.src === 'member');
+    $('mp-member-cnt').textContent = mem.length ? mem.length + ' 首' : '空';
+    $('mp-member').innerHTML = mem.length ? mem.map(s => mpItemHtml(s)).join('') : '<div class="mp-item" style="color:#9aa3b5">暂无成员点歌——点下方提交申请</div>';
+    // 审批区（仅房主）
+    $('mp-review-sec').style.display = isHost && musicState.reviews.length ? 'flex' : 'none';
+    $('mp-review-cnt').textContent = musicState.reviews.length;
+    $('mp-review').innerHTML = musicState.reviews.map(r =>
+      `<div class="mp-item"><span class="mi-name" title="${r.url}">📥 ${r.note || '申请歌曲'}</span><span class="mi-src">${r.by}</span><span class="mi-act" data-review="${r.id}" data-act="ok">✅</span><span class="mi-act" data-review="${r.id}" data-act="no">❌</span></div>`
+    ).join('') || '';
+    // 当前播放
+    updateMusicNow();
+  }
+  function mpItemHtml(s) {
+    return `<div class="mp-item${musicState.idx === musicState.list.indexOf(s) && musicState.playing ? ' playing' : ''}" data-song="${s.id}">` +
+      `<span class="mi-name">${s.playing ? '🔊 ' : ''}${s.name}</span><span class="mi-src">${s.src === 'official' ? '官方' : '成员'}</span><span class="mi-act" data-song="${s.id}" data-act="del">🗑</span></div>`;
+  }
+  function updateMusicNow() {
+    const cur = musicState.idx >= 0 ? musicState.list[musicState.idx] : null;
+    const a = musicState.audio;
+    const d = cur && a && isFinite(a.duration) ? a.duration : (cur ? cur.dur : 1);
+    const t = cur && a && isFinite(a.currentTime) ? a.currentTime : 0;
+    $('mp-now-name').textContent = cur ? (musicState.playing ? '🔊 ' : '⏸ ') + cur.name : '未播放';
+    $('mp-play').textContent = musicState.playing ? '⏸' : '▶';
+    $('mp-bar').style.width = cur ? (Math.min(1, t / d) * 100).toFixed(1) + '%' : '0%';
+  }
+  function mpPlay(sid) {
+    const i = musicState.list.findIndex(s => s.id === sid);
+    if (i < 0) return;
+    musicState.idx = i;
+    musicState.playing = true;
+    const s = musicState.list[i];
+    if (!s.url) { toast('该歌曲没有可用链接'); musicState.playing = false; updateMusicNow(); return; }
+    const a = musicAudio();
+    a.volume = (musicState.vol || 40) / 100;
+    try {
+      if (a.src && a.src !== location.origin + s.url) a.src = s.url;
+      if (!a.src) a.src = s.url;
+      a.play().catch(() => { musicState.playing = false; updateMusicNow(); });
+    } catch (e) { musicState.playing = false; updateMusicNow(); }
+    if (musicState.timer) clearInterval(musicState.timer);
+    musicState.timer = setInterval(updateMusicNow, 500);
+    renderMusicPop();
+  }
+  function mpToggle() {
+    if (musicState.idx < 0) { if (musicState.list.length) mpPlay(musicState.list[0].id); return; }
+    const a = musicState.audio;
+    if (musicState.playing) { a && a.pause(); musicState.playing = false; }
+    else { musicState.playing = true; a && a.play().catch(() => { musicState.playing = false; }); }
+    if (!musicState.playing && musicState.timer) { clearInterval(musicState.timer); musicState.timer = null; }
+    updateMusicNow(); renderMusicPop();
+  }
+  function mpNext() {
+    if (!musicState.list.length) return;
+    mpPlay(musicState.list[(musicState.idx + 1) % musicState.list.length].id);
+  }
+  function mpPrev() {
+    if (!musicState.list.length) return;
+    mpPlay(musicState.list[(musicState.idx - 1 + musicState.list.length) % musicState.list.length].id);
+  }
+  const mb = $('btn-music');
+  if (mb) mb.addEventListener('click', e => { e.stopPropagation(); toggleMusicPop(); });
+  document.addEventListener('click', e => {
+    const pop = $('music-pop');
+    if (pop && !pop.classList.contains('hidden') && !(e.target.closest && e.target.closest('.music-pop-wrap, .js-music-btn'))) pop.classList.add('hidden');
+    const si = e.target.closest && e.target.closest('[data-song]');
+    if (si) {
+      const sid = si.getAttribute('data-song');
+      const act = si.getAttribute('data-act');
+      if (act === 'del') { musicState.list = musicState.list.filter(s => s.id !== sid); if (musicState.idx >= musicState.list.length) musicState.idx = -1; renderMusicPop(); return; }
+      if (!si.classList.contains('playing') || !musicState.playing) mpPlay(sid);
+      else mpToggle();
+      return;
+    }
+    const ri = e.target.closest && e.target.closest('[data-review]');
+    if (ri) {
+      const rid = ri.getAttribute('data-review');
+      const ok = ri.getAttribute('data-act') === 'ok';
+      const r = musicState.reviews.find(x => x.id === rid);
+      musicState.reviews = musicState.reviews.filter(x => x.id !== rid);
+      if (ok && r) musicState.list.push({ id: 'm' + Date.now(), name: (r.note || '成员点歌') + '（demo）', url: r.url, src: 'member', dur: 180, playing: false });
+      renderMusicPop();
+      return;
+    }
+  });
+  $('mp-play') && $('mp-play').addEventListener('click', e => { e.stopPropagation(); mpToggle(); });
+  $('mp-next') && $('mp-next').addEventListener('click', e => { e.stopPropagation(); mpNext(); });
+  $('mp-prev') && $('mp-prev').addEventListener('click', e => { e.stopPropagation(); mpPrev(); });
+  $('mp-vol') && $('mp-vol').addEventListener('input', e => {
+    musicState.vol = +e.target.value;
+    if (musicState.audio) musicState.audio.volume = musicState.vol / 100;
+    try { localStorage.ww_music_vol = String(musicState.vol); } catch (err) {}
+  });
+  $('mp-submit') && $('mp-submit').addEventListener('click', () => {
+    const url = $('mp-url').value.trim();
+    if (!url) { toast('请先粘贴歌曲链接'); return; }
+    if (!/^https?:\/\//i.test(url)) { toast('仅支持 http/https 直链'); return; }
+    const note = $('mp-note').value.trim();
+    musicState.reviews.push({ id: 'r' + Date.now(), url, note: note || '成员点歌', by: '我' });
+    $('mp-url').value = ''; $('mp-note').value = '';
+    toast('📨 已提交申请，等待房主审批');
+    renderMusicPop();
+  });
+  // 供房间视图渲染时同步 isHost（房主审批区显隐）
+  window.__setMusicView = v => { window.__wwView = v; };
+  try { musicState.vol = Math.max(0, Math.min(100, parseInt(localStorage.ww_music_vol || '40', 10) || 40)); if ($('mp-vol')) $('mp-vol').value = musicState.vol; } catch (err) {}
   document.addEventListener('pointerdown', () => {
     ensureAudio();
     // 入场音效（v1.2.0）：首次交互轻铃；AudioContext 首次 resume 是异步的，等它就绪再播

@@ -47,3 +47,6 @@ models/value-hicvn-smoke.json
 
 # 跑批输出（统一在 data/batch——test/lab/data 仅保留必要小文件）
 test/lab/data/
+
+# BGM 音频素材（QQ音乐录音转码产物——见 tools/music/convert-wav.js 重新生成）
+public/music/

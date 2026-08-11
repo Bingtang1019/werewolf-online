@@ -82,6 +82,7 @@
     <div class="tb-right">
       <span id="my-role-chip"></span>
       <button id="btn-sound" class="mini js-sound-btn" title="声音设置（总开关 + 分项，点击展开）">🔊</button>
+      <button id="btn-music" class="mini js-music-btn" title="房间歌单（BGM 氛围音 + 成员点歌）">🎵</button>
       <button id="btn-force" class="mini hidden" title="房主强制继续：未操作者视为弃权/跳过">强制继续</button>
       <button id="btn-leave" class="mini">离开</button>
     </div>
@@ -145,6 +146,34 @@
   </div>
 </div>
 <div id="toast" class="hidden" role="status" aria-live="polite"></div>
+<!-- 歌单面板（v1.7.22：BGM 氛围音 + 成员点歌，PC/移动端通用） -->
+<div class="music-pop-wrap">
+  <div id="music-pop" class="hidden">
+    <div class="mp-title">🎵 房间歌单</div>
+    <div class="mp-now">
+      <div class="mp-now-name" id="mp-now-name">未播放</div>
+      <div class="mp-progress"><div class="mp-bar" id="mp-bar"></div></div>
+      <div class="mp-controls">
+        <button id="mp-prev" class="mini" title="上一首">⏮</button>
+        <button id="mp-play" class="mini" title="播放/暂停">▶</button>
+        <button id="mp-next" class="mini" title="下一首">⏭</button>
+        <span class="mp-vol">🔉<input type="range" id="mp-vol" min="0" max="100" value="40" title="BGM 音量（独立于音效）"></span>
+      </div>
+    </div>
+    <div class="mp-sec">官方歌单 <span class="mp-tag">合成氛围音</span></div>
+    <div id="mp-official" class="mp-list"></div>
+    <div class="mp-sec">成员歌单 <span id="mp-member-cnt" class="mp-tag"></span></div>
+    <div id="mp-member" class="mp-list"></div>
+    <div class="mp-sec" id="mp-review-sec" style="display:none">待审批 <span id="mp-review-cnt" class="mp-tag"></span></div>
+    <div id="mp-review" class="mp-list"></div>
+    <div class="mp-apply">
+      <input id="mp-url" placeholder="粘贴歌曲直链（mp3/ogg/m4a）" maxlength="300">
+      <input id="mp-note" placeholder="备注（可选）" maxlength="40">
+      <button id="mp-submit" class="mini">📨 申请添加</button>
+    </div>
+    <div class="mp-hint">成员申请 → 房主审批后入列；切歌/暂停由房主控制</div>
+  </div>
+</div>
 <!-- 身份大卡弹窗（点顶栏身份芯片展开） -->
 <div id="role-pop" class="hidden">
   <div class="rp-card"><div class="rp-emoji" id="rp-emoji"></div><div class="rp-name" id="rp-name"></div><div class="rp-desc" id="rp-desc"></div></div>

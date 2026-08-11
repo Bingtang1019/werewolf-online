@@ -122,6 +122,10 @@ const MIME = {
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+  '.m4a': 'audio/mp4',
 };
 
 function acceptsGzip(req) { return /\bgzip\b/.test(req.headers['accept-encoding'] || ''); }
@@ -299,7 +303,16 @@ function serveStatic(req, res, file) {
     if (mime.startsWith('text/html')) {
       headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'";
     }
-    const useGzip = acceptsGzip(req) && st.size > 512;
+    const useGzip = acceptsGzip(req) && st.size > 512 && st.size <= 1024 * 1024;
+    // 大文件（音频/视频）：不缓存不压缩，直接流式传输（防内存爆炸）
+    if (st.size > 1024 * 1024) {
+      headers['Accept-Ranges'] = 'bytes';
+      res.writeHead(200, headers);
+      const rs = fs.createReadStream(file);
+      rs.pipe(res);
+      rs.on('error', () => { try { res.destroy(); } catch (e) {} });
+      return;
+    }
     if (hit && hit.mtimeMs === st.mtimeMs) {
       if (useGzip) { headers['Content-Encoding'] = 'gzip'; res.writeHead(200, headers); res.end(hit.gz); }
       else { res.writeHead(200, headers); res.end(hit.data); }

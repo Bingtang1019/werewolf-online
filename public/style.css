@@ -1271,3 +1271,50 @@ body.less-motion .hh-emoji { animation: none !important; }
 .dm-dream { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M42 6a26 26 0 1 0 17 37A22 22 0 0 1 42 6z' fill='rgb(110,140,190)'/%3E%3Ctext x='20' y='30' font-size='13' fill='rgb(225,235,255)' font-family='sans-serif'%3EZ%3C/text%3E%3Ctext x='27' y='42' font-size='11' fill='rgb(200,215,245)'%3Ez%3C/text%3E%3Ctext x='34' y='51' font-size='9' fill='rgb(185,200,235)'%3Ez%3C/text%3E%3C/svg%3E"); }
 .dm-left  { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M22 8h28v48H22z' fill='rgb(70,74,84)' stroke='rgb(110,116,128)' stroke-width='3'/%3E%3Ccircle cx='42' cy='32' r='3.5' fill='rgb(160,166,178)'/%3E%3C/svg%3E"); opacity: .75; }
 body.less-motion .dmark { animation: none; opacity: .95; }
+/* ---- 歌单面板（v1.7.22）：BGM 氛围音 + 成员点歌（PC/移动端通用） ---- */
+.music-pop-wrap { position: fixed; right: 14px; top: 56px; z-index: 91; }
+#music-pop {
+  position: static; width: 300px; max-width: calc(100vw - 24px);
+  padding: 12px 14px;
+  background: linear-gradient(180deg, rgba(30,36,52,.97), rgba(18,22,34,.97));
+  border: 1px solid rgba(232,182,76,.35);
+  box-shadow: 0 14px 40px rgba(0,0,0,.55), 0 0 26px rgba(232,182,76,.10);
+  border-radius: 14px;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  animation: popIn .22s cubic-bezier(.2,.9,.3,1.15);
+}
+#music-pop .mp-title { font-weight: 700; font-size: 13px; margin-bottom: 10px; color: var(--accent, #e8b64c); }
+#music-pop .mp-now { background: rgba(0,0,0,.28); border: 1px solid rgba(232,182,76,.22); border-radius: 10px; padding: 8px 10px; margin-bottom: 10px; }
+#music-pop .mp-now-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 16px; }
+#music-pop .mp-progress { height: 4px; background: rgba(255,255,255,.12); border-radius: 2px; margin: 7px 0; overflow: hidden; }
+#music-pop .mp-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #e8b64c, #f4d488); border-radius: 2px; transition: width .3s linear; }
+#music-pop .mp-controls { display: flex; align-items: center; gap: 6px; }
+#music-pop .mp-controls .mini { padding: 3px 8px; font-size: 12px; }
+#music-pop .mp-vol { display: flex; align-items: center; gap: 4px; margin-left: auto; font-size: 11px; color: var(--muted, #9aa3b5); }
+#music-pop .mp-vol input[type=range] { width: 64px; accent-color: #e8b64c; }
+#music-pop .mp-sec { font-size: 11px; color: var(--muted, #9aa3b5); margin: 9px 0 5px; display: flex; align-items: center; gap: 6px; }
+#music-pop .mp-tag { font-size: 10px; color: rgba(232,182,76,.85); border: 1px solid rgba(232,182,76,.35); border-radius: 8px; padding: 0 6px; }
+#music-pop .mp-list { display: flex; flex-direction: column; gap: 3px; max-height: 132px; overflow-y: auto; }
+#music-pop .mp-item {
+  display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 8px;
+  font-size: 12px; cursor: pointer; transition: background .12s;
+}
+#music-pop .mp-item:hover { background: rgba(232,182,76,.12); }
+#music-pop .mp-item.playing { background: rgba(232,182,76,.18); color: #f4d488; }
+#music-pop .mp-item .mi-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#music-pop .mp-item .mi-src { font-size: 10px; color: var(--muted, #9aa3b5); flex-shrink: 0; }
+#music-pop .mp-item .mi-act { font-size: 11px; flex-shrink: 0; cursor: pointer; opacity: .75; }
+#music-pop .mp-item .mi-act:hover { opacity: 1; }
+#music-pop .mp-apply { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(232,182,76,.25); }
+#music-pop .mp-apply input {
+  background: rgba(0,0,0,.3); border: 1px solid rgba(60,74,110,.6); border-radius: 8px;
+  padding: 6px 9px; font-size: 12px; color: var(--fg, #e8ecf4); outline: none;
+}
+#music-pop .mp-apply input:focus { border-color: rgba(232,182,76,.6); }
+#music-pop .mp-apply .mini { align-self: flex-end; }
+#music-pop .mp-hint { font-size: 10px; color: var(--muted, #9aa3b5); margin-top: 8px; line-height: 1.5; }
+/* 移动端：面板贴右缘（与声音面板一致），窄屏收窄 */
+@media (max-width: 900px) {
+  .music-pop-wrap { right: 8px; top: 50px; }
+  #music-pop { width: 272px; }
+}
