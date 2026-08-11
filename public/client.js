@@ -1,4 +1,11 @@
-'use strict';
+'use strict'
+const musicState = {
+    list: [],
+    reviews: [
+    ],
+    idx: -1, playing: false, vol: 40, prog: 0, timer: null, audio: null, mode: 0
+  };
+;
 /* =========================================================================
  * 狼人杀 网页客户端
  * 通过轮询 /api/state 获取状态，POST /api/action 发送操作
@@ -2075,12 +2082,7 @@ $('btn-leave').addEventListener('click', async () => {
   }
 
   /* ---- 歌单面板（v1.7.22）：BGM 氛围音 + 成员点歌（UI 版——播放后端待接入） ---- */
-  const musicState = {
-    list: [],
-    reviews: [
-    ],
-    idx: -1, playing: false, vol: 40, prog: 0, timer: null, audio: null, mode: 0
-  };
+  
   // 官方歌单：运行时从 playlist.json 加载（tools/music/ 生成——加歌无需改前端代码）
     // 官方歌单（一/二）：运行时从 playlist.json / playlist2.json 加载
   Promise.all([

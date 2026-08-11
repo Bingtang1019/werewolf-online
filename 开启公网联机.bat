@@ -35,7 +35,20 @@ echo   Send this URL to your friends:
 echo   (look for https://xxx.trycloudflare.com above)
 echo ==============================================
 :cf
-"%CF%" tunnel --url http://localhost:3000 --protocol http2 --edge-ip-version 4 --no-autoupdate --metrics localhost:39571
-echo [WARN] Tunnel exited/crashed. Restarting in 3s...  (press Ctrl+C twice to quit)
-timeout /t 3 /nobreak >nul
-goto cf
+echo ==============================================
+echo   Creating public tunnel... please wait
+echo   URL will appear below (also saved to tunnel.log)
+echo ==============================================
+echo [%date% %time%] Tunnel starting... >> "%~dp0tunnel.log"
+start "cloudflared" /min cmd /c ""%CF%" tunnel --url http://localhost:3000 --protocol http2 --no-autoupdate --metrics localhost:39571 >> "%~dp0tunnel.log" 2>&1"
+echo.
+echo   Waiting for tunnel URL...
+echo.
+:showurl
+if exist "%~dp0tunnel.log" (
+  for /f "tokens=*" %%L in ('type "%~dp0tunnel.log" ^| findstr /i "trycloudflare.com"') do (
+    echo   [URL] %%L
+  )
+)
+timeout /t 2 /nobreak >nul
+goto showurl

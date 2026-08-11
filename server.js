@@ -292,6 +292,27 @@ function sendJSON(res, obj) {
 const MAX_BODY = 1 * 1024 * 1024; // POST body 上限 1MB，超限直接 413（防恶意大请求占内存）
 /* 静态文件缓存：按 mtime 缓存原始内容与 gzip 结果，避免每个请求重复读盘+压缩 */
 const staticCache = new Map();
+/* 音频 LRU 缓存（v1.7.26）：大文件（音频）播放过的歌缓存进内存——隧道/反复播放场景下避免重复全量磁盘流（server.log 曾见 161s 慢请求）。上限 256MB，超限淘汰最久未用。 */
+const musicCache = new Map();
+const MUSIC_CACHE_MAX = 256 * 1024 * 1024;
+let musicCacheSize = 0;
+function musicCacheGet(key) {
+  const hit = musicCache.get(key);
+  if (hit) { musicCache.delete(key); musicCache.set(key, hit); return hit; }
+  return null;
+}
+function musicCachePut(key, buf, mtimeMs) {
+  if (buf.length > MUSIC_CACHE_MAX) return;
+  musicCache.delete(key);
+  musicCache.set(key, { buf, mtimeMs });
+  musicCacheSize += buf.length;
+  while (musicCacheSize > MUSIC_CACHE_MAX && musicCache.size > 1) {
+    const oldest = musicCache.keys().next().value;
+    if (oldest === key) break;
+    musicCacheSize -= musicCache.get(oldest).buf.length;
+    musicCache.delete(oldest);
+  }
+}
 function serveStatic(req, res, file) {
   fs.stat(file, (err, st) => {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('404 Not Found'); return; }
@@ -309,28 +330,48 @@ function serveStatic(req, res, file) {
     if (st.size > 1024 * 1024) {
       headers['Accept-Ranges'] = 'bytes';
       const rng = /bytes=(\d*)-(\d*)/.exec(String(req.headers.range || ''));
+      const cached = musicCacheGet(key);
+      const send = (buf, start, end, code) => {
+        if (code === 206) {
+          res.writeHead(206, Object.assign({}, headers, {
+            'Content-Range': 'bytes ' + start + '-' + end + '/' + st.size,
+            'Content-Length': end - start + 1
+          }));
+        } else {
+          res.writeHead(200, Object.assign({}, headers, { 'Content-Length': buf.length }));
+        }
+        res.end(buf);
+      };
       if (rng) {
         let start = rng[1] ? parseInt(rng[1], 10) : 0;
         let end = rng[2] ? parseInt(rng[2], 10) : st.size - 1;
         if (isNaN(start) || start < 0) start = 0;
         if (isNaN(end) || end >= st.size) end = st.size - 1;
-        if (start > end) {
-          res.writeHead(416, { 'Content-Range': 'bytes */' + st.size });
-          res.end(); return;
+        if (start > end) { res.writeHead(416, { 'Content-Range': 'bytes */' + st.size }); res.end(); return; }
+        if (cached && cached.mtimeMs === st.mtimeMs) {
+          send(cached.buf.subarray(start, end + 1), start, end, 206);
+        } else {
+          res.writeHead(206, Object.assign({}, headers, {
+            'Content-Range': 'bytes ' + start + '-' + end + '/' + st.size,
+            'Content-Length': end - start + 1
+          }));
+          const rs = fs.createReadStream(file, { start, end });
+          rs.pipe(res);
+          rs.on('error', () => { try { res.destroy(); } catch (e) {} });
         }
-        res.writeHead(206, Object.assign({}, headers, {
-          'Content-Range': 'bytes ' + start + '-' + end + '/' + st.size,
-          'Content-Length': end - start + 1
-        }));
-        const rs = fs.createReadStream(file, { start, end });
-        rs.pipe(res);
-        rs.on('error', () => { try { res.destroy(); } catch (e) {} });
         return;
       }
-      res.writeHead(200, Object.assign({}, headers, { 'Content-Length': st.size }));
-      const rs = fs.createReadStream(file);
-      rs.pipe(res);
-      rs.on('error', () => { try { res.destroy(); } catch (e) {} });
+      if (cached && cached.mtimeMs === st.mtimeMs) {
+        send(cached.buf, 0, st.size - 1, 200);
+      } else {
+        // 首次全量请求：读入内存缓存 + 响应（后续请求/Range 走缓存）
+        fs.readFile(file, (err, buf) => {
+          if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('404'); return; }
+          musicCachePut(key, buf, st.mtimeMs);
+          res.writeHead(200, Object.assign({}, headers, { 'Content-Length': buf.length }));
+          res.end(buf);
+        });
+      }
       return;
     }
     if (hit && hit.mtimeMs === st.mtimeMs) {
