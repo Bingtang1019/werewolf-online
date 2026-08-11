@@ -58,24 +58,36 @@ const EN_MAP = {
 };
 const WAV_EN = ['Morning-Lounge', 'Midnight-Suspense', 'Daylight-Tension', 'Ambience-04', 'Ambience-05', 'Ambience-06', 'Ambience-07'];
 
-/* ===== 官方歌单清单生成（英文命名）：7 wav + D:/Music mp3 → playlist.json ===== */
+/* ===== 官方歌单生成（双歌单）：歌单一=wav 氛围音 / 歌单二=D:/Music mp3 =====
+ * 运行: node tools/music/convert-wav.js [wav源目录] [输出目录] [mp3源目录]
+ */
 function buildPlaylist(dst) {
-  const pl = [];
+  // 歌单一：wav 氛围音（重命名为英文氛围名）
+  const pl1 = [];
   WAV_EN.forEach((en, i) => {
-    if (fs.existsSync(path.join(dst, en + '.wav'))) pl.push({ id: 'off' + (i + 1), name: en.replace(/-/g, ' '), url: '/music/' + en + '.wav', src: 'official' });
+    const src = process.argv[2] ? path.join(process.argv[2], 'wav', 'auto_' + String(i + 1).padStart(2, '0') + '.wav') : null;
+    if (src && fs.existsSync(src)) {
+      const dstFile = path.join(dst, en + '.wav');
+      if (!fs.existsSync(dstFile)) fs.copyFileSync(src, dstFile);
+    }
+    if (fs.existsSync(path.join(dst, en + '.wav'))) pl1.push({ id: 'off' + (i + 1), name: en.replace(/-/g, ' '), url: '/music/' + en + '.wav', src: 'official' });
   });
+  // 歌单二：D:/Music mp3（英文映射）
+  const pl2 = [];
   const mp3Src = process.argv[4] || 'D:/Music';
   let mp3s = [];
   try { mp3s = fs.readdirSync(mp3Src).filter(f => /\.mp3$/i.test(f)).sort(); } catch (e) {}
-  let n = pl.length;
+  let n = 0;
   for (const f of mp3s) {
     const safe = EN_MAP[f] || ('song-' + String(++n).padStart(2, '0') + '.mp3');
     try { fs.copyFileSync(path.join(mp3Src, f), path.join(dst, safe)); } catch (e) { continue; }
     const name = EN_MAP[f] ? safe.replace(/\.mp3$/i, '').replace(/-/g, ' ') : f.replace(/\.mp3$/i, '');
-    pl.push({ id: 'off' + pl.length + 1, name, url: '/music/' + safe, src: 'official' });
+    pl2.push({ id: 'off' + (n || pl2.length + 1), name, url: '/music/' + safe, src: 'official2' });
   }
-  fs.writeFileSync(path.join(dst, 'playlist.json'), JSON.stringify(pl, null, 1), 'utf8');
-  console.log('playlist.json:', pl.length, '首');
+  fs.writeFileSync(path.join(dst, 'playlist.json'), JSON.stringify(pl1, null, 1), 'utf8');
+  fs.writeFileSync(path.join(dst, 'playlist2.json'), JSON.stringify(pl2, null, 1), 'utf8');
+  console.log('playlist.json:', pl1.length, '首（氛围音）| playlist2.json:', pl2.length, '首（mp3）');
 }
 buildPlaylist(dst);
+
 
