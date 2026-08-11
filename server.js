@@ -492,7 +492,12 @@ const server = http.createServer((req, res) => {
       if (clientV === room.version) return sendJSON(res, { v: room.version, changed: false });
       // 聊天增量：客户端带上最后一条消息的 ts（since），服务端只发新消息，避免全量重发
       const chatSince = parseInt(url.searchParams.get('since') || '0', 10) || 0;
-      return sendJSON(res, Game.viewFor(room, p.id, chatSince));
+      const view = Game.viewFor(room, p.id, chatSince);
+      // v1.7.25（房间全局播放）：进度随轮询刷新（播放端每次 state 拉取都带当前秒数——跟随端据此校准）
+      if (view && view.music && view.music.playing && view.music.ts) {
+        view.music.prog = view.music.prog + (Date.now() - view.music.ts) / 1000;
+      }
+      return sendJSON(res, view);
     }
     if (pathname === '/api/stream' && req.method === 'GET') {
       const url = new URL(req.url, 'http://x');
@@ -584,6 +589,21 @@ const server = http.createServer((req, res) => {
         markDirty();
         opCommit(op.opId, true, 200);
         sendJSON(res, { ok: true, view: r.view });
+      });
+    }
+    if (pathname === '/api/music' && req.method === 'POST') {
+      // v1.7.25（房间全局播放）：房主控制 + 成员点歌申请——低频状态存 room.music 随 view 同步
+      return readBody(req, res, body => {
+        const roomId = String(body.room || '').toUpperCase().trim();
+        const token = String(body.token || '');
+        if (!/^[0-9A-Z]{6}$/.test(roomId) || !/^[0-9a-f]{32}$/.test(token)) return sendJSON(res, { error: '参数格式错误' });
+        const room = Game.rooms.get(roomId);
+        const p = room && Game.byToken(room, token);
+        if (!p) return sendJSON(res, { error: '玩家不存在' });
+        const r = Game.handleMusic(roomId, p.id, String(body.action || ''), body.data || {});
+        if (r.error) return sendJSON(res, { error: r.error });
+        markDirty();
+        sendJSON(res, r);
       });
     }
     if (pathname === '/api/leave' && req.method === 'POST') {

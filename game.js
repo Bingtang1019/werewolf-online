@@ -268,6 +268,7 @@ function createRoom(hostName, deviceId) {
     loverLocked: false, // A/B 注入（M3.5）：解绑禁用（G3 对照：丘比特死但解绑锁定——分离解绑效应）
     loverV2: null, // v2：恋人机制状态（loverCore 管理：power/unbind/betrayUsed/timeline）
     players: [],
+    music: null, // v1.7.25（房间全局播放）：{ list, reviews, idx, playing, mode, prog, ts, who }——房主控制全员同步
     messages: [],
     winner: null, endInfo: null,
     // 游戏运行时字段
@@ -1790,6 +1791,67 @@ function flushLabSamples(room) {
     room.labSampleBuf = [];
   }
 }
+function handleMusic(roomId, pid, action, data) {
+  // v1.7.25（房间全局播放）：房主控制播放器 + 成员点歌申请/审批——状态存 room.music，随 view 同步全员
+  const room = rooms.get(roomId);
+  if (!room) return { error: '房间不存在' };
+  const p = byId(room, pid);
+  if (!p) return { error: '玩家不存在' };
+  if (room.host !== pid && action !== 'apply') return { error: '只有房主可以控制播放' };
+  if (!room.music) room.music = { list: [], reviews: [], idx: -1, playing: false, mode: 0, prog: 0, ts: 0, who: '' };
+  const m = room.music;
+  if (action === 'play' || action === 'pause') {
+    m.playing = action === 'play';
+    m.who = p.name;
+    bump(room);
+    return { ok: true, music: m };
+  }
+  if (action === 'next' || action === 'prev') {
+    if (!m.list.length) return { error: '歌单为空' };
+    const n = m.list.length;
+    m.idx = action === 'next' ? (m.idx + 1) % n : (m.idx - 1 + n) % n;
+    m.playing = true; m.prog = 0; m.ts = Date.now(); m.who = p.name;
+    bump(room);
+    return { ok: true, music: m };
+  }
+  if (action === 'seek') {
+    m.prog = Math.max(0, Number(data && data.prog) || 0);
+    m.ts = Date.now(); m.who = p.name;
+    bump(room);
+    return { ok: true, music: m };
+  }
+  if (action === 'mode') {
+    m.mode = (Number(data && data.mode) || 0) % 3;
+    m.who = p.name;
+    bump(room);
+    return { ok: true, music: m };
+  }
+  if (action === 'playAt') {
+    if (!data || data.url === undefined) return { error: '参数错误' };
+    const idx = m.list.findIndex(s => s.url === data.url);
+    if (idx === -1) return { error: '歌曲不在歌单' };
+    m.idx = idx; m.playing = true; m.prog = 0; m.ts = Date.now(); m.who = p.name;
+    bump(room);
+    return { ok: true, music: m };
+  }
+  if (action === 'apply') {
+    if (!data || !data.url || !data.name) return { error: '参数错误' };
+    m.reviews.push({ id: uid().slice(0, 6), url: String(data.url).slice(0, 300), name: String(data.name).slice(0, 40), from: p.name });
+    bump(room);
+    return { ok: true, music: m };
+  }
+  if (action === 'approve' || action === 'reject') {
+    const id = data && data.id;
+    const ri = m.reviews.findIndex(r => r.id === id);
+    if (ri === -1) return { error: '申请不存在' };
+    const [r] = m.reviews.splice(ri, 1);
+    if (action === 'approve') m.list.push({ url: r.url, name: r.name, src: 'member' });
+    bump(room);
+    return { ok: true, music: m };
+  }
+  return { error: '未知操作' };
+}
+
 function handleAction(roomId, pid, action, data, chatSince) {
   const room = rooms.get(roomId);
   if (!room) return { error: '房间不存在或已解散' };
@@ -2016,6 +2078,7 @@ function viewFor(room, pid, chatSince) {
     })),
     my: { id: pid, name: me ? me.name : '', alive: me ? me.alive : false, isHost: room.host === pid, role: me ? roleText(room, me) : null, roleKey: me ? effRole(me) : null, camp: me ? ((me.role === 'thief') ? null : campText(room, me)) : null, // v1.7.6：丘比特可得知自己当前阵营（cupidCamp）
       mood: me ? (me.mood || null) : null }, // 安全加固：token 永不进视图（前端从 create/join 响应获取）
+    music: room.music, // v1.7.25（房间全局播放）：低频状态随 view 同步（list/reviews/idx/playing/mode）——prog 由 state 轮询携带
     myChannels: me ? (['all'].filter(() => room.phase !== 'night').concat(isWolfRole(me) && room.phase === 'night' ? ['wolf'] : []).concat(isLoverParty(room, me.id) ? ['lover'] : [])) : ['all'],
     phaseTimed: !!room.phaseDeadline,
     phaseDeadline: room.phaseDeadline,
@@ -2210,7 +2273,7 @@ function resumeRoom(room) {
 
 module.exports = {
   debugRoom,
-  ROLE_INFO, rooms, createRoom, joinRoom, handleAction, handleChat, handleAdvance, handleLeave, handleKick, viewFor, resumeRoom, byToken, removePlayer, // 安全加固（C1/C2/C3）：token 定位玩家；v1.7.21：断线超时清理用 removePlayer
+  ROLE_INFO, rooms, createRoom, joinRoom, handleAction, handleChat, handleAdvance, handleLeave, handleKick, viewFor, resumeRoom, byToken, removePlayer, handleMusic, // 安全加固（C1/C2/C3）：token 定位玩家；v1.7.21：断线超时清理用 removePlayer；v1.7.25：房间全局播放控制
   checkWin, // 1.7.4：导出供规则测试/实验室直接判定
   // v1.6.1：钩子用 setter 导出（CommonJS 值导出会让外部赋值不生效）
   setOnChange(fn) { onChange = fn; },

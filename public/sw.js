@@ -5,7 +5,7 @@
  *   子资源仍网络优先（保证新 client.js/style.css 立即生效）。
  * /api/ 请求一律不缓存（由服务器实时应答）。
  * 发版时只需更新 CACHE 版本号，activate 阶段自动清理旧缓存。 */
-const CACHE = 'ww-v1.7.23'; // v1.7.23：音频透传（/music/ 不拦截不缓存）+ 重连认领修复
+const CACHE = 'ww-v1.7.25'; // v1.7.23：音频透传（/music/ 不拦截不缓存）+ 重连认领修复
 const PRECACHE = ['/', 'index.html', 'style.css', 'client.js', 'manifest.json', 'icon.svg'];
 
 self.addEventListener('install', e => {

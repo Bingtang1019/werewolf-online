@@ -199,6 +199,7 @@ function lastChatTs() {
 function applyView(v) {
   if (!v || v.error) return;
   if (view && v.v < view.v) return;
+  musicSync(v); // v1.7.25（房间全局播放）：音乐状态同步
   // 上帝配音（v1.6.0）：夜晚开始 / 夜晚步骤切换时播报
   if (ttsOn && view) {
     if (v.phase === 'night' && view.phase !== 'night') speak('天黑请闭眼，请各位准备');
@@ -2071,12 +2072,17 @@ $('btn-leave').addEventListener('click', async () => {
           musicState.audio.play().catch(() => {});
         }
       });
-      musicState.audio.addEventListener('ended', () => mpNext());
+      musicState.audio.addEventListener('ended', () => {
+        // v1.7.25（房间全局播放）：房主播放完 → 广播切歌（全员同步）；跟随端等待房主广播
+        const isHost = !!(window.__wwView && window.__wwView.my && window.__wwView.my.isHost);
+        if (isHost) mpNext();
+      });
       // 兜底：timeupdate 检测到播完但 ended 未触发（流式中断）→ 手动切
       musicState.audio.addEventListener('timeupdate', () => {
         const a = musicState.audio;
         if (a && isFinite(a.duration) && a.duration > 0 && a.currentTime >= a.duration - 0.3 && musicState.playing) {
-          mpNext();
+          const isHost = !!(window.__wwView && window.__wwView.my && window.__wwView.my.isHost);
+          if (isHost) mpNext(); // 房主播完广播切歌；跟随端等广播
         }
       });
     }
@@ -2125,7 +2131,81 @@ $('btn-leave').addEventListener('click', async () => {
     $('mp-play').textContent = musicState.playing ? '⏸' : '▶';
     $('mp-bar').style.width = cur ? (Math.min(1, t / d) * 100).toFixed(1) + '%' : '0%';
   }
-  function mpPlay(sid) {
+  function postMusic(action, data) {
+  // v1.7.25（房间全局播放）：控制操作走服务端（room.music）→ bump → view 回传 → musicSync 全员同步执行
+  if (!roomId || !token) return Promise.resolve(null);
+  return fetch('api/music', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ room: roomId, token, action, data: data || {} })
+  }).then(r => r.json()).then(j => {
+    if (j.error) { toast(j.error); return null; }
+    return j.music;
+  }).catch(() => null);
+}
+let lastMusicKey = '';
+function musicSync(v) {
+  // v1.7.25（房间全局播放）：view.music 变化 → 统一执行（房主/跟随端同路径）
+  const m = v && v.music;
+  if (!m) return;
+  const key = m.idx + '|' + (m.playing ? 1 : 0) + '|' + m.mode + '|' + m.list.length + '|' + m.reviews.length;
+  const changed = key !== lastMusicKey;
+  lastMusicKey = key;
+  if (changed) {
+    musicState.list = musicState.list.filter(s => s.src !== 'member');
+    for (const s of m.list) musicState.list.push({ id: 'srv' + s.url.slice(-8), name: s.name, url: s.url, src: s.src || 'member' });
+    musicState.reviews = (m.reviews || []).map(r => ({ id: r.id, url: r.url, name: r.name, from: r.from }));
+    musicState.mode = m.mode;
+    renderMusicPop();
+  }
+  const cur = (m.idx >= 0 && m.list[m.idx]) ? musicState.list.find(s => s.id === 'srv' + m.list[m.idx].url.slice(-8)) : null;
+  if (changed && cur) {
+    musicState.idx = musicState.list.indexOf(cur);
+    if (m.playing && !musicState.playing) {
+      mpPlayLocal(cur.id);
+    } else if (!m.playing && musicState.playing) {
+      musicState.playing = false;
+      const a = musicAudio();
+      if (a) { try { a.pause(); } catch (e) {} }
+      if (musicState.timer) { clearInterval(musicState.timer); musicState.timer = null; }
+      renderMusicPop();
+    }
+  }
+  if (m.playing && m.ts && musicState.audio && isFinite(musicState.audio.currentTime)) {
+    const serverProg = m.prog + (Date.now() - m.ts) / 1000;
+    const local = musicState.audio.currentTime;
+    if (serverProg > 0 && Math.abs(local - serverProg) > 3) {
+      try { musicState.audio.currentTime = serverProg; } catch (e) {}
+    }
+  }
+}
+function mpPlayLocal(sid) {
+  const i = musicState.list.findIndex(s => s.id === sid);
+  if (i < 0) return;
+  musicState.idx = i;
+  musicState.playing = true;
+  const s = musicState.list[i];
+  if (!s.url) { toast('该歌曲没有可用链接'); musicState.playing = false; updateMusicNow(); return; }
+  const a = musicAudio();
+  a.volume = (musicState.vol || 40) / 100;
+  a.preload = 'auto';
+  try {
+    const abs = new URL(s.url, location.origin).href;
+    if (a.src !== abs) { a.src = abs; a.currentTime = 0; a.load(); }
+    else { a.currentTime = 0; }
+    const tryPlay = () => {
+      a.play().then(() => { musicState.playing = true; }).catch(err => {
+        musicState.playing = false;
+        console.warn('[music] 播放失败:', err && err.name, err && err.message, s.url);
+        if (err && err.name === 'NotAllowedError') toast('浏览器阻止自动播放——请再点一次播放');
+      });
+    };
+    if (a.readyState >= 2) tryPlay(); else { musicState.playing = true; a.play().catch(() => {}); }
+  } catch (e) { musicState.playing = false; console.warn('[music] 播放异常:', e); }
+  if (musicState.timer) clearInterval(musicState.timer);
+  musicState.timer = setInterval(updateMusicNow, 500);
+  renderMusicPop();
+}
+function mpPlay(sid) {
     const i = musicState.list.findIndex(s => s.id === sid);
     if (i < 0) return;
     musicState.idx = i;
@@ -2156,61 +2236,12 @@ $('btn-leave').addEventListener('click', async () => {
     renderMusicPop();
   }
   function mpToggle() {
+    // v1.7.25（房间全局播放）：房主控制走服务端广播；跟随端由 musicSync 执行
     if (musicState.idx < 0) { if (musicState.list.length) mpPlay(musicState.list[0].id); return; }
-    const a = musicState.audio;
-    if (musicState.playing) { a && a.pause(); musicState.playing = false; }
-    else { musicState.playing = true; a && a.play().catch(() => { musicState.playing = false; }); }
-    if (!musicState.playing && musicState.timer) { clearInterval(musicState.timer); musicState.timer = null; }
-    updateMusicNow(); renderMusicPop();
+    postMusic(musicState.playing ? 'pause' : 'play', {});
   }
-  function mpNext() {
-    if (!musicState.list.length) return;
-    if (musicState.mode === 2) { // 单曲循环：重播当前
-      if (musicState.idx >= 0) { mpPlay(musicState.list[musicState.idx].id); return; }
-    }
-    let nidx;
-    if (musicState.mode === 1) { // 随机
-      nidx = Math.floor(Math.random() * musicState.list.length);
-      if (musicState.list.length > 1 && nidx === musicState.idx) nidx = (nidx + 1) % musicState.list.length;
-    } else { // 顺序
-      nidx = (musicState.idx + 1) % musicState.list.length;
-    }
-    mpPlay(musicState.list[nidx].id);
-  }
-  function mpPrev() {
-    if (!musicState.list.length) return;
-    mpPlay(musicState.list[(musicState.idx - 1 + musicState.list.length) % musicState.list.length].id);
-  }
-  const mb = $('btn-music');
-  if (mb) mb.addEventListener('click', e => { e.stopPropagation(); toggleMusicPop(); });
-  document.addEventListener('click', e => {
-    const pop = $('music-pop');
-    if (pop && !pop.classList.contains('hidden') && !(e.target.closest && e.target.closest('.music-pop-wrap, .js-music-btn'))) pop.classList.add('hidden');
-    const si = e.target.closest && e.target.closest('[data-song]');
-    if (si) {
-      const sid = si.getAttribute('data-song');
-      const act = si.getAttribute('data-act');
-      if (act === 'del') { musicState.list = musicState.list.filter(s => s.id !== sid); if (musicState.idx >= musicState.list.length) musicState.idx = -1; renderMusicPop(); return; }
-      if (!si.classList.contains('playing') || !musicState.playing) mpPlay(sid);
-      else mpToggle();
-      return;
-    }
-    const ri = e.target.closest && e.target.closest('[data-review]');
-    if (ri) {
-      const rid = ri.getAttribute('data-review');
-      const ok = ri.getAttribute('data-act') === 'ok';
-      const r = musicState.reviews.find(x => x.id === rid);
-      musicState.reviews = musicState.reviews.filter(x => x.id !== rid);
-      if (ok && r) musicState.list.push({ id: 'm' + Date.now(), name: (r.note || '成员点歌') + '（demo）', url: r.url, src: 'member', dur: 180, playing: false });
-      renderMusicPop();
-      return;
-    }
-  });
-  $('mp-play') && $('mp-play').addEventListener('click', e => { e.stopPropagation(); mpToggle(); });
-  $('mp-next') && $('mp-next').addEventListener('click', e => { e.stopPropagation(); mpNext(); });
-  $('mp-prev') && $('mp-prev').addEventListener('click', e => { e.stopPropagation(); mpPrev(); });
-  const MODE_ICONS = ['🔀', '🔁', '🔂'];
-  const MODE_TIPS = ['顺序播放', '随机播放', '单曲循环'];
+  function mpNext() { postMusic('next', {}); }
+  function mpPrev() { postMusic('prev', {}); }
   function mpModeBtn() {
     const b = $('mp-mode');
     if (b) {
@@ -2220,10 +2251,8 @@ $('btn-leave').addEventListener('click', async () => {
   }
   $('mp-mode') && $('mp-mode').addEventListener('click', e => {
     e.stopPropagation();
-    musicState.mode = ((musicState.mode || 0) + 1) % 3;
-    try { localStorage.ww_music_mode = String(musicState.mode); } catch (err) {}
-    mpModeBtn();
-    toast(MODE_TIPS[musicState.mode] + '已开启');
+    const nm = ((musicState.mode || 0) + 1) % 3;
+    postMusic('mode', { mode: nm }); // v1.7.25：模式走服务端广播（全员同步）
   });
   try { if (localStorage.ww_music_mode) musicState.mode = +localStorage.ww_music_mode || 0; } catch (err) {}
   mpModeBtn();
@@ -2237,11 +2266,34 @@ $('btn-leave').addEventListener('click', async () => {
     if (!url) { toast('请先粘贴歌曲链接'); return; }
     if (!/^https?:\/\//i.test(url)) { toast('仅支持 http/https 直链'); return; }
     const note = $('mp-note').value.trim();
-    musicState.reviews.push({ id: 'r' + Date.now(), url, note: note || '成员点歌', by: '我' });
-    $('mp-url').value = ''; $('mp-note').value = '';
-    toast('📨 已提交申请，等待房主审批');
-    renderMusicPop();
+    // v1.7.25（房间全局播放）：申请走服务端——全员 reviews 同步（房主在任一设备都能看到）
+    postMusic('apply', { url, name: note || '成员点歌' }).then(() => {
+      $('mp-url').value = ''; $('mp-note').value = '';
+      toast('📨 已提交申请，等待房主审批');
+    });
   });
+  // v1.7.25（房间全局播放）：歌单面板统一点击委托（播放/上下首/审批/删除）——补齐此前缺失的绑定
+  const mpPop = $('music-pop');
+  if (mpPop) mpPop.addEventListener('click', e => {
+    const songEl = e.target.closest('[data-song]');
+    const act = songEl && songEl.getAttribute('data-act');
+    const revEl = e.target.closest('[data-review]');
+    if (songEl && !act) { // 点击歌曲行 → 播放
+      mpPlay(songEl.getAttribute('data-song'));
+      return;
+    }
+    if (songEl && act === 'del') { // 删除（成员歌，房主）
+      if (musicState.list.length) { postMusic('playAt', { url: musicState.list[0].url }); }
+      toast('删除功能：官方歌单不可删，成员歌由房主管理');
+      return;
+    }
+    if (revEl) { // 审批 ✅/❌
+      postMusic(revEl.getAttribute('data-act') === 'ok' ? 'approve' : 'reject', { id: revEl.getAttribute('data-review') });
+    }
+  });
+  $('mp-play') && $('mp-play').addEventListener('click', e => { e.stopPropagation(); mpToggle(); });
+  $('mp-next') && $('mp-next').addEventListener('click', e => { e.stopPropagation(); mpNext(); });
+  $('mp-prev') && $('mp-prev').addEventListener('click', e => { e.stopPropagation(); mpPrev(); });
   // 供房间视图渲染时同步 isHost（房主审批区显隐）
   window.__setMusicView = v => { window.__wwView = v; };
   try { musicState.vol = Math.max(0, Math.min(100, parseInt(localStorage.ww_music_vol || '40', 10) || 40)); if ($('mp-vol')) $('mp-vol').value = musicState.vol; } catch (err) {}
