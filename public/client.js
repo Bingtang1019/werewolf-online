@@ -2096,7 +2096,8 @@ $('btn-leave').addEventListener('click', async () => {
     (pl3 || []).forEach(s => list.push({ id: 'x' + s.id, name: s.name, url: s.url, src: 'official3', dur: 0, playing: false }));
     if (list.length) { musicState.list = list; renderMusicPop(); }
   }).catch(() => {});
-  function musicAudio() {
+}
+function musicAudio() {
     if (!musicState.audio) {
       musicState.audio = new Audio();
       // 切歌/换 src 后数据就绪再播放（流式响应下 load+立即 play 可能被拒）
@@ -2282,7 +2283,7 @@ function mpPlay(sid) {
   if (!song.url) { toast('该歌曲没有可用链接'); return; }
   postMusic('playAt', { url: song.url, name: song.name, src: song.src });
 }
-}
+
 function sendChat() {
   if ($('chat-text').disabled) return; // 当前频道不可发言（如夜晚全体频道）
   const text = $('chat-text').value.trim();
