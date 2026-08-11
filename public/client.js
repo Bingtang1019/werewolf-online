@@ -1952,12 +1952,7 @@ $('btn-leave').addEventListener('click', async () => {
     location.reload();
   });
 
-  // v1.7.21（双占位修复）：页面关闭/后台清理时主动发 leave（navigator.sendBeacon 不受页面销毁影响，
-  // fetch 在页面销毁时可能被取消）；pagehide 兼容移动端清理后台 + 桌面关页
-  window.addEventListener('pagehide', () => {
-    if (!roomId || !token) return;
-    try { navigator.sendBeacon('api/leave', new Blob([JSON.stringify({ room: roomId, token })], { type: 'application/json' })); } catch (e) {}
-  });
+  // v1.7.26（分身根治）：不再主动发 leave——SSE 断线 60s 超时清理；token 不续期（一个 token 永久对应一个成员）
   // 房号点击即复制（9）→ v1.3.0：复制邀请链接
   $('room-code').addEventListener('click', copyInvite);
   // 身份芯片点击 → 大卡弹窗（8）
