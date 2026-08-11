@@ -2126,7 +2126,8 @@ $('btn-leave').addEventListener('click', async () => {
     a.preload = 'auto';
     try {
       const abs = new URL(s.url, location.origin).href;
-      if (a.src !== abs) { a.src = abs; a.load(); }
+      if (a.src !== abs) { a.src = abs; a.currentTime = 0; a.load(); }
+      else { a.currentTime = 0; } // 同一首重播（单曲循环/手动重播）——进度条归零
       const tryPlay = () => {
         a.play().then(() => {
           musicState.playing = true;
@@ -2260,7 +2261,7 @@ $('btn-leave').addEventListener('click', async () => {
     (async () => {
       const res = await fetch('api/join', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ room: s.room, token: s.token, name: '' })
+        body: JSON.stringify({ roomId: s.room, token: s.token, name: '' })
       });
       const j = await res.json();
       if (!j.error && j.token) { token = j.token; enterRoom(s.room, j.playerId, j.view); }
