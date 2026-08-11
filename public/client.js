@@ -2035,6 +2035,39 @@ $('btn-leave').addEventListener('click', async () => {
     // v1.7.25：歌单按钮（房间歌单面板——播放/点歌/审批）
     const bm = $('btn-music');
     if (bm) bm.addEventListener('click', e => { e.stopPropagation(); toggleMusicPop(); });
+    // v1.7.26：歌单播放器完整绑定（播放/上下首/模式/音量/点歌/委托——补齐 HEAD 缺失）
+    $('mp-play') && $('mp-play').addEventListener('click', e => { e.stopPropagation(); mpToggle(); });
+    $('mp-next') && $('mp-next').addEventListener('click', e => { e.stopPropagation(); mpNext(); });
+    $('mp-prev') && $('mp-prev').addEventListener('click', e => { e.stopPropagation(); mpPrev(); });
+    $('mp-mode') && $('mp-mode').addEventListener('click', e => {
+      e.stopPropagation();
+      postMusic('mode', { mode: ((musicState.mode || 0) + 1) % 3 });
+    });
+    $('mp-vol') && $('mp-vol').addEventListener('input', e => {
+      musicState.vol = +e.target.value;
+      if (musicState.audio) musicState.audio.volume = musicState.vol / 100;
+      try { localStorage.ww_music_vol = String(musicState.vol); } catch (err) {}
+    });
+    $('mp-submit') && $('mp-submit').addEventListener('click', () => {
+      const url = $('mp-url').value.trim();
+      if (!url) { toast('请先粘贴歌曲链接'); return; }
+      if (!/^https?:\/\//i.test(url)) { toast('仅支持 http/https 直链'); return; }
+      const note = $('mp-note').value.trim();
+      postMusic('apply', { url, name: note || '成员点歌' }).then(() => {
+        $('mp-url').value = ''; $('mp-note').value = '';
+        toast('📨 已提交申请，等待房主审批');
+      });
+    });
+    const mpPop2 = $('music-pop');
+    if (mpPop2) mpPop2.addEventListener('click', e => {
+      const songEl = e.target.closest('[data-song]');
+      const act = songEl && songEl.getAttribute('data-act');
+      const revEl = e.target.closest('[data-review]');
+      if (songEl && !act) { mpPlay(songEl.getAttribute('data-song')); return; }
+      if (revEl) { postMusic(revEl.getAttribute('data-act') === 'ok' ? 'approve' : 'reject', { id: revEl.getAttribute('data-review') }); }
+    });
+    try { if (localStorage.ww_music_mode) musicState.mode = +localStorage.ww_music_mode || 0; } catch (err) {}
+    mpModeBtn();
     $('sp-master').addEventListener('change', () => setSfxMaster($('sp-master').checked));
     $('sp-wolf').addEventListener('change', () => setSfxFlag('wolf', $('sp-wolf').checked));
     $('sp-morning').addEventListener('change', () => setSfxFlag('morning', $('sp-morning').checked));
@@ -2181,6 +2214,42 @@ function musicSync(v) {
     }
   }
 }
+function pickSong(dir) {
+  // v1.7.26：按当前模式选下一首（顺序/随机/单曲）——房主前端计算（官方歌单在前端）
+  const list = musicState.list;
+  if (!list.length) return null;
+  if (musicState.mode === 2) return list[Math.max(0, musicState.idx)]; // 单曲循环
+  if (musicState.mode === 1) {
+    if (list.length <= 1) return list[0];
+    let r = Math.floor(Math.random() * list.length);
+    if (r === musicState.idx) r = (r + 1) % list.length;
+    return list[r];
+  }
+  const n = list.length;
+  const idx = musicState.idx < 0 ? 0 : (musicState.idx + (dir > 0 ? 1 : -1) + n) % n;
+  return list[idx];
+}
+function mpNext() {
+  const s = pickSong(1);
+  if (s && s.url) postMusic('playAt', { url: s.url, name: s.name, src: s.src });
+}
+function mpPrev() {
+  const s = pickSong(-1);
+  if (s && s.url) postMusic('playAt', { url: s.url, name: s.name, src: s.src });
+}
+function mpToggle() {
+  // v1.7.26：房主控制走服务端广播；跟随端由 musicSync 执行
+  if (musicState.idx < 0) { if (musicState.list.length) mpPlay(musicState.list[0].id); return; }
+  postMusic(musicState.playing ? 'pause' : 'play', {});
+}
+function mpSetMode(mode) {
+  postMusic('mode', { mode });
+}
+function mpModeBtn() {
+  const MODE_ICONS = ['🔀', '🔁', '🔂'];
+  const b = $('mp-mode');
+  if (b) b.textContent = MODE_ICONS[musicState.mode || 0];
+}
 function mpPlayLocal(sid) {
   const i = musicState.list.findIndex(s => s.id === sid);
   if (i < 0) return;
@@ -2209,152 +2278,13 @@ function mpPlayLocal(sid) {
   renderMusicPop();
 }
 function mpPlay(sid) {
-    const i = musicState.list.findIndex(s => s.id === sid);
-    if (i < 0) return;
-    musicState.idx = i;
-    musicState.playing = true;
-    const s = musicState.list[i];
-    if (!s.url) { toast('该歌曲没有可用链接'); musicState.playing = false; updateMusicNow(); return; }
-    const a = musicAudio();
-    a.volume = (musicState.vol || 40) / 100;
-    a.preload = 'auto';
-    try {
-      const abs = new URL(s.url, location.origin).href;
-      if (a.src !== abs) { a.src = abs; a.currentTime = 0; a.load(); }
-      else { a.currentTime = 0; } // 同一首重播（单曲循环/手动重播）——进度条归零
-      const tryPlay = () => {
-        a.play().then(() => {
-          musicState.playing = true;
-        }).catch(err => {
-          musicState.playing = false;
-          console.warn('[music] 播放失败:', err && err.name, err && err.message, s.url);
-          if (err && err.name === 'NotAllowedError') toast('浏览器阻止自动播放——请再点一次播放');
-        });
-      };
-      // 数据就绪直接播（缓存命中）；未就绪等 canplay（已绑定）
-      if (a.readyState >= 2) tryPlay(); else { musicState.playing = true; a.play().catch(() => {}); }
-    } catch (e) { musicState.playing = false; console.warn('[music] 播放异常:', e); }
-    if (musicState.timer) clearInterval(musicState.timer);
-    musicState.timer = setInterval(updateMusicNow, 500);
-    renderMusicPop();
-  }
-  function mpToggle() {
-    // v1.7.25（房间全局播放）：房主控制走服务端广播；跟随端由 musicSync 执行
-    if (musicState.idx < 0) { if (musicState.list.length) mpPlay(musicState.list[0].id); return; }
-    postMusic(musicState.playing ? 'pause' : 'play', {});
-  }
-  function pickSong(dir) {
-    // v1.7.26：按模式在客户端算下一首（官方歌单在本地）→ playAt 广播
-    const list = musicState.list;
-    if (!list.length) return null;
-    const mode = musicState.mode || 0;
-    if (mode === 2) return musicState.idx >= 0 ? list[musicState.idx] : list[0];
-    if (mode === 1) {
-      if (list.length === 1) return list[0];
-      let r; do { r = Math.floor(Math.random() * list.length); } while (r === musicState.idx);
-      return list[r];
-    }
-    const base = musicState.idx >= 0 ? musicState.idx : (dir > 0 ? -1 : 0);
-    return list[(base + dir + list.length) % list.length];
-  }
-  function mpNext() {
-    const s = pickSong(1);
-    if (s && s.url) postMusic('playAt', { url: s.url, name: s.name, src: s.src });
-  }
-  function mpPrev() {
-    const s = pickSong(-1);
-    if (s && s.url) postMusic('playAt', { url: s.url, name: s.name, src: s.src });
-  }
-  function mpModeBtn() {
-    const b = $('mp-mode');
-    if (b) {
-      b.textContent = MODE_ICONS[musicState.mode || 0];
-      b.title = '播放模式：' + MODE_TIPS[musicState.mode || 0] + '（点击切换）';
-    }
-  }
-  $('mp-mode') && $('mp-mode').addEventListener('click', e => {
-    e.stopPropagation();
-    const nm = ((musicState.mode || 0) + 1) % 3;
-    postMusic('mode', { mode: nm }); // v1.7.25：模式走服务端广播（全员同步）
-  });
-  try { if (localStorage.ww_music_mode) musicState.mode = +localStorage.ww_music_mode || 0; } catch (err) {}
-  mpModeBtn();
-  $('mp-vol') && $('mp-vol').addEventListener('input', e => {
-    musicState.vol = +e.target.value;
-    if (musicState.audio) musicState.audio.volume = musicState.vol / 100;
-    try { localStorage.ww_music_vol = String(musicState.vol); } catch (err) {}
-  });
-  $('mp-submit') && $('mp-submit').addEventListener('click', () => {
-    const url = $('mp-url').value.trim();
-    if (!url) { toast('请先粘贴歌曲链接'); return; }
-    if (!/^https?:\/\//i.test(url)) { toast('仅支持 http/https 直链'); return; }
-    const note = $('mp-note').value.trim();
-    // v1.7.25（房间全局播放）：申请走服务端——全员 reviews 同步（房主在任一设备都能看到）
-    postMusic('apply', { url, name: note || '成员点歌' }).then(() => {
-      $('mp-url').value = ''; $('mp-note').value = '';
-      toast('📨 已提交申请，等待房主审批');
-    });
-  });
-  // v1.7.25（房间全局播放）：歌单面板统一点击委托（播放/上下首/审批/删除）——补齐此前缺失的绑定
-  const mpPop = $('music-pop');
-  if (mpPop) mpPop.addEventListener('click', e => {
-    const songEl = e.target.closest('[data-song]');
-    const act = songEl && songEl.getAttribute('data-act');
-    const revEl = e.target.closest('[data-review]');
-    if (songEl && !act) { // 点击歌曲行 → 播放
-      mpPlay(songEl.getAttribute('data-song'));
-      return;
-    }
-    if (songEl && act === 'del') { // 删除（成员歌，房主）
-      if (musicState.list.length) { postMusic('playAt', { url: musicState.list[0].url }); }
-      toast('删除功能：官方歌单不可删，成员歌由房主管理');
-      return;
-    }
-    if (revEl) { // 审批 ✅/❌
-      postMusic(revEl.getAttribute('data-act') === 'ok' ? 'approve' : 'reject', { id: revEl.getAttribute('data-review') });
-    }
-  });
-  $('mp-play') && $('mp-play').addEventListener('click', e => { e.stopPropagation(); mpToggle(); });
-  $('mp-next') && $('mp-next').addEventListener('click', e => { e.stopPropagation(); mpNext(); });
-  $('mp-prev') && $('mp-prev').addEventListener('click', e => { e.stopPropagation(); mpPrev(); });
-  // 供房间视图渲染时同步 isHost（房主审批区显隐）
-  window.__setMusicView = v => { window.__wwView = v; };
-  try { musicState.vol = Math.max(0, Math.min(100, parseInt(localStorage.ww_music_vol || '40', 10) || 40)); if ($('mp-vol')) $('mp-vol').value = musicState.vol; } catch (err) {}
-  document.addEventListener('pointerdown', () => {
-    ensureAudio();
-    // 入场音效（v1.2.0）：首次交互轻铃；AudioContext 首次 resume 是异步的，等它就绪再播
-    if (AC && AC.state !== 'running') AC.resume().then(() => sfxEnter()).catch(() => {});
-    else sfxEnter();
-  }, { once: true, capture: true });
-  // 减少动效开关（31）
-  const lm = $('in-less-motion');
-  if (lm) {
-    lm.checked = localStorage.ww_less_motion === '1';
-    document.body.classList.toggle('less-motion', lm.checked);
-    lm.addEventListener('change', () => toggleLessMotion(lm.checked));
-  }
-  // 上帝配音（v1.6.3）：已并入声音设置面板（顶栏 🔊 → 上帝配音）；此处仅读取持久化状态
-  try { ttsOn = localStorage.ww_tts === '1'; } catch (e) {}
-
-  // 在线统计（v1.2.0）：首页“🔥 正在开黑”，30 秒刷新，失败静默
-  refreshStats();
-  setInterval(refreshStats, 30000);
-
-  // 重连（v1.7.23 修复：改为 join 认领——服务端 byToken 找旧位 → 会话续期返回新 token；
-  // 旧实现只调 state（只读）→ 页面刷新后旧位滞留 + 重进产生分身（两个自己））
-  const s = loadSession();
-  if (s && s.room && s.me && s.token) {
-    (async () => {
-      const res = await fetch('api/join', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId: s.room, token: s.token, name: '', deviceId: deviceId() })
-      });
-      const j = await res.json();
-      if (!j.error && j.token) { token = j.token; enterRoom(s.room, j.playerId, j.view); }
-      else if (!j.error) { token = s.token; enterRoom(s.room, s.me, j.view || j); }
-      else clearSession();
-    })();
-  }
+  // v1.7.26（房间全局播放）：点击歌曲 → 服务端广播（全员同步播放）——官方歌单/成员歌统一
+  const i = musicState.list.findIndex(s => s.id === sid);
+  if (i < 0) return;
+  const song = musicState.list[i];
+  if (!song.url) { toast('该歌曲没有可用链接'); return; }
+  postMusic('playAt', { url: song.url, name: song.name, src: song.src });
+}
 }
 function sendChat() {
   if ($('chat-text').disabled) return; // 当前频道不可发言（如夜晚全体频道）

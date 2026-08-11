@@ -321,20 +321,20 @@ function joinRoom(roomId, name, token, deviceId) {
   // 注意：token 复用不受 phase 限制（游戏中途断线也能重连回自己的位置）
   const old = byToken(room, token);
   if (old) {
-    old.sess = newToken(); // 会话续期（旧 token 作废——防已离开页面残留 token 继续使用）
-    if (old.leftGame) { // 刷新竞态兜底：被 pagehide leave 标记离场的玩家认领回来时重置状态
+    // v1.7.26：token 不续期——一个 token 永久对应一个成员（多标签/刷新/重连永不分身）
+    if (old.leftGame) { // 刷新竞态兜底：被误标离场的玩家认领回来时重置状态
       old.leftGame = false;
       if (!old.alive && old.deadBy === 'left') { old.alive = true; old.deadBy = null; }
     }
     bump(room);
-    return { playerId: old.id, token: old.sess, reused: true, view: viewFor(room, old.id) };
+    return { playerId: old.id, token, reused: true, view: viewFor(room, old.id) };
   }
   // v1.7.24（设备校验）：token 已失效（被续期/刷新竞态）时——按设备指纹找同设备旧玩家复用
   // （不新建占位——彻底消灭刷新分身：旧页 leave 删人 + 新页 join 新建 = 两个自己）
   if (deviceId) { // v1.7.26：设备认领无条件（含 lobby——建房/组局中刷新同样防分身）
     const dev = room.players.find(q => q.deviceId === deviceId && !q.isBot);
     if (dev) {
-      dev.sess = newToken();
+      // v1.7.26：token 不续期——设备兜底也保持原 token（分身机制彻底消除）
       if (dev.leftGame) {
         dev.leftGame = false;
         if (!dev.alive && dev.deadBy === 'left') { dev.alive = true; dev.deadBy = null; }
@@ -1829,8 +1829,10 @@ function handleMusic(roomId, pid, action, data) {
   if (action === 'playAt') {
     // v1.7.26：官方歌单在客户端本地（playlist.json 全员同源）——服务端只记录当前歌（url/name/src）广播；不校验 list（成员歌/官方歌统一处理）
     if (!data || !data.url) return { error: '参数错误' };
-    if (!/^https?:\/\//i.test(String(data.url))) return { error: '仅支持 http/https 链接' };
-    m.cur = { url: String(data.url).slice(0, 300), name: String(data.name || '未知歌曲').slice(0, 40), src: String(data.src || 'official').slice(0, 12) };
+    // v1.7.26：官方歌单 url 是相对路径（music/xxx.mp3）——校验放宽（http 或站内相对路径均接受）
+    const u = String(data.url);
+    if (!/^https?:\/\//i.test(u) && !u.startsWith('music/')) return { error: '仅支持 http/https 或站内 music/ 路径' };
+    m.cur = { url: u.slice(0, 300), name: String(data.name || '未知歌曲').slice(0, 40), src: String(data.src || 'official').slice(0, 12) };
     m.playing = true; m.prog = 0; m.ts = Date.now(); m.who = p.name;
     bump(room);
     return { ok: true, music: m };
