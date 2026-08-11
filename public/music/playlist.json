@@ -1,0 +1,200 @@
+[
+ {
+  "id": "m1",
+  "name": "Aoi Station Sonoko Kawai",
+  "url": "/music/Aoi-Station-Sonoko-Kawai.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m2",
+  "name": "Boogie Yung Bae",
+  "url": "/music/Boogie-Yung-Bae.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m3",
+  "name": "Hitori Uwate Miyuki Nakajima",
+  "url": "/music/Hitori-Uwate-Miyuki-Nakajima.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m4",
+  "name": "Ihojin Saki Kubota",
+  "url": "/music/Ihojin-Saki-Kubota.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m5",
+  "name": "Jinsei no Merry Go Round Jazz Ver",
+  "url": "/music/Jinsei-no-Merry-Go-Round-Jazz-Ver.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m6",
+  "name": "Kanashii Kimochi Keisuke Kuwata",
+  "url": "/music/Kanashii-Kimochi-Keisuke-Kuwata.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m7",
+  "name": "Koibito mo Nureru Machikado Masatoshi Nakamura",
+  "url": "/music/Koibito-mo-Nureru-Machikado-Masatoshi-Nakamura.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m8",
+  "name": "Monica Koji Kikkawa",
+  "url": "/music/Monica-Koji-Kikkawa.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m9",
+  "name": "Ohisashiburine Rumiko Koyanagi",
+  "url": "/music/Ohisashiburine-Rumiko-Koyanagi.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m10",
+  "name": "Rush Hour Toshiki Kadomatsu",
+  "url": "/music/Rush-Hour-Toshiki-Kadomatsu.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m11",
+  "name": "Saiai Yoshie Kashiwabara",
+  "url": "/music/Saiai-Yoshie-Kashiwabara.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m12",
+  "name": "Sailing To The Future Ami Koshimizu",
+  "url": "/music/Sailing-To-The-Future-Ami-Koshimizu.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m13",
+  "name": "Samishii Nettaigyo Wink",
+  "url": "/music/Samishii-Nettaigyo-Wink.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m14",
+  "name": "Shiki no Uta Yoko Seri",
+  "url": "/music/Shiki-no-Uta-Yoko-Seri.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m15",
+  "name": "Toki no Sugiyuku Mama ni Kenji Sawada",
+  "url": "/music/Toki-no-Sugiyuku-Mama-ni-Kenji-Sawada.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m16",
+  "name": "Tokio Funka takamatt",
+  "url": "/music/Tokio-Funka-takamatt.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m17",
+  "name": "Tsubasa o Kudasai Akai Tori",
+  "url": "/music/Tsubasa-o-Kudasai-Akai-Tori.mp3",
+  "src": "official"
+ },
+ {
+  "id": "m18",
+  "name": "Your Eyes Tatsuro Yamashita",
+  "url": "/music/Your-Eyes-Tatsuro-Yamashita.mp3",
+  "src": "official"
+ },
+ {
+  "id": "w1",
+  "name": "Carcelera",
+  "url": "/music/city-Carcelera.wav",
+  "src": "official"
+ },
+ {
+  "id": "w2",
+  "name": "Casablanca",
+  "url": "/music/city-Casablanca.wav",
+  "src": "official"
+ },
+ {
+  "id": "w3",
+  "name": "Chocolate Disco",
+  "url": "/music/city-Chocolate-Disco.wav",
+  "src": "official"
+ },
+ {
+  "id": "w4",
+  "name": "Fly day Chinatown",
+  "url": "/music/city-Fly-day-Chinatown.wav",
+  "src": "official"
+ },
+ {
+  "id": "w5",
+  "name": "Golden Mission",
+  "url": "/music/city-Golden-Mission.wav",
+  "src": "official"
+ },
+ {
+  "id": "w6",
+  "name": "Haruka naru Rakuen",
+  "url": "/music/city-Haruka-naru-Rakuen.wav",
+  "src": "official"
+ },
+ {
+  "id": "w7",
+  "name": "JOY",
+  "url": "/music/city-JOY.wav",
+  "src": "official"
+ },
+ {
+  "id": "w8",
+  "name": "Kimi ni Mune Kyun",
+  "url": "/music/city-Kimi-ni-Mune-Kyun.wav",
+  "src": "official"
+ },
+ {
+  "id": "w9",
+  "name": "Mata Ashita",
+  "url": "/music/city-Mata-Ashita.wav",
+  "src": "official"
+ },
+ {
+  "id": "w10",
+  "name": "Sunshine in the Rain",
+  "url": "/music/city-Sunshine-in-the-Rain.wav",
+  "src": "official"
+ },
+ {
+  "id": "w11",
+  "name": "To the Journey",
+  "url": "/music/city-To-the-Journey.wav",
+  "src": "official"
+ },
+ {
+  "id": "w12",
+  "name": "You Gotta Move",
+  "url": "/music/city-You-Gotta-Move.wav",
+  "src": "official"
+ },
+ {
+  "id": "w13",
+  "name": "Yozora no Iyaringu",
+  "url": "/music/city-Yozora-no-Iyaringu.wav",
+  "src": "official"
+ },
+ {
+  "id": "w14",
+  "name": "Zankoku na Tenshi no Theme",
+  "url": "/music/city-Zankoku-na-Tenshi-no-Theme.wav",
+  "src": "official"
+ },
+ {
+  "id": "w15",
+  "name": "Zenyoku Summer",
+  "url": "/music/city-Zenyoku-Summer.wav",
+  "src": "official"
+ }
+]
