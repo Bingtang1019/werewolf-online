@@ -198,10 +198,6 @@ function mpToggle() {
   postMusic(musicState.playing ? 'pause' : 'play', {});
 }
 
-function mpSetMode(mode) {
-  postMusic('mode', { mode });
-}
-
 function mpModeBtn() {
   const MODE_ICONS = ['🔀', '🔁', '🔂'];
   const b = $('mp-mode');
