@@ -102,7 +102,7 @@ function renderChat() {
     }
   }
   $('chat-tabs').innerHTML = tabs.map(t =>
-    `<div class="chat-tab ${chatTab === t[0] ? 'active' : ''}${dots[t[0]] ? ' dot' : ''}" onclick="chatTab='${t[0]}'; renderChat()">${t[1]}</div>`).join('');
+    `<div class="chat-tab ${chatTab === t[0] ? 'active' : ''}${dots[t[0]] ? ' dot' : ''}" data-tab="${t[0]}">${t[1]}</div>`).join('');
   // 消息
   const msgs = view.chat.filter(m => m.ch === chatTab);
   // 消息数变化或频道切换时才重绘（两个频道消息数恰好相同时，仅靠数量无法区分）
@@ -155,7 +155,7 @@ function renderChat() {
       const tgt = draft.target ? nameOf(draft.target) : '';
       const phrases = ['我跳预言家', '过', tgt ? '踩 ' + tgt : '踩', tgt ? '保 ' + tgt : '保', '哈哈哈', '晚上见'];
       // B3：不拼 onclick 字符串——JSON.stringify 产出合法 JS 字符串字面量 + escapeHtml 防属性逃逸，玩家名/发言含恶意字符也安全
-      qp.innerHTML = phrases.map(p => `<button onclick="quickPhrase(${escapeHtml(JSON.stringify(p))})">${escapeHtml(p)}</button>`).join('');
+      qp.innerHTML = phrases.map(p => `<button data-qp="${escapeHtml(JSON.stringify(p))}">${escapeHtml(p)}</button>`).join('');
     } else qp.classList.add('hidden');
   }
 }
