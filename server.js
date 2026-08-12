@@ -319,7 +319,8 @@ function serveStatic(req, res, file) {
     const key = file;
     const hit = staticCache.get(key);
     const mime = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
-    const headers = { 'Content-Type': mime, 'Cache-Control': 'no-cache', 'Vary': 'Accept-Encoding' };
+    const headers = { 'Content-Type': mime, 'Cache-Control': mime.startsWith('audio/') ? 'private, max-age=3600' : 'no-cache', 'Vary': 'Accept-Encoding' };
+    // v1.7.29（带宽优化）：音频允许浏览器私有缓存 1 小时——同一浏览器重复播放不走隧道（服务端 LRU 256MB 仍兜底多客户端）
     // 安全加固（M3）：CSP 纵深防御（模板含内联 style 属性，style-src 需 'unsafe-inline'；无内联 script）
     if (mime.startsWith('text/html')) {
       headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'";
