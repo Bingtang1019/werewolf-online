@@ -173,7 +173,7 @@ function mpPlayLocal(sid) {
   if (!s.url) { toast('该歌曲没有可用链接'); musicState.playing = false; updateMusicNow(); return; }
   const a = musicAudio();
   a.volume = (musicState.vol || 40) / 100;
-  a.preload = 'auto';
+  a.preload = 'none'; // v1.7.29（带宽优化）：none——播放时才按需 Range 拉取（渐进播；不预载全量，隧道不再被后台预载吃满）
   try {
     const abs = new URL(s.url, location.origin).href;
     if (a.src !== abs) { a.src = abs; a.currentTime = 0; a.load(); }
