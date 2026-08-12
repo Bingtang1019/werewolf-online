@@ -164,31 +164,39 @@ function flushLabSamples(room) {
   }
 }
 function handleMusic(roomId, pid, action, data) {
-  // v1.7.25（房间全局播放）：房主控制播放器 + 成员点歌申请/审批——状态存 room.music，随 view 同步全员
+  // v1.7.30（全局播放）：任何人可控制播放（play/pause/next/prev/seek/mode/playAt）——歌曲增减（apply/approve/reject）仍限房主
+  // 时间戳同步：每次播放动作记录 { ts: 服务端时间戳, pos: 起点进度 }——跟随端按服务端时钟对齐（方案 B，精度≈网络延迟）
   const room = rooms.get(roomId);
   if (!room) return { error: '房间不存在' };
   const p = ctx.byId(room, pid);
   if (!p) return { error: '玩家不存在' };
-  if (room.host !== pid && action !== 'apply') return { error: '只有房主可以控制播放' };
-  if (!room.music) room.music = { list: [], reviews: [], idx: -1, cur: null, playing: false, mode: 0, prog: 0, ts: 0, who: '' };
+  if (!room.music) room.music = { list: [], reviews: [], idx: -1, cur: null, playing: false, mode: 0, prog: 0, ts: 0, pos: 0, who: '', lastNextAt: 0 };
   const m = room.music;
+  const hostOnly = action === 'apply' || action === 'approve' || action === 'reject';
+  if (hostOnly && room.host !== pid) return { error: '只有房主可以管理歌单' };
+  const now = Date.now();
   if (action === 'play' || action === 'pause') {
-    m.playing = action === 'play';
+    if (action === 'play' && m.playing) return { ok: true, music: m }; // 已在播放——幂等
+    if (action === 'pause' && !m.playing) return { ok: true, music: m }; // 已暂停——幂等
+    if (action === 'play') { m.playing = true; m.pos = m.prog; m.ts = now; }
+    else { m.prog = m.pos + (now - m.ts) / 1000; m.playing = false; m.ts = now; m.pos = m.prog; }
     m.who = p.name;
     ctx.bump(room);
     return { ok: true, music: m };
   }
   if (action === 'next' || action === 'prev') {
+    // v1.7.30：next 去重——全员 ended 会同时广播 next（同曲同位置），2s 窗口内重复 next 忽略
+    if (now - m.lastNextAt < 2000) return { ok: true, music: m };
     if (!m.list.length) return { error: '歌单为空' };
     const n = m.list.length;
     m.idx = action === 'next' ? (m.idx + 1) % n : (m.idx - 1 + n) % n;
-    m.playing = true; m.prog = 0; m.ts = Date.now(); m.who = p.name;
+    m.playing = true; m.pos = 0; m.ts = now; m.prog = 0; m.who = p.name; m.lastNextAt = now;
     ctx.bump(room);
     return { ok: true, music: m };
   }
   if (action === 'seek') {
-    m.prog = Math.max(0, Number(data && data.prog) || 0);
-    m.ts = Date.now(); m.who = p.name;
+    m.pos = Math.max(0, Number(data && data.prog) || 0);
+    m.ts = now; m.prog = m.pos; m.who = p.name;
     ctx.bump(room);
     return { ok: true, music: m };
   }
@@ -199,13 +207,11 @@ function handleMusic(roomId, pid, action, data) {
     return { ok: true, music: m };
   }
   if (action === 'playAt') {
-    // v1.7.26：官方歌单在客户端本地（playlist.json 全员同源）——服务端只记录当前歌（url/name/src）广播；不校验 list（成员歌/官方歌统一处理）
     if (!data || !data.url) return { error: '参数错误' };
-    // v1.7.26：官方歌单 url 是相对路径（music/xxx.mp3）——校验放宽（http 或站内相对路径均接受）；v1.7.29：playlist.json 实际是 /music/xxx.mp3（带前导斜杠）——兼容两种
     const u = String(data.url);
     if (!/^https?:\/\//i.test(u) && !u.startsWith('music/') && !u.startsWith('/music/')) return { error: '仅支持 http/https 或站内 music/ 路径' };
     m.cur = { url: u.slice(0, 300), name: String(data.name || '未知歌曲').slice(0, 40), src: String(data.src || 'official').slice(0, 12) };
-    m.playing = true; m.prog = 0; m.ts = Date.now(); m.who = p.name;
+    m.playing = true; m.pos = 0; m.ts = now; m.prog = 0; m.who = p.name;
     ctx.bump(room);
     return { ok: true, music: m };
   }

@@ -1,6 +1,22 @@
 // 自动生成（client.js 拆分——勿手改，重新运行 tools/split-client.js）
 // 依赖：core.js 先行加载
 
+// v1.7.30（全局播放·方案 B）：延迟测量 + 降级状态
+let musicLatency = 0;            // 估算单向延迟（ping RTT/2）
+let musicBadSync = 0;            // 连续对齐失败计数
+let musicDegraded = false;       // 网络差 → 各自播放（停止跟随校准）
+let musicPingOnce = false;
+function musicPing() {
+  // 轻量 ping：测 RTT 估算单向延迟（跟随端时间戳对齐用）——播放前测一次，之后每 30s 刷新
+  if (!roomId || musicPingOnce && Date.now() - (musicLastPing || 0) < 30000) return;
+  musicPingOnce = true; musicLastPing = Date.now();
+  const t0 = Date.now();
+  fetch('api/ping').then(r => r.json()).then(j => {
+    if (j && j.t) musicLatency = (Date.now() - t0) / 2;
+  }).catch(() => {});
+}
+let musicLastPing = 0;
+
 function musicAudio() {
     if (!musicState.audio) {
       musicState.audio = new Audio();
@@ -65,10 +81,18 @@ function musicAudio() {
   }
 
   function updateMusicNow() {
+    // v1.7.30（服务端进度）：进度条显示服务端计算进度（全员统一视角）——降级模式用本地 currentTime
     const cur = musicState.idx >= 0 ? musicState.list[musicState.idx] : null;
     const a = musicState.audio;
     const d = cur && a && isFinite(a.duration) ? a.duration : (cur ? cur.dur : 1);
-    const t = cur && a && isFinite(a.currentTime) ? a.currentTime : 0;
+    let t = 0;
+    if (musicDegraded) {
+      t = cur && a && isFinite(a.currentTime) ? a.currentTime : 0;
+    } else if (musicState.srvMusic && musicState.srvMusic.ts && musicState.srvMusic.playing) {
+      t = Math.max(0, musicState.srvMusic.pos + (Date.now() - musicState.srvMusic.ts) / 1000 - musicLatency / 1000);
+    } else if (cur && a && isFinite(a.currentTime)) {
+      t = a.currentTime;
+    }
     $('mp-now-name').textContent = cur ? (musicState.playing ? '🔊 ' : '⏸ ') + cur.name : '未播放';
     $('mp-play').textContent = musicState.playing ? '⏸' : '▶';
     $('mp-bar').style.width = cur ? (Math.min(1, t / d) * 100).toFixed(1) + '%' : '0%';
@@ -87,7 +111,8 @@ function musicAudio() {
 }
 
 function musicSync(v) {
-  // v1.7.25（房间全局播放）：view.music 变化 → 统一执行（房主/跟随端同路径）
+  // v1.7.30（全局播放·方案 B）：view.music 变化 → 统一执行（控制端/跟随端同路径）
+  // 时间戳对齐：pos + (Date.now()-ts)/1000 - latency 计算服务端进度 → 对齐本地播放
   const m = v && v.music;
   if (!m) return;
   const key = (m.cur ? m.cur.url : '') + '|' + (m.playing ? 1 : 0) + '|' + m.mode + '|' + m.list.length + '|' + m.reviews.length;
@@ -101,11 +126,14 @@ function musicSync(v) {
     renderMusicPop();
   }
   const cur = m.cur ? (musicState.list.find(s => s.url === m.cur.url) || null) : null;
+  musicState.srvMusic = m; // v1.7.30（服务端进度）：保存服务端音乐状态（进度条/对齐用）
   if (changed && cur) {
     musicState.idx = musicState.list.indexOf(cur);
-    if (m.playing && !musicState.playing) {
-      mpPlayLocal(cur.id);
-    } else if (!m.playing && musicState.playing) {
+    if (m.playing) {
+      if (!musicState.playing) mpPlayLocal(cur.id);
+      // v1.7.30：对齐播放——按服务端时间戳算应播位置（含延迟补偿）
+      musicSyncSeek(m);
+    } else if (musicState.playing) {
       musicState.playing = false;
       const a = musicAudio();
       if (a) { try { a.pause(); } catch (e) {} }
@@ -113,12 +141,28 @@ function musicSync(v) {
       renderMusicPop();
     }
   }
+  // 播放中：周期性对齐（服务端进度 vs 本地，偏差 >3s 校准；连续两次 >5s → 降级各自播放）
   if (m.playing && m.ts && musicState.audio && isFinite(musicState.audio.currentTime)) {
-    const serverProg = m.prog + (Date.now() - m.ts) / 1000;
+    const serverProg = m.pos + (Date.now() - m.ts) / 1000 - musicLatency / 1000;
     const local = musicState.audio.currentTime;
-    if (serverProg > 0 && Math.abs(local - serverProg) > 3) {
-      try { musicState.audio.currentTime = serverProg; } catch (e) {}
+    const drift = serverProg - local;
+    if (serverProg > 0 && Math.abs(drift) > 3) {
+      try { musicState.audio.currentTime = Math.max(0, serverProg); } catch (e) {}
+      musicBadSync++;
+      if (musicBadSync >= 2) { musicDegraded = true; toast('网络波动——已切换为各自播放'); }
+    } else {
+      musicBadSync = 0;
     }
+  }
+}
+
+function musicSyncSeek(m) {
+  // v1.7.30：按服务端时间戳对齐（播放/seek/暂停恢复共用）
+  const a = musicState.audio;
+  if (!a) return;
+  const serverProg = m.pos + (Date.now() - m.ts) / 1000 - musicLatency / 1000;
+  if (serverProg > 0.5) {
+    try { if (Math.abs(a.currentTime - serverProg) > 1) a.currentTime = serverProg; } catch (e) {}
   }
 }
 
@@ -169,6 +213,7 @@ function mpPlayLocal(sid) {
   if (i < 0) return;
   musicState.idx = i;
   musicState.playing = true;
+  musicPing(); // v1.7.30：播放前测延迟（时间戳对齐用）
   const s = musicState.list[i];
   if (!s.url) { toast('该歌曲没有可用链接'); musicState.playing = false; updateMusicNow(); return; }
   const a = musicAudio();

@@ -6,7 +6,7 @@ const musicState = {
     list: [],
     reviews: [
     ],
-    idx: -1, playing: false, vol: 40, prog: 0, timer: null, audio: null, mode: 0
+    idx: -1, playing: false, vol: 40, prog: 0, timer: null, audio: null, mode: 0, srvMusic: null // v1.7.30（服务端进度）：服务端音乐状态（进度条/对齐用）
   };
 ;
 /* =========================================================================
