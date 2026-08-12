@@ -471,6 +471,8 @@ const server = http.createServer((req, res) => {
     return sendJSON(res, { ok: true, uptime: process.uptime(), rss: Math.round(rss), rooms: Game.rooms.size, http: { total: httpStats.total, fail: httpStats.fail, p95ms: p95Estimate() } }); // v1.6.4（A1-P2-1）
   }
   if (pathname.startsWith('/api/')) {
+    /* v1.7.30（全局播放同步）：轻量 ping——客户端测 RTT 估算单向延迟（跟随端时间戳对齐用） */
+    if (pathname === '/api/ping' && req.method === 'GET') { sendJSON(res, { t: Date.now() }); return; }
     /* 在线统计：当前“活跃”房间数/玩家数（首页“🔥 正在开黑”）。
      * 活跃判定与 TTL 共用 lastActive：超过 STATS_ACTIVE_MS 无轮询/SSE/操作视为非活动房间，不计入。
      * 阈值可用 STATS_ACTIVE_SEC 环境变量调整（默认 30 秒，测试可调小）。 */
