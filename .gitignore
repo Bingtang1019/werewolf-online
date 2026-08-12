@@ -50,3 +50,6 @@ test/lab/data/
 
 # BGM 音频素材（QQ音乐录音转码产物——见 tools/music/convert-wav.js 重新生成）
 public/music/
+
+# 隧道运行时文件
+tunnel.pid
