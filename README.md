@@ -91,7 +91,6 @@ werewolf/
 ├── server/             # 服务端模块
 │   ├── game/           # 游戏引擎（v1.7.28 拆分，ctx 注册表 + 跨模块引用）
 │   │   ├── shared.js   #   基础设施 + ctx 注册表（rooms/常量/工具函数）
-│   │   ├── config.js   #   角色配置/房间管理（已并入 shared）
 │   │   ├── flow.js     #   游戏流程（开局/夜晚/结算）
 │   │   ├── vote.js     #   投票结算（放逐/警长/胜负判定）
 │   │   ├── chat.js     #   聊天（频道权限/消息）
@@ -100,6 +99,17 @@ werewolf/
 │   │   ├── view.js     #   视图（viewFor/resumeRoom）
 │   │   └── index.js    #   聚合导出（20 键）
 │   ├── ai/             # AI 模型层（vote-v3/信念引擎/rollout/π 等）
+│   │   ├── bot-brain/  # 人机决策（v1.7.32 拆分，B 方案 ctx 注册表 + S 共享状态）
+│   │   │   ├── shared.js #     基础设施 + ctx/S（rng/模型引用/常量/解构导入）
+│   │   │   ├── memory.js #     记忆与信念（ensureMemory/updateBelief/决策低层）
+│   │   │   ├── vote.js   #     投票/查验/表态（buildVoteWorld/isoVote）
+│   │   │   ├── smart.js  #     普通档决策（decisionSmart）
+│   │   │   ├── talk.js   #     发言生成（botTalk/botLastWord/botWolfChat）
+│   │   │   ├── attitudes.js # 态度模型（initAttitudes5/predictAttitude5）
+│   │   │   ├── main.js   #     决策入口（decisionSimulateV2/createBotDecision）
+│   │   │   └── index.js  #     聚合导出（6 键）
+│   │   ├── legacy/      # 纯行动策略（decide.js）
+│   │   ├── belief-engine.js / features.js / model-loader.js / rollout.js / vote-state.js 等
 │   └── clock.js        # 虚拟时钟（lab 驱动用）
 ├── public/             # 网页客户端（v1.7.28 拆分，8 模块）
 │   ├── index.html      #   页面（CSP 安全策略 + mods 注入点）
