@@ -128,13 +128,27 @@ function init() {
     const name = nickValue();
     $('home-err').textContent = '';
     const s = loadSession();
-    const r = await api('api/join', { roomId: code, name, token: (s && s.token) || '' }); // v1.7.21：带旧 token join——断线重连复用旧位
+    const r = await api('api/join', { roomId: code, name, token: (s && s.token) || '', deviceId: deviceId() }); // v1.7.24：带 deviceId——token 失效时按设备认领旧位（防满员/分身）
     if (r.error || !r.playerId) { toast('无法进入上次房间：' + (r.error || '房间可能已解散'), 'err'); return; }
     localStorage.lwName = name;
     localStorage.lwRoom = code;
     enterRoom(code, r.playerId, r.view);
     toast('🎉 已进入房间 ' + code);
   });
+  // v1.7.29（刷新自动回房）：页面加载时若存在会话 → 自动 join 认领回房（刷新不再“掉出”——
+  // 与上次房间按钮同链路：token 认领 + deviceId 兜底——刷新/断线后自动恢复原位）
+  const sess = loadSession();
+  const lastCode = localStorage.lwRoom;
+  if (sess && sess.room && sess.token && lastCode && !location.search.includes('left=1')) {
+    (async () => {
+      const r = await api('api/join', { roomId: lastCode, name: nickValue(), token: sess.token, deviceId: deviceId() });
+      if (r.error || !r.playerId) { /* 房间已解散/满员——保留“上次房间”按钮由用户手动处理 */ }
+      else {
+        localStorage.lwName = nickValue();
+        enterRoom(lastCode, r.playerId, r.view);
+      }
+    })();
+  }
   // 白天阶段/夜晚步骤/盗贼选牌倒计时：每秒更新顶栏剩余秒数（数据来自服务端 deadline）
   setInterval(() => {
     const el = document.getElementById('phase-countdown');
