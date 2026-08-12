@@ -502,6 +502,8 @@ const server = http.createServer((req, res) => {
       return readBody(req, res, body => {
         const r = Game.createRoom(String(body.name || '').slice(0, 12) || '玩家', String(body.deviceId || ''));
         markDirty();
+        /* v1.7.31（mods）：房间创建钩子（mod 注册的 onRoomCreate） */
+        try { for (const fn of modHooks.onRoomCreate) fn(Game.rooms.get(r.roomId), r); } catch (e) { logError('mod-onRoomCreate', e); }
         sendJSON(res, { roomId: r.roomId, token: r.token, playerId: r.playerId, view: r.view });
       });
     }
@@ -676,6 +678,19 @@ const server = http.createServer((req, res) => {
 
   /* ------------------------- 静态文件 ------------------------- */
   // 双重校验：规范化后的路径必须位于 public 目录内（纵深防御）
+  /* v1.7.31（mods）：/mods/<name>/assets/* 静态映射（模组资源——由 mods 加载器扫描 mod.json 注册） */
+  const modsDir = path.join(__dirname, 'mods');
+  /* 客户端注入汇聚端点：index.html 末尾引用 /mods/_inject.js——返回所有 mod 的 client.js 拼接 */
+  if (pathname === '/mods/_inject.js') {
+    const js = modClientInjections.join('\n;\n');
+    res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+    return res.end(js || '/* 无 mod 注入 */');
+  }
+  const modMatch = pathname.match(/^\/mods\/([^\/]+)\/assets\/(.+)$/);
+  if (modMatch) {
+    const modFile = path.join(modsDir, modMatch[1], 'assets', modMatch[2]);
+    if (modFile.startsWith(modsDir + path.sep)) return serveStatic(req, res, modFile);
+  }
   const publicDir = path.join(__dirname, 'public');
   const file = path.join(publicDir, pathname);
   if (!file.startsWith(publicDir + path.sep)) { res.writeHead(403); res.end('Forbidden'); return; }
@@ -779,6 +794,40 @@ Game.setOnBroken((roomId, reason) => { // v1.6.1：不变式校验失败 → 快
 });
 const restoredRooms = loadSnapshot();
 if (restoredRooms > 0) console.log('[snapshot] 已恢复 ' + restoredRooms + ' 个房间（含进行中对局）');
+
+/* ---------------------------- Mods 加载器（v1.7.31） ---------------------------- */
+// 扫描 mods/*/mod.json：加载服务端入口（entry.js）并收集客户端注入（client.js）
+// 规范见 mods/README.md——异常加载失败仅打印错误并跳过（不影响服务器启动）
+const modsDir = path.join(__dirname, 'mods');
+const modHooks = { onRoomCreate: [] }; // 预留钩子注册表（entry.js 可 registerHook）
+const modClientInjections = [];
+function loadMods() {
+  let loaded = 0;
+  try {
+    if (!fs.existsSync(modsDir)) return 0;
+    for (const name of fs.readdirSync(modsDir)) {
+      const modDir = path.join(modsDir, name);
+      const mf = path.join(modDir, 'mod.json');
+      if (!fs.statSync(modDir).isDirectory() || !fs.existsSync(mf)) continue;
+      let manifest;
+      try { manifest = JSON.parse(fs.readFileSync(mf, 'utf8')); } catch (e) { console.log('[mod] 跳过 ' + name + '：mod.json 解析失败'); continue; }
+      if (manifest.enabled === false) { console.log('[mod] 跳过 ' + name + '（disabled）'); continue; }
+      const ctx = { manifest, Game, rooms: Game.rooms, registerHook: (evt, fn) => { if (modHooks[evt]) modHooks[evt].push(fn); } };
+      if (manifest.entry) {
+        try { require(path.join(modDir, manifest.entry))(ctx); }
+        catch (e) { console.log('[mod] ' + name + ' entry 加载失败: ' + (e.message || e)); }
+      }
+      if (manifest.client) {
+        try { modClientInjections.push(fs.readFileSync(path.join(modDir, manifest.client), 'utf8')); }
+        catch (e) { console.log('[mod] ' + name + ' client 读取失败: ' + (e.message || e)); }
+      }
+      console.log('[mod] 已加载: ' + (manifest.name || name) + ' v' + (manifest.version || '?'));
+      loaded++;
+    }
+  } catch (e) { console.log('[mod] 扫描异常: ' + (e.message || e)); }
+  return loaded;
+}
+loadMods(); // mods 目录不存在/为空时静默（loaded=0）
 setInterval(saveSnapshot, SNAPSHOT_SEC * 1000); // 定期兜底保存
 
 process.on('SIGTERM', () => { try { saveSnapshot(); } catch (e) {} process.exit(0); });

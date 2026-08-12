@@ -1,0 +1,8 @@
+{
+  "name": "示例模组（Example Mod）",
+  "version": "1.0.0",
+  "description": "展示 mods 目录规范的最小示例——服务端加载日志 + 客户端横幅注入",
+  "entry": "entry.js",
+  "client": "client.js",
+  "enabled": true
+}

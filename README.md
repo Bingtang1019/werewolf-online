@@ -2,7 +2,7 @@
 
 和朋友一起玩的 Web 在线狼人杀。**零依赖**：只使用 Node.js 内置模块，无需 `npm install`。
 
-> 当前版本：**1.7.29**（V4.2 规划层替换：HiCVN MLP 集成价值模型默认启用（AUC 0.8055 vs V3.1 0.7819，配对终裁 16/16 无劣化，σ 分桶单调列 V4.3/块1）；感知层 vote-v2 默认启用（分层 AdaBoost + 三级回退链）；PRESET_TAG 16 标签修复 + pair-v4v31 配对工具；更新公告见`更新公告.md`）（实验室多进程并发：mpool master/worker 对局池，--workers=N 跨进程并行，deterministic/paired 两遍并行，同 seed 跨进程 2000/2000 一致；更新公告见`更新公告.md`）（规则补足终版：丘比特判定表（自连按组合判定）/查验·翻牌口径分离/摄梦人免疫消耗语义/警长平票 PK/胜利条件阵营归属；更新公告见`更新公告.md`）（rollout 阵营分流 + 卖狼特判 + 数据驱动 V 差分 payoff（拟合 AUC 0.78，配对 p<0.0001）；simulate 档好人 63%，模型净贡献 47pp；更新公告见 `更新公告.md`）（管线防线：模型特征数校验 / rng 兑底 throw / confidenceOf 接 Platt / 波动有界；simulate 档好人 17%→40%，配对 p<0.0001；更新公告见 `更新公告.md`）（B1 人机强度系统：感知层 AdaBoost + 规划层 Rollout；显式 RNG / 样本管道 / 配对验收；更新公告见 `更新公告.md`）（A 系列：公网稳定性三件套 + 可观测性；真实反馈修复：全灭终局兜底 / 好人 bot 发言 / 投票不确定性；快照迁移 data/；动态发言；confidence 置信度接口；更新公告见 `更新公告.md`）（人机狼恋人逻辑：护恋人/引导狼队/白天辩护；声音设置面板分项开关+上帝配音并入；起始页精简；更新公告见 `更新公告.md`）（系统性代码审查修复：stepText 作用域回归 / 人机公平化 / 竞选投票修复 / 事件流补齐 / 版本串同步检查；更新公告见 `更新公告.md`）（审查修复：狼投票方向/狼总数取配置/第三方阵营判定 + 引擎不变式自检快照回滚；更新公告见 `更新公告.md`）（后台通知 + 上帝配音 + 游戏事件流 + 蒙特卡洛平衡实验室；更新公告见 `更新公告.md`）（快照恢复修复：hunter_shot 弃枪定时器 + .gitignore 隐私补漏；更新公告见 `更新公告.md`）（跨局记忆治理 + 房间快照恢复 + 内存看门狗 + 防滥用限流；更新公告见 `更新公告.md`）（快速隧道代码侧加固：SW 非 2xx 回退缓存页 + 进行中房间长 TTL + keep-alive 65s；更新公告见 `更新公告.md`）
+> 当前版本：**1.7.31**（V4.2 规划层替换：HiCVN MLP 集成价值模型默认启用（AUC 0.8055 vs V3.1 0.7819，配对终裁 16/16 无劣化，σ 分桶单调列 V4.3/块1）；感知层 vote-v2 默认启用（分层 AdaBoost + 三级回退链）；PRESET_TAG 16 标签修复 + pair-v4v31 配对工具；更新公告见`更新公告.md`）（实验室多进程并发：mpool master/worker 对局池，--workers=N 跨进程并行，deterministic/paired 两遍并行，同 seed 跨进程 2000/2000 一致；更新公告见`更新公告.md`）（规则补足终版：丘比特判定表（自连按组合判定）/查验·翻牌口径分离/摄梦人免疫消耗语义/警长平票 PK/胜利条件阵营归属；更新公告见`更新公告.md`）（rollout 阵营分流 + 卖狼特判 + 数据驱动 V 差分 payoff（拟合 AUC 0.78，配对 p<0.0001）；simulate 档好人 63%，模型净贡献 47pp；更新公告见 `更新公告.md`）（管线防线：模型特征数校验 / rng 兑底 throw / confidenceOf 接 Platt / 波动有界；simulate 档好人 17%→40%，配对 p<0.0001；更新公告见 `更新公告.md`）（B1 人机强度系统：感知层 AdaBoost + 规划层 Rollout；显式 RNG / 样本管道 / 配对验收；更新公告见 `更新公告.md`）（A 系列：公网稳定性三件套 + 可观测性；真实反馈修复：全灭终局兜底 / 好人 bot 发言 / 投票不确定性；快照迁移 data/；动态发言；confidence 置信度接口；更新公告见 `更新公告.md`）（人机狼恋人逻辑：护恋人/引导狼队/白天辩护；声音设置面板分项开关+上帝配音并入；起始页精简；更新公告见 `更新公告.md`）（系统性代码审查修复：stepText 作用域回归 / 人机公平化 / 竞选投票修复 / 事件流补齐 / 版本串同步检查；更新公告见 `更新公告.md`）（审查修复：狼投票方向/狼总数取配置/第三方阵营判定 + 引擎不变式自检快照回滚；更新公告见 `更新公告.md`）（后台通知 + 上帝配音 + 游戏事件流 + 蒙特卡洛平衡实验室；更新公告见 `更新公告.md`）（快照恢复修复：hunter_shot 弃枪定时器 + .gitignore 隐私补漏；更新公告见 `更新公告.md`）（跨局记忆治理 + 房间快照恢复 + 内存看门狗 + 防滥用限流；更新公告见 `更新公告.md`）（快速隧道代码侧加固：SW 非 2xx 回退缓存页 + 进行中房间长 TTL + keep-alive 65s；更新公告见 `更新公告.md`）
 
 ## 快速开始
 
@@ -86,19 +86,57 @@ node server.js
 
 ```
 werewolf/
-├── server.js          # HTTP 服务器（静态文件 + JSON API + /healthz + 安全加固）
-├── game.js            # 游戏引擎（房间/阶段/结算/胜负）
-├── package.json       # Render 部署用（start 脚本）
-├── render.yaml        # Render Blueprint 一键部署配置
-├── rules.md           # 规则确认文档
-├── 更新公告.md        # 版本更新记录
-├── 开启公网联机.bat   # 一键启动服务器 + Cloudflare 隧道（崩溃自动重启）
-├── 启动游戏.bat       # 局域网联机启动
-├── server-loop.bat    # 服务器崩溃自动重启（供公网联机脚本调用）
-├── public/            # 网页客户端（index.html / style.css / client.js）
-└── test/              # 自动化测试（40 个脚本 + 1 个渲染 harness）
-└── tools/selfcheck.js # 代码自检工具（语法/版本串/死代码/重复case/文档-代码一致，--tests 可带全量测试）
-└── tools/ai/determinism-check.js # 对局确定性验证（1.7.0 B1-8：同种子两遍 actionLog 逐字节一致；--seed/--cap/--bots）
+├── server.js           # HTTP 服务器（静态文件 + JSON API + /healthz + 安全加固 + mods 加载器）
+├── game.js             # 游戏引擎入口（薄入口——实际逻辑在 server/game/ 模块）
+├── server/             # 服务端模块
+│   ├── game/           # 游戏引擎（v1.7.28 拆分，ctx 注册表 + 跨模块引用）
+│   │   ├── shared.js   #   基础设施 + ctx 注册表（rooms/常量/工具函数）
+│   │   ├── config.js   #   角色配置/房间管理（已并入 shared）
+│   │   ├── flow.js     #   游戏流程（开局/夜晚/结算）
+│   │   ├── vote.js     #   投票结算（放逐/警长/胜负判定）
+│   │   ├── chat.js     #   聊天（频道权限/消息）
+│   │   ├── actions.js  #   action 分发（applyAction/handleMusic/踢人/离开）
+│   │   ├── bot.js      #   bot 决策调度
+│   │   ├── view.js     #   视图（viewFor/resumeRoom）
+│   │   └── index.js    #   聚合导出（20 键）
+│   ├── ai/             # AI 模型层（vote-v3/信念引擎/rollout/π 等）
+│   └── clock.js        # 虚拟时钟（lab 驱动用）
+├── public/             # 网页客户端（v1.7.28 拆分，8 模块）
+│   ├── index.html      #   页面（CSP 安全策略 + mods 注入点）
+│   ├── style.css       #   样式
+│   ├── sw.js           #   Service Worker（网络优先 + PRECACHE 版本化）
+│   ├── music/          #   音频素材（本地保留，gitignore）
+│   └── js/             #   客户端模块
+│       ├── core.js     #     全局状态 + 工具函数
+│       ├── delegate.js #     CSP 事件委托层（data-* 属性统一分发）
+│       ├── render.js   #     渲染层（lobby/局内/夜晚/投票）
+│       ├── chat.js     #     聊天
+│       ├── game-actions.js # 游戏行动（投票/技能/设置）
+│       ├── fx-sound.js #     特效 + 音效
+│       ├── music.js    #     歌单/播放（方案B：时间戳同步 + 服务端进度）
+│       └── main.js     #     主流程（init/轮询/SSE/applyView）
+├── mods/               # 模组目录（服务端启动自动扫描 mods/*/mod.json）
+│   ├── README.md       #   mod 开发/部署规范
+│   └── example-mod/    #   示例模组（mod.json + entry.js + client.js + assets/）
+├── models/             # AI 模型文件（vote-v3/v4、价值模型、蒸馏参照）
+├── favens/             # 恋人机制 v2（引擎层 loverCore + 策略注入）
+├── wolfTrain/          # 狼刀训练工具（实验性）
+├── data/               # 运行时数据（rooms.json 快照/语料/跑批产物，gitignore）
+├── tools/              # 工具集
+│   ├── selfcheck.js    #   代码自检（语法/版本串/死代码/文档一致性，--tests 全量）
+│   ├── qmc-decode.js   #   QMC 解密（酷狗/酷我/咪咕）
+│   ├── music/          #   歌单转码/生成（convert-wav + inject-xing）
+│   ├── nlu/            #   意图标注工具（D3 语料线）
+│   └── ai/             #   AI 训练/评估（fit-value/train-vote/pair 等）
+├── archive/            # 归档（模型卡/判定实验/决策记录）
+├── test/               # 自动化测试（40 个脚本 + 渲染 harness）
+├── package.json        # Render 部署用（start 脚本）
+├── render.yaml         # Render Blueprint 一键部署
+├── rules.md            # 规则确认文档
+├── 更新公告.md         # 版本更新记录
+├── 开启公网联机.bat    # 一键启动服务器 + Cloudflare 隧道（崩溃自动重启）
+├── 启动游戏.bat        # 局域网联机启动
+└── server-loop.bat     # 服务器崩溃自动重启
 ```
 
 ## 技术说明
