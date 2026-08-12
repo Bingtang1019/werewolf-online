@@ -201,9 +201,9 @@ function handleMusic(roomId, pid, action, data) {
   if (action === 'playAt') {
     // v1.7.26：官方歌单在客户端本地（playlist.json 全员同源）——服务端只记录当前歌（url/name/src）广播；不校验 list（成员歌/官方歌统一处理）
     if (!data || !data.url) return { error: '参数错误' };
-    // v1.7.26：官方歌单 url 是相对路径（music/xxx.mp3）——校验放宽（http 或站内相对路径均接受）
+    // v1.7.26：官方歌单 url 是相对路径（music/xxx.mp3）——校验放宽（http 或站内相对路径均接受）；v1.7.29：playlist.json 实际是 /music/xxx.mp3（带前导斜杠）——兼容两种
     const u = String(data.url);
-    if (!/^https?:\/\//i.test(u) && !u.startsWith('music/')) return { error: '仅支持 http/https 或站内 music/ 路径' };
+    if (!/^https?:\/\//i.test(u) && !u.startsWith('music/') && !u.startsWith('/music/')) return { error: '仅支持 http/https 或站内 music/ 路径' };
     m.cur = { url: u.slice(0, 300), name: String(data.name || '未知歌曲').slice(0, 40), src: String(data.src || 'official').slice(0, 12) };
     m.playing = true; m.prog = 0; m.ts = Date.now(); m.who = p.name;
     ctx.bump(room);
