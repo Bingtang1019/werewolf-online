@@ -140,23 +140,23 @@ function botTalk(room, bot, level) {
         '我女巫，昨晚救了' + nm + '，解药已经没了',
       ]));
     }
-    // 守卫：报守人（模糊不暴露细节）
+    // 守卫：报守人（模糊不暴露细节；C2 语料化）
     if (level === 'smart' && myRole === 'guard' && mem.guarded) {
-      return chat(ctx.pick([
+      return chat(genPhrase('claim_guard') || ctx.pick([
         '我是守卫，昨晚守了人，具体是谁不说，免得狼来刀',
         '我守卫，昨晚守的自己，狼今晚可以试试',
         '守卫在此，我守人不说细节，狼别来刀神职',
       ]));
     }
-    // v1.5.2：猎人/摄梦人/丘比特亮身份（概率）
+    // v1.5.2：猎人/摄梦人/丘比特亮身份（概率；C2 语料化）
     if (level === 'smart' && myRole === 'hunter') {
-      if (ctx.rng().next() < 0.7) return chat(ctx.pick([
+      if (ctx.rng().next() < 0.7) return chat(genPhrase('claim_hunter') || ctx.pick([
         '我是猎人，枪已上膛，谁跳得最凶我带走谁 🔫',
         '猎人牌，别逼我带人',
       ]));
     }
     if (level === 'smart' && myRole === 'dreamer') {
-      if (ctx.rng().next() < 0.6) return chat(ctx.pick([
+      if (ctx.rng().next() < 0.6) return chat(genPhrase('claim_dreamer') || ctx.pick([
         '我是摄梦人，梦里的狼别想跑 😴',
         '摄梦人在此，今夜梦谁看表现',
       ]));
@@ -177,7 +177,7 @@ function botTalk(room, bot, level) {
         if (lead) { const p2 = ctx.byId(room, lead); if (p2) return chat(ctx.pick(['' + p2.name + '的票有点多了，大家都跟？', '先别急着出' + p2.name + '，再听听'])); }
         return chat(ctx.pick(['我今天没头绪，先看投票', '今晚的线索不多，明天再盘']));
       }
-      if (ctx.rng().next() < 0.5) return chat(ctx.pick([
+      if (ctx.rng().next() < 0.5) return chat(genPhrase('claim_cupid') || ctx.pick([
         '我是丘比特，情侣是谁我就不说了 💘',
         '丘比特在此，别乱投我，情侣是好人组合',
       ]));
