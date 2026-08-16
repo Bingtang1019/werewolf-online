@@ -341,12 +341,13 @@ function closeOfflineSetup() {
 async function startOfflineSetup() {
   const cap = parseInt(($('off-cap') && $('off-cap').value) || '6', 10) || 6;
   const level = ($('off-level') && $('off-level').value) || 'smart';
+  const winMode = ($('off-winmode') && $('off-winmode').value) || 'edge';
   const sheriff = !!($('off-sheriff') && $('off-sheriff').checked);
   const thief = !!($('off-thief') && $('off-thief').checked);
   closeOfflineSetup();
-  await launchOffline(cap, level, sheriff, thief);
+  await launchOffline(cap, level, winMode, sheriff, thief);
 }
-async function launchOffline(cap, level, sheriff, thief) {
+async function launchOffline(cap, level, winMode, sheriff, thief) {
   if (!$('home') || $('home').classList.contains('hidden')) return;
   const name = nickValue();
   const r = await api('api/create', { name, deviceId: deviceId(), offline: true });
@@ -358,7 +359,7 @@ async function launchOffline(cap, level, sheriff, thief) {
     if (br.error) break;
   }
   await api('api/action', { room, token, action: 'setCap', data: { cap } });
-  await api('api/action', { room, token, action: 'settings', data: { sheriff, thief } });
+  await api('api/action', { room, token, action: 'settings', data: { sheriff, thief, winMode } });
   localStorage.lwName = name;
   localStorage.lwRoom = room;
   enterRoom(room, me, r.view);
