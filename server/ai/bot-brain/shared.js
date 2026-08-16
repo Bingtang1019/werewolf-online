@@ -30,14 +30,20 @@ function getValueModelForBot() {
   try { _vModel = JSON.parse(fs.readFileSync(path.join(__dirname, 'models', process.env.MODEL_VALUE_VOTE ? process.env.MODEL_VALUE_VOTE.split(/[\\/]/).pop() : 'value-vote-v2.json'), 'utf8')); } catch (e) { _vModel = null; }
   return _vModel;
 }
-/* v1.7.7（α3）：狼侧刀神分类器——models/wolf-god-v1.json（wolfTrain/adaboost 训练产物，fail-open） */
+/* v1.7.7（α3）：狼侧刀神分类器——Phase W 优先 wolf-god-v2（2026-08-17 小样本训练），回退 v1（fail-open） */
 let _wolfGodModel = null, _wolfGodTried = false;
 function loadWolfGodModel() {
   if (_wolfGodTried) return _wolfGodModel;
   _wolfGodTried = true;
   try {
     const { AdaBoost } = require('../../../wolfTrain/adaboost.js');
-    _wolfGodModel = AdaBoost.fromJSON(JSON.parse(fs.readFileSync(path.join(__dirname, 'models', 'wolf-god-v1.json'), 'utf8')));
+    const candidates = process.env.WOLF_GOD_MODEL ? [process.env.WOLF_GOD_MODEL] : ['wolf-god-v1.json', 'wolf-god-v2.json'];
+    for (const name of candidates) {
+      try {
+        _wolfGodModel = AdaBoost.fromJSON(JSON.parse(fs.readFileSync(path.join(__dirname, 'models', name), 'utf8')));
+        if (_wolfGodModel && _wolfGodModel.models && _wolfGodModel.models.length) break;
+      } catch (e) { _wolfGodModel = null; }
+    }
   } catch (e) { _wolfGodModel = null; }
   return _wolfGodModel;
 }
