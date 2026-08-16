@@ -201,7 +201,7 @@ function botTalk(room, bot, level) {
     }
     // C1-2：犹豫（信念熵高时，先不急着站边）
     if (ctx.rng().next() < 0.2 && beliefEntropy(room, bot, mem) > 0.8) {
-      return chat(ctx.pick(['我再想想…', '不好说，信息太少了', '先听你们聊，我理理思路']));
+      return chat(genPhrase('hesitate') || ctx.pick(['我再想想…', '不好说，信息太少了', '先听你们聊，我理理思路']));
     }
     // v1.6.4（A2-3）：平民/无实权角色也不沉默——表态/质疑（easy 低概率、smart 中概率；有嫌疑对象优先）
     if ((level === 'smart' && ctx.rng().next() < 0.5) || (level === 'easy' && ctx.rng().next() < 0.25)) {
