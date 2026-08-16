@@ -51,14 +51,15 @@ global.URLSearchParams = URLSearchParams;
 global.Promise = Promise;
 global.Math = Math;
 
-/* ---------- eval client.js（跳过末尾 init() 调用，仅加载函数定义） ---------- */
-let code = fs.readFileSync(path.join(proj, 'public/client.js'), 'utf8');
-code = code.replace(/^'use strict';\s*/, ''); // 严格模式下顶层函数声明不泄漏到 global，harness 需剥离
+/* ---------- eval public/js 拆分模块（跳过末尾 init() 调用，仅加载函数定义） ---------- */
+const JS_ORDER = ['core.js', 'delegate.js', 'render.js', 'chat.js', 'game-actions.js', 'fx-sound.js', 'music.js', 'main.js'];
+let code = JS_ORDER.map(f => fs.readFileSync(path.join(proj, 'public/js', f), 'utf8')).join('\n');
+code = code.replace(/^'use strict'\s*;?\s*/gm, ''); // 严格模式下顶层函数声明不泄漏到 global，harness 需剥离
 code = code.replace(/\ninit\(\);\s*$/, '\n// init() skipped in harness\n');
 let evalErr = null;
 try { (0, eval)(code); } catch (e) { evalErr = e; }
-if (evalErr) { console.error('client.js 顶层执行异常:', evalErr.stack); process.exit(1); }
-console.log('✓ client.js 顶层执行无异常（eval 成功）');
+if (evalErr) { console.error('public/js 顶层执行异常:', evalErr.stack); process.exit(1); }
+console.log('✓ public/js 顶层执行无异常（eval 成功）');
 if (typeof global.renderPanel !== 'function') { console.error('renderPanel 未定义'); process.exit(1); }
 console.log('✓ renderPanel/renderNight 已加载');
 

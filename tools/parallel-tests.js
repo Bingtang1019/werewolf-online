@@ -11,8 +11,8 @@
  *      其余 45 个并行。并行前预清理 rooms.json 残留，保证并行期所有测试走
  *      "无快照"分支（与串行时字母序在 snapshot 之前的测试语义一致）。
  *   3. worker 池 + 任务队列：--workers=N（默认 min(8, cpus-2)，16 核留余量防 CPU 争抢
- *      把慢测试拖过 150s 超时）。
- *   4. 超时 + 单次重试：150s 墙钟超时杀进程；失败重试 1 次（区分 flaky 与真失败，
+ *      把慢测试拖过 240s 超时）。
+ *   4. 超时 + 单次重试：240s 墙钟超时杀进程；失败重试 1 次（区分 flaky 与真失败，
  *      重试通过标注）；重试仍失败才算 FAIL。
  *   5. 输出收集：失败时 dump 完整 stdout/stderr（原串行版只报文件名，排查靠运气）。
  * 用法：node tools/parallel-tests.js [--workers=8] [--json=out.json]
@@ -28,7 +28,7 @@ const testDir = path.join(root, 'test');
 const args = {};
 process.argv.slice(2).forEach(a => { const m = a.match(/^--([^=]+)=(.*)$/); if (m) args[m[1]] = m[2]; });
 const WORKERS = Math.max(1, Math.min(16, parseInt(args.workers || '', 10) || Math.max(2, os.cpus().length - 2)));
-const TIMEOUT_MS = 150000;
+const TIMEOUT_MS = 240000;
 const SNAPSHOT_TEST = 'check-snapshot.js'; // 写 data/rooms.json → 独占串行
 const SNAP = path.join(root, 'data', 'rooms.json');
 

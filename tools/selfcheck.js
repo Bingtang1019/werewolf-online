@@ -56,6 +56,9 @@ function collect(scope) {
     for (const f of ['server.js', 'game.js', 'loverCore.js', 'bot-brain.js', 'public/sw.js']) {
       if (fs.existsSync(path.join(root, f))) acc.push(f);
     }
+    for (const dir of ['server/game', 'server/ai/bot-brain']) {
+      if (fs.existsSync(path.join(root, dir))) walkJs(path.join(root, dir), root, acc);
+    }
     const jsc = path.join(root, 'public', 'js');
     if (fs.existsSync(jsc)) {
       for (const f of fs.readdirSync(jsc)) if (f.endsWith('.js')) acc.push(path.join('public', 'js', f));
@@ -64,7 +67,12 @@ function collect(scope) {
     if (fs.existsSync(path.join(root, 'favens'))) walkJs(path.join(root, 'favens'), root, fa);
     acc.push(...fa.filter(f => f.startsWith('favens')));
   } else if (scope === 'all') walkJs(root, root, acc);
-  else if (scope === 'server') for (const f of ['server.js', 'game.js', 'loverCore.js', 'bot-brain.js']) if (fs.existsSync(path.join(root, f))) acc.push(f);
+  else if (scope === 'server') {
+    for (const f of ['server.js', 'game.js', 'loverCore.js', 'bot-brain.js']) if (fs.existsSync(path.join(root, f))) acc.push(f);
+    for (const dir of ['server/game', 'server/ai/bot-brain']) {
+      if (fs.existsSync(path.join(root, dir))) walkJs(path.join(root, dir), root, acc);
+    }
+  }
   else if (scope === 'favens') { if (fs.existsSync(path.join(root, 'favens'))) walkJs(path.join(root, 'favens'), root, acc); if (fs.existsSync(path.join(root, 'loverCore.js'))) acc.push('loverCore.js'); }
   else if (scope === 'tools') walkJs(path.join(root, 'tools'), root, acc);
   else if (scope === 'test') walkJs(path.join(root, 'test'), root, acc);
@@ -74,6 +82,15 @@ function collect(scope) {
 const FILES = collect(OPT.scope);
 const read = p => fs.readFileSync(path.join(root, p), 'utf8');
 const exists = p => fs.existsSync(path.join(root, p));
+function readDirJs(relDir) {
+  const base = path.join(root, relDir);
+  if (!fs.existsSync(base) || !fs.statSync(base).isDirectory()) return '';
+  const parts = [];
+  for (const f of fs.readdirSync(base).sort()) {
+    if (f.endsWith('.js')) parts.push(read(path.join(relDir, f)));
+  }
+  return parts.join('\n');
+}
 
 /* ---------------- 工具 ---------------- */
 function runNode(script, opts = {}) {
@@ -132,17 +149,18 @@ check('leftover', '遗留标记（TODO/FIXME/HACK）', true, () => {
 /* ---------- 5. loverMode 三态一致性（按文件职责期望子集） ---------- */
 check('lover-mode', 'loverMode 三态一致性（按文件职责期望子集）', true, () => {
   const targets = [
-    { f: 'game.js', must: ['off', 'classic', 'v2'], note: '引擎三态开关' },
+    { f: 'server/game', must: ['off', 'classic', 'v2'], note: '引擎三态开关（拆分后 server/game）' },
     { f: 'loverCore.js', must: ['v2'], note: 'v2 专用模块（off/classic 由 game.js 拦截）' },
     { f: 'favens/index.js', must: ['v2'], note: '策略路由（!== v2 视为非 v2 分支）' },
     { f: 'test/check-lover-v2.js', must: ['classic', 'v2'], note: '单测需覆盖拒绝与主路径' },
   ];
   let missing = 0;
   for (const t of targets) {
+    const isDir = exists(t.f) && fs.statSync(path.join(root, t.f)).isDirectory();
     if (!exists(t.f)) { warn(t.f + ' 不存在（跳过 loverMode 检查）'); continue; }
-    const s = read(t.f);
+    const s = isDir ? readDirJs(t.f) : read(t.f);
     for (const st of t.must) {
-      const hasEq = new RegExp("loverMode\s*(?:===|!==|:|=)\s*['\"]" + st + "['\"]").test(s);
+      const hasEq = new RegExp("loverMode\\s*(?:===|!==|:|=)\\s*['\"]" + st + "['\"]").test(s);
       const hasNeq = st === 'v2' && /loverMode\s*!==\s*['"]v2['"]/.test(s);
       if (!hasEq && !hasNeq) { missing++; warn(t.f + ': 缺少 loverMode ' + st + ' 分支（' + t.note + '）'); }
     }
@@ -152,7 +170,7 @@ check('lover-mode', 'loverMode 三态一致性（按文件职责期望子集）'
 
 /* ---------- 6. loverTest/loverLocked 注入链 ---------- */
 check('lover-test-chain', 'loverTest/loverLocked 注入链（消费端 vs 使用端）', true, () => {
-  const game = exists('game.js') ? read('game.js') : '';
+  const game = readDirJs('server/game') || (exists('game.js') ? read('game.js') : '');
   const consumed = new Set();
   for (const m of game.matchAll(/loverTest\s*===?\s*['\"]([^'\"]+)['\"]/g)) consumed.add(m[1]);
   const consumedLocked = exists('loverCore.js') && /loverLocked/.test(read('loverCore.js'));
@@ -205,9 +223,9 @@ check('lovercore-coverage', 'loverCore 接口-测试覆盖（导出方法 vs 单
 
 /* ---------- 8. view 字段契约（lover 聚焦） ---------- */
 check('view-contract', 'view 字段契约（viewFor/viewState 透出 vs client.js 读取，lover 聚焦）', false, () => {
-  if (!exists('game.js') || !exists('public/client.js')) { warn('game.js/client.js 缺失，跳过'); return; }
-  const game = read('game.js');
-  const client = read('public/client.js');
+  const game = readDirJs('server/game') || (exists('game.js') ? read('game.js') : '');
+  const client = readDirJs('public/js') || (exists('public/client.js') ? read('public/client.js') : '');
+  if (!game || !client) { warn('server/game 或 public/js 缺失，跳过'); return; }
   const lc = exists('loverCore.js') ? read('loverCore.js') : '';
   const produced = new Set();
   const vfStart = game.indexOf('function viewFor');
@@ -284,16 +302,20 @@ check('dup-case', '重复 switch case 检测', false, () => {
 
 /* ---------- 11. 规模概览 ---------- */
 check('scale', '规模概览', false, () => {
-  for (const f of ['server.js', 'game.js', 'loverCore.js', 'bot-brain.js', 'public/client.js', 'public/sw.js']) {
-    if (!exists(f)) continue;
-    const src = read(f);
+  const show = (label, src) => {
+    if (!src) return;
     const lines = src.split('\n').length;
     const kb = (Buffer.byteLength(src, 'utf8') / 1024).toFixed(1);
-    log('    ' + f.padEnd(20) + String(lines).padStart(5) + ' 行  ' + kb + ' KB');
+    log('    ' + label.padEnd(24) + String(lines).padStart(5) + ' 行  ' + kb + ' KB');
+  };
+  for (const f of ['server.js', 'game.js', 'loverCore.js', 'bot-brain.js', 'public/sw.js']) {
+    if (exists(f)) show(f, read(f));
   }
+  show('server/game/*.js', readDirJs('server/game'));
+  show('server/ai/bot-brain/*.js', readDirJs('server/ai/bot-brain'));
+  show('public/js/*.js', readDirJs('public/js'));
   if (exists('favens')) for (const f of fs.readdirSync(path.join(root, 'favens')).filter(x => x.endsWith('.js')).sort()) {
-    const src = read('favens/' + f);
-    log('    ' + ('favens/' + f).padEnd(20) + String(src.split('\n').length).padStart(5) + ' 行  ' + (Buffer.byteLength(src, 'utf8') / 1024).toFixed(1) + ' KB');
+    show('favens/' + f, read('favens/' + f));
   }
 });
 
