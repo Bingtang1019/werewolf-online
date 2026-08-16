@@ -201,7 +201,9 @@ function init() {
     $('in-code').focus();
   });
   const bOff = $('btn-offline');
-  if (bOff) bOff.addEventListener('click', startOffline);
+  if (bOff) bOff.addEventListener('click', openOfflineSetup);
+  const offStart = $('off-start'); if (offStart) offStart.addEventListener('click', startOfflineSetup);
+  const offCancel = $('off-cancel'); if (offCancel) offCancel.addEventListener('click', closeOfflineSetup);
   $('btn-join-go').addEventListener('click', joinRoom);
   const ccp = $('btn-copy-code');
   if (ccp) ccp.addEventListener('click', copyInvite); // v1.3.0：创建大卡复制邀请链接（原复制房号）
@@ -255,6 +257,14 @@ $('btn-leave').addEventListener('click', async () => {
   $('btn-force').addEventListener('click', () => { if (view && view.my && view.my.isHost) doAdvance(); });
   $('btn-chat').addEventListener('click', sendChat);
   $('chat-text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) sendChat(); });
+  // 聊天 UI 增强：点击消息里的玩家名 → 在输入框插入 @名字（A2-6）
+  const cmsgs = $('chat-msgs');
+  if (cmsgs) cmsgs.addEventListener('click', e => {
+    const el = e.target.closest('[data-mention]');
+    if (!el) return;
+    const name = el.getAttribute('data-mention') || '';
+    if (name) chatMention(name);
+  });
   const oc = $('on-close');
   if (oc) oc.addEventListener('click', hideOverlay); // 空值守卫：缺元素不导致 init 崩溃（C1）
   // 房间号实时校验（v1.2.0）：输入即转大写；6 位合法金色高亮并自动进入；含非法字符红框反馈

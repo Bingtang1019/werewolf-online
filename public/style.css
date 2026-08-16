@@ -305,7 +305,8 @@ button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 }
 .chat-msg { line-height: 1.5; padding: 4px 8px; border-radius: 8px; transition: background .15s; }
 .chat-msg:hover { background: rgba(255,255,255,.03); }
-.chat-msg .cm-name { font-weight: 700; margin-right: 6px; }
+.chat-msg .cm-name { font-weight: 700; margin-right: 6px; cursor: pointer; }
+.chat-time { text-align: center; color: var(--muted); font-size: 11px; padding: 2px 0; }
 .chat-msg .cm-text { word-break: break-all; }
 .chat-msg.ch-wolf .cm-name { color: var(--wolf); }
 .chat-msg.ch-lover .cm-name { color: var(--third); }
@@ -314,6 +315,13 @@ button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 .chat-sys { color: var(--muted); font-size: 12px; font-style: italic; }
 #chat-input-row { display: flex; gap: 8px; margin-top: 10px; }
 #chat-text { flex: 1; }
+
+/* ---------- 通用弹窗（离线模式设置） ---------- */
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal.hidden { display: none; }
+.modal-box { background: var(--bg2); border: 1px solid var(--line); border-radius: 16px; padding: 20px; width: min(360px, 90vw); display: flex; flex-direction: column; gap: 12px; }
+.off-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
 /* ---------- 弹窗 ---------- */
 #toast {
