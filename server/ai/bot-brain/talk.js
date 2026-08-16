@@ -238,10 +238,16 @@ function botTalk(room, bot, level) {
     return chat('我是平民，投我不亏但浪费轮次，建议先出' + cc);
   }
   // v1.6.4（A2-3）：被投票/被怀疑 → 开口辩解（easy/smart 都开口；上一轮票型 totals 里有自己）
+  // C1-3/C1-4：aggressive 风格被投后更情绪化（事件驱动，有界）
   const lv = room.lastVoteResult;
   const wasVoted = lv && lv.totals && lv.totals[bot.id];
-  if (wasVoted && ctx.rng().next() < 0.8) {
-    return chat(genPhrase('defend_self', { name: ctx.nameById(room, bot.id) }) || '我是好人，别投我，浪费轮次');
+  if (wasVoted) {
+    if ((bot.botStyle || 'balanced') === 'aggressive' && ctx.rng().next() < 0.8) {
+      return chat(ctx.pick(['行，投我的都记住了', '我要是狼早带刀了，投我的别后悔', '呵，投我？今晚见']));
+    }
+    if (ctx.rng().next() < 0.8) {
+      return chat(genPhrase('defend_self', { name: ctx.nameById(room, bot.id) }) || '我是好人，别投我，浪费轮次');
+    }
   }
   // 2. 对跳辩论（有对跳者时）
   if (level === 'smart' && claimers.length) {
