@@ -243,7 +243,7 @@ function botTalk(room, bot, level) {
   const wasVoted = lv && lv.totals && lv.totals[bot.id];
   if (wasVoted) {
     if ((bot.botStyle || 'balanced') === 'aggressive' && ctx.rng().next() < 0.8) {
-      return chat(ctx.pick(['行，投我的都记住了', '我要是狼早带刀了，投我的别后悔', '呵，投我？今晚见']));
+      return chat(genPhrase('angry_defend') || ctx.pick(['行，投我的都记住了', '我要是狼早带刀了，投我的别后悔', '呵，投我？今晚见']));
     }
     if (ctx.rng().next() < 0.8) {
       return chat(genPhrase('defend_self', { name: ctx.nameById(room, bot.id) }) || '我是好人，别投我，浪费轮次');
