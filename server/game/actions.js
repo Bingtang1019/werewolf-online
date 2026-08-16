@@ -1,9 +1,10 @@
 // 自动生成（game.js 拆分——actions 模块，勿手改，重新运行 tools/split-game.js）
 
+const fs = require('fs');
 const shared = require('./shared');
 const ctx = shared.ctx;
 const { register } = shared;
-const { loverCore, rooms, MOODS } = shared;
+const { loverCore, rooms, MOODS, createRng, voteFeatures } = shared;
 
 function debugRoom(opts = {}) {
   const r = ctx.createRoom('调试房主');
@@ -136,7 +137,7 @@ function applyAction(room, p, action, data) {
     if (action === 'wolf_set' && room.labSampleFile && p.isBot && ctx.isWolfRole(p) && data && data.kill) {
       try {
         // v1.7.7（α3）：采集“被杀者 + 随机对照”（去选择偏置）——每夜每狼 bot 决策时采 1+upTo 个样本
-        const smps = require('./wolfTrain/collector.js').collectKillSamples(room, p.id, data.kill, 3);
+        const smps = require('../../wolfTrain/collector.js').collectKillSamples(room, p.id, data.kill, 3);
         if (smps.length) {
           room.labSampleBuf = room.labSampleBuf || [];
           for (const wf of smps) {

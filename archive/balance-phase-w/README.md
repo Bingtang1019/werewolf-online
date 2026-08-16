@@ -23,8 +23,17 @@
 - 说明当前 lab 样本采集链路在拆分后没有真正采到 vote/wolf 样本，**Phase W 正式训练前需要先修这条链路**。
 - 可能原因：`room.labSampleFile` 未生效、bot 行动未走采集钩子、或 `flushLabSamples` 未触发。需要进一步定位。
 
+## ✅ 已修复（2026-08-17）
+- `server/game/actions.js` 拆分后缺失导入：
+  - 补 `fs`、`createRng`、`voteFeatures`
+  - 修正 `wolfTrain/collector.js` 相对路径（`./wolfTrain` → `../../wolfTrain`）
+- 复测 `sample --games=20 --cap=8`：
+  - 20 局全部正常完成（winner 正常）
+  - 生成 `data/wolf-samples2.jsonl`，共 **325 条样本**
+  - 包含 wolf 夜刀样本（isKill/label）与 vote 样本
+
 ## 下一步
-- [ ] 修复 lab 样本采集（vote + wolf 样本为 0）
+- [ ] 用已修复的样本管道跑正式 wolf-god 训练
 - [ ] 重训 wolf-god 分类器
 - [ ] 狼侧 rollout / decideNightKill 接入
 - [ ] V5.2 自博弈对抗训练
