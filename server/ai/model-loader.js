@@ -106,7 +106,7 @@ function getVoteModel() {
   _tried = true;
   if (process.env.LAB_NO_MODEL === '1') { _model = null; return _model; } // 1.7.0（B1-4）：对照实验禁用模型（lab 平台）
   if (process.env.VOTE_MODEL_MODE === 'heuristic') { _model = null; return _model; } // 1.7.15：感知层门控（审计止血）——启发式
-  const mode = process.env.VOTE_MODEL_MODE || 'v3'; // 1.7.18+：生产默认 v3（干净数据版 v3v2；VOTE_MODEL_MODE=v2 可一键回退——验收链闭环 2026-08）
+  const mode = process.env.VOTE_MODEL_MODE || 'v2'; // Phase G 2026-08-17：默认 v2（8/12/13 人局快速扫描利好好人 +4~8pp；VOTE_MODEL_MODE=v3 可回退）
   // 1.7.18：v3-fast（vote-v4 蒸馏 MLP）优先 → v3（schema@3）→ v2（schema@2）→ v1+iso → null（heuristic）
   try {
     if (mode === 'v3-fast') {
