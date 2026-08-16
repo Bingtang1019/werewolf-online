@@ -35,7 +35,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const nul = await get('/index.html%00.js');
     assert(nul.status === 400 || nul.status === 403, `控制字符拦截: %00 → ${nul.status}`);
     // ---- 2. 正常静态文件仍可用 ----
-    for (const p of ['/', '/index.html', '/style.css', '/client.js']) {
+    for (const p of ['/', '/index.html', '/style.css', '/js/core.js']) {
       const r = await get(p);
       assert(r.status === 200, `正常文件 200: ${p}`);
     }

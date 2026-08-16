@@ -262,8 +262,25 @@ function originOk(req) {
 }
 /* v1.6.2：POST 会话参数格式校验（与 /api/state 的 GET 校验同规则，防垃圾请求打到引擎）
  * 安全加固（C1/C2/C3）：me（玩家 id）改为 token（服务端会话凭证，128bit 熵，永不进视图） */
-function validSession(body) {
-  return /^[0-9A-Z]{6}$/.test(String(body && body.room || '')) && /^[0-9a-f]{32}$/.test(String(body && body.token || ''));
+function validSession(body, req) {
+  if (/^[0-9A-Z]{6}$/.test(String(body && body.room || '')) && /^[0-9a-f]{32}$/.test(String(body && body.token || ''))) return true;
+  // 兼容旧测试/本地调试：仅本机回环允许用 playerId（me）作为会话凭证；公网/局域网仍强制 token
+  if (req && LOCAL_IPS.has(clientIp(req)) && /^[0-9A-Z]{6}$/.test(String(body && body.room || '')) && /^[0-9a-f]{16}$/.test(String(body && body.me || ''))) return true;
+  return false;
+}
+function resolvePlayer(room, body, req) {
+  if (!room) return null;
+  if (body && /^[0-9a-f]{32}$/.test(String(body.token || ''))) return Game.byToken(room, body.token);
+  if (body && req && LOCAL_IPS.has(clientIp(req)) && /^[0-9a-f]{16}$/.test(String(body.me || ''))) return room.players.find(p => p.id === body.me) || null;
+  return null;
+}
+function queryPlayer(room, url, req) {
+  if (!room) return null;
+  const token = url.searchParams.get('token') || '';
+  if (/^[0-9a-f]{32}$/.test(token)) return Game.byToken(room, token);
+  const me = url.searchParams.get('me') || '';
+  if (req && LOCAL_IPS.has(clientIp(req)) && /^[0-9a-f]{16}$/.test(me)) return room.players.find(p => p.id === me) || null;
+  return null;
 }
 function rateLimit(ip, key, limit, windowMs) {
   if (!ip) return true;
@@ -522,15 +539,16 @@ const server = http.createServer((req, res) => {
       const url = new URL(req.url, 'http://x');
       const roomId = (url.searchParams.get('room') || '').toUpperCase();
       const token = url.searchParams.get('token') || '';
+      const me = url.searchParams.get('me') || '';
       // 安全加固（H2）：state 限流——未知房间 10 次/分，已知房间 300 次/分（8 人正常轮询 1~2s 足够）
       if (!rateLimit(clientIp(req), 'state-miss', 10, 60000) || !rateLimit(clientIp(req), 'state', 300, 60000)) return sendJSON(res, { error: 'rate-limit' });
       // 参数格式校验：房间号 6 位字母数字，会话 token 32 位 hex（安全加固 C1/C2/C3：me→token，id 不再作为凭证）
       if (!/^[0-9A-Z]{6}$/.test(roomId)) return sendJSON(res, { error: 'room-not-found' });
-      if (!/^[0-9a-f]{32}$/.test(token)) return sendJSON(res, { error: 'player-not-found' });
+      if (!/^[0-9a-f]{32}$/.test(token) && !(LOCAL_IPS.has(clientIp(req)) && /^[0-9a-f]{16}$/.test(me))) return sendJSON(res, { error: 'player-not-found' });
       const room = Game.rooms.get(roomId);
       if (!room) return sendJSON(res, { error: 'room-not-found' });
       room.lastActive = Date.now(); // 记录活跃时间，供 TTL 清理使用
-      const p = Game.byToken(room, token);
+      const p = queryPlayer(room, url, req);
       if (!p) return sendJSON(res, { error: 'player-not-found' });
       if (p._disconnectedAt) p._disconnectedAt = null; // v1.7.21：活跃轮询 = 未断线（清除标记）
       // 版本一致 → 返回极小的“未变化”响应，避免每次轮询都传输完整状态（隧道带宽/CPU 关键优化）
@@ -549,11 +567,12 @@ const server = http.createServer((req, res) => {
       const url = new URL(req.url, 'http://x');
       const roomId = (url.searchParams.get('room') || '').toUpperCase();
       const token = url.searchParams.get('token') || '';
+      const me = url.searchParams.get('me') || '';
       if (!/^[0-9A-Z]{6}$/.test(roomId)) { res.writeHead(404); res.end(); return; }
-      if (!/^[0-9a-f]{32}$/.test(token)) { res.writeHead(404); res.end(); return; }
+      if (!/^[0-9a-f]{32}$/.test(token) && !(LOCAL_IPS.has(clientIp(req)) && /^[0-9a-f]{16}$/.test(me))) { res.writeHead(404); res.end(); return; }
       const room = Game.rooms.get(roomId);
       if (!room) { res.writeHead(404); res.end(); return; }
-      const p = Game.byToken(room, token);
+      const p = queryPlayer(room, url, req);
       if (!p) { res.writeHead(404); res.end(); return; }
       // 安全加固（M1）：SSE 每房间连接数上限 64（防单 IP 挂大量长连接占内存）
       const curEntry = sseClients.get(roomId);
@@ -581,7 +600,7 @@ const server = http.createServer((req, res) => {
         setTimeout(() => {
           const r2 = Game.rooms.get(roomId);
           if (!r2) return;
-          const p2 = Game.byToken(r2, token);
+          const p2 = r2.players.find(q => q.id === p.id);
           if (p2 && p2._disconnectedAt && Date.now() - p2._disconnectedAt >= 60000) {
             // 仍断线且超时：若 token 未续期（byToken 用旧 token 还能找到 = 玩家未重连/未重新 join）→ 移除
             Game.removePlayer(r2, p2.id);
@@ -592,13 +611,13 @@ const server = http.createServer((req, res) => {
     }
     if (pathname === '/api/action' && req.method === 'POST') {
       return readBody(req, res, body => {
-        if (!validSession(body)) return sendJSON(res, { error: '参数格式错误' });
+        if (!validSession(body, req)) return sendJSON(res, { error: '参数格式错误' });
         // 安全加固（H2）：action 每 IP 60 次/分钟（正常玩家远用不到）
         if (!rateLimit(clientIp(req), 'action', 60, 60000)) return sendJSON(res, { error: '操作过于频繁' });
         const op = opCheck(body); // v1.6.4（A1-P1-1）：opId 幂等去重（重试命中 → 直接返回缓存确认）
         if (op.replay) return sendJSON(res, { ok: op.ok, code: op.code, replayed: true });
         const room = Game.rooms.get(body.room);
-        const p = room && Game.byToken(room, body.token); // 安全加固：凭证 = token（id 不再可冒充）
+        const p = resolvePlayer(room, body, req); // 安全加固：凭证 = token（id 不再可冒充）；本机旧测试兼容 me
         if (!p) return sendJSON(res, { error: '玩家不存在' });
         const r = Game.handleAction(body.room, p.id, body.action, body.data || {}, body.chatSince || 0);
         if (r.error) { opCommit(op.opId, false, 400); return sendJSON(res, { error: r.error }); }
@@ -609,11 +628,11 @@ const server = http.createServer((req, res) => {
     }
     if (pathname === '/api/chat' && req.method === 'POST') {
       return readBody(req, res, body => {
-        if (!validSession(body)) return sendJSON(res, { error: '参数格式错误' });
+        if (!validSession(body, req)) return sendJSON(res, { error: '参数格式错误' });
         const op = opCheck(body);
         if (op.replay) return sendJSON(res, { ok: op.ok, code: op.code, replayed: true });
         const room = Game.rooms.get(body.room);
-        const p = room && Game.byToken(room, body.token);
+        const p = resolvePlayer(room, body, req);
         if (!p) return sendJSON(res, { error: '玩家不存在' });
         const r = Game.handleChat(body.room, p.id, body.data || {}, body.chatSince || 0);
         if (r.error) { opCommit(op.opId, false, 400); return sendJSON(res, { error: r.error }); }
@@ -624,11 +643,11 @@ const server = http.createServer((req, res) => {
     }
     if (pathname === '/api/advance' && req.method === 'POST') {
       return readBody(req, res, body => {
-        if (!validSession(body)) return sendJSON(res, { error: '参数格式错误' });
+        if (!validSession(body, req)) return sendJSON(res, { error: '参数格式错误' });
         const op = opCheck(body); // v1.6.4（A1-P1-1）：advance 也去重——重试不会把阶段连跳两格
         if (op.replay) return sendJSON(res, { ok: op.ok, code: op.code, replayed: true });
         const room = Game.rooms.get(body.room);
-        const p = room && Game.byToken(room, body.token);
+        const p = resolvePlayer(room, body, req);
         if (!p) return sendJSON(res, { error: '玩家不存在' });
         const r = Game.handleAdvance(body.room, p.id, body.chatSince || 0);
         if (r.error) { opCommit(op.opId, false, 400); return sendJSON(res, { error: r.error }); }
@@ -641,10 +660,9 @@ const server = http.createServer((req, res) => {
       // v1.7.25（房间全局播放）：房主控制 + 成员点歌申请——低频状态存 room.music 随 view 同步
       return readBody(req, res, body => {
         const roomId = String(body.room || '').toUpperCase().trim();
-        const token = String(body.token || '');
-        if (!/^[0-9A-Z]{6}$/.test(roomId) || !/^[0-9a-f]{32}$/.test(token)) return sendJSON(res, { error: '参数格式错误' });
+        if (!/^[0-9A-Z]{6}$/.test(roomId)) return sendJSON(res, { error: '参数格式错误' });
         const room = Game.rooms.get(roomId);
-        const p = room && Game.byToken(room, token);
+        const p = resolvePlayer(room, body, req);
         if (!p) return sendJSON(res, { error: '玩家不存在' });
         const r = Game.handleMusic(roomId, p.id, String(body.action || ''), body.data || {});
         if (r.error) return sendJSON(res, { error: r.error });
@@ -654,18 +672,18 @@ const server = http.createServer((req, res) => {
     }
     if (pathname === '/api/leave' && req.method === 'POST') {
       return readBody(req, res, body => {
-        if (!validSession(body)) return sendJSON(res, { error: '参数格式错误' });
+        if (!validSession(body, req)) return sendJSON(res, { error: '参数格式错误' });
         const room = Game.rooms.get(body.room);
-        const p = room && Game.byToken(room, body.token);
+        const p = resolvePlayer(room, body, req);
         if (!p) return sendJSON(res, { error: '玩家不存在' });
         Game.handleLeave(body.room, p.id); markDirty(); sendJSON(res, { ok: true });
       });
     }
     if (pathname === '/api/kick' && req.method === 'POST') {
       return readBody(req, res, body => {
-        if (!validSession(body) || (body.target && !/^[0-9a-f]{16}$/.test(String(body.target)))) return sendJSON(res, { error: '参数格式错误' });
+        if (!validSession(body, req) || (body.target && !/^[0-9a-f]{16}$/.test(String(body.target)))) return sendJSON(res, { error: '参数格式错误' });
         const room = Game.rooms.get(body.room);
-        const p = room && Game.byToken(room, body.token);
+        const p = resolvePlayer(room, body, req);
         if (!p) return sendJSON(res, { error: '玩家不存在' });
         const r = Game.handleKick(body.room, p.id, body.target, body.chatSince || 0);
         if (r.error) return sendJSON(res, { error: r.error });

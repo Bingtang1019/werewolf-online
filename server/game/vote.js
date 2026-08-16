@@ -354,7 +354,7 @@ function dayAction(room, p, action, data) {
       return { ok: true };
     }
     case 'ended': {
-      if (action === 'ctx.rematch' && p.id === room.host) { ctx.rematch(room); return { ok: true }; }
+      if (action === 'rematch' && p.id === room.host) { ctx.rematch(room); return { ok: true }; }
       return { error: '未知操作' };
     }
   }
