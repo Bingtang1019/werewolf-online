@@ -151,7 +151,7 @@ const SNAPSHOT_REVIVER = (k, v) => (v && v.__set ? new Set(v.__set) : (v && v.__
 function saveSnapshot() {
   if (!SNAPSHOT_ENABLED) return; // v1.5.6：禁用（测试环境）
   try {
-    const data = { version: 1, savedAt: Date.now(), rooms: [...Game.rooms.values()].map(r => {
+    const data = { version: 1, savedAt: Date.now(), rooms: [...Game.rooms.values()].filter(r => !r.offline).map(r => {
       const c = { ...r };
       delete c._phaseTimer; delete c._nightTimer; delete c._nightStepTimer;
       delete c._thiefTimer; delete c._hunterTimer; delete c._botTimer;
@@ -518,6 +518,7 @@ const server = http.createServer((req, res) => {
       if (Game.rooms.size >= 300) return sendJSON(res, { error: '服务器房间已满，请稍后再试' });
       return readBody(req, res, body => {
         const r = Game.createRoom(String(body.name || '').slice(0, 12) || '玩家', String(body.deviceId || ''));
+        if (body.offline) { const room = Game.rooms.get(r.roomId); if (room) room.offline = true; } // C3：离线局不写快照
         markDirty();
         /* v1.7.31（mods）：房间创建钩子（mod 注册的 onRoomCreate） */
         try { for (const fn of modHooks.onRoomCreate) fn(Game.rooms.get(r.roomId), r); } catch (e) { logError('mod-onRoomCreate', e); }

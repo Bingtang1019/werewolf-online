@@ -1,6 +1,23 @@
 // 自动生成（client.js 拆分——勿手改，重新运行 tools/split-client.js）
 // 依赖：core.js 先行加载
 
+function chatTimeLabel(ts) {
+  const d = new Date(ts || Date.now());
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}月${d.getDate()}日 ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function chatShortTime(ts) {
+  const d = new Date(ts || Date.now());
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function chatMention(name) {
+  const ci = $('chat-text');
+  if (!ci || ci.disabled) return;
+  ci.value = (ci.value ? ci.value + ' ' : '') + '@' + name + ' ';
+  ci.focus();
+}
+
 function chatVh() { // 动态视口高（移动端浏览器工具栏存在时 innerHeight/vh 偏大——输入框被盖"打不了字"的根因）
   const vv = window.visualViewport;
   return vv && vv.height ? vv.height : (window.innerHeight || document.documentElement.clientHeight || 600);
@@ -107,28 +124,37 @@ function renderChat() {
   const msgs = view.chat.filter(m => m.ch === chatTab);
   // 消息数变化或频道切换时才重绘（两个频道消息数恰好相同时，仅靠数量无法区分）
   if (msgs.length !== lastChatCount || lastChatTab !== chatTab) {
-    $('chat-msgs').innerHTML = msgs.map(m => {
+    const html = [];
+    let lastTs = 0;
+    for (const m of msgs) {
+      const t = m.ts || 0;
+      if (t && lastTs && (new Date(t).toDateString() !== new Date(lastTs).toDateString() || t - lastTs > 10 * 60 * 1000)) {
+        html.push(`<div class="chat-time">${chatTimeLabel(t)}</div>`);
+      }
+      if (t) lastTs = t;
       if (m.marker === '系统') {
         // 系统消息图标化（21）：按内容匹配图标
-        const t = m.text || '';
-        const icon = (t.indexOf('狼') >= 0 || t.indexOf('刀') >= 0 || t.indexOf('杀') >= 0) ? '🐺'
-          : t.indexOf('枪') >= 0 ? '🔫' : t.indexOf('毒') >= 0 ? '🧪' : t.indexOf('放逐') >= 0 ? '⚖️'
-          : t.indexOf('警') >= 0 ? '👮' : t.indexOf('盗') >= 0 ? '🃏' : t.indexOf('殉情') >= 0 ? '💔'
-          : (t.indexOf('情侣') >= 0 || t.indexOf('丘比特') >= 0 || t.indexOf('魅') >= 0) ? '💘'
-        : t.indexOf('解除') >= 0 ? '💔'
+        const text = m.text || '';
+        const icon = (text.indexOf('狼') >= 0 || text.indexOf('刀') >= 0 || text.indexOf('杀') >= 0) ? '🐺'
+          : text.indexOf('枪') >= 0 ? '🔫' : text.indexOf('毒') >= 0 ? '🧪' : text.indexOf('放逐') >= 0 ? '⚖️'
+          : text.indexOf('警') >= 0 ? '👮' : text.indexOf('盗') >= 0 ? '🃏' : text.indexOf('殉情') >= 0 ? '💔'
+          : (text.indexOf('情侣') >= 0 || text.indexOf('丘比特') >= 0 || text.indexOf('魅') >= 0) ? '💘'
+        : text.indexOf('解除') >= 0 ? '💔'
         : '🛎️';
-        return `<div class="chat-sys">${icon} ${escapeHtml(m.text)}</div>`;
+        html.push(`<div class="chat-sys" title="${escapeHtml(chatShortTime(t))}">${icon} ${escapeHtml(m.text)}</div>`);
+        continue;
       }
       const mine = !!(m.from && m.from === me);
       const chCls = m.ch === 'wolf' ? 'ch-wolf' : m.ch === 'lover' ? 'ch-lover' : '';
       const lwCls = m.marker === '遗言' ? 'marker-lastword' : '';
       const sender = view.players.find(p => p.id === m.from);
       const av = sender ? avatarOf(sender) : '👤';
-      return `<div class="chat-msg ${chCls} ${mine ? 'mine' : ''} ${lwCls}">
+      html.push(`<div class="chat-msg ${chCls} ${mine ? 'mine' : ''} ${lwCls}" title="${escapeHtml(chatShortTime(t))}">
         ${mine ? '' : `<span class="cm-avatar">${av}</span>`}
         ${m.marker && m.marker !== '遗言' ? `<span class="cm-marker">${escapeHtml(m.marker)}</span>` : ''}
-        <span class="cm-name">${escapeHtml(m.name)}</span><span class="cm-text">${escapeHtml(m.text)}</span></div>`;
-    }).join('');
+        <span class="cm-name" data-mention="${escapeHtml(m.name)}">${escapeHtml(m.name)}</span><span class="cm-text">${escapeHtml(m.text)}</span></div>`);
+    }
+    $('chat-msgs').innerHTML = html.join('');
     // 隐藏时新消息未读计数（悬浮窗把手提示；打开即清零）
     if (!document.body.classList.contains('chat-open') && msgs.length > lastChatCount) {
       chatUnread += msgs.length - lastChatCount;

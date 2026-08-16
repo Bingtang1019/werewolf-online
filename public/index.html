@@ -66,6 +66,35 @@
   </div>
 </div>
 
+<!-- 离线模式设置弹窗（C3：本机先启动服务） -->
+<div id="offline-modal" class="modal hidden">
+  <div class="modal-box">
+    <h3>🎮 离线模式设置</h3>
+    <label class="off-row">人数
+      <select id="off-cap">
+        <option value="4">4</option><option value="5">5</option><option value="6" selected>6</option>
+        <option value="8">8</option><option value="9">9</option><option value="10">10</option>
+        <option value="12">12</option><option value="13">13</option><option value="15">15</option>
+        <option value="18">18</option>
+      </select>
+    </label>
+    <label class="off-row">人机难度
+      <select id="off-level">
+        <option value="easy">简单</option>
+        <option value="smart" selected>normal（推荐）</option>
+        <option value="simulate">hard</option>
+      </select>
+    </label>
+    <label class="off-row"><input type="checkbox" id="off-sheriff" checked> 警长竞选</label>
+    <label class="off-row"><input type="checkbox" id="off-thief"> 盗贼玩法</label>
+    <label class="off-row"><input type="checkbox" id="off-cheat"> 作弊模式（房主自选身份）</label>
+    <div class="modal-actions">
+      <button id="off-start" class="primary">开始</button>
+      <button id="off-cancel" class="mini">取消</button>
+    </div>
+  </div>
+</div>
+
 <!-- 游戏界面 -->
 <div id="room" class="hidden">
   <div id="topbar">
