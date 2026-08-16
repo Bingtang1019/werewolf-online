@@ -93,13 +93,13 @@ function botTalk(room, bot, level) {
       const loverChecked = Object.keys(mem.seerClaims || {}).some(pid => pid !== bot.id && (mem.seerClaims[pid].claims || []).some(c => c.result === 'wolf' && c.target === lp.id));
       const loverSusp = (mem.suspicion || {})[lp.id] > 30 || Object.keys(mem.seerClaims || {}).some(pid => pid !== bot.id && (mem.seerClaims[pid].claims || []).some(c => c.target === lp.id));
       if (loverChecked && level === 'smart') {
-        return chat(ctx.pick([
+        return chat(genPhrase('defend_lover', { name: ctx.nameById(room, lp.id) }) || ctx.pick([
           '别信查杀' + ctx.nameById(room, lp.id) + '的话，我了解' + ctx.nameById(room, lp.id) + '，不是狼',
           ctx.nameById(room, lp.id) + '是好人，查杀他的人才是狼，你们品品',
         ]));
       }
       if (loverSusp && ctx.rng().next() < 0.6) {
-        return chat(ctx.pick([
+        return chat(genPhrase('defend_lover', { name: ctx.nameById(room, lp.id) }) || ctx.pick([
           '先别怀疑' + ctx.nameById(room, lp.id) + '，他今天的发言没什么问题',
           '我保' + ctx.nameById(room, lp.id) + '，不是狼，出他浪费轮次',
         ]));
@@ -126,7 +126,7 @@ function botTalk(room, bot, level) {
       if (myRole === 'wolfBeauty') {
         const pack = room.wolfPackMemory || {};
         const ct = pack.charmTarget ? ctx.byId(room, pack.charmTarget) : null;
-        if (ct && ct.alive && ctx.rng().next() < 0.6) return chat('我是狼美人，魅惑了' + ct.name + '，投我他就得死 💘');
+        if (ct && ct.alive && ctx.rng().next() < 0.6) return chat(genPhrase('wolf_beauty_threat', { name: ct.name }) || '我是狼美人，魅惑了' + ct.name + '，投我他就得死 💘');
       }
       return null;
     }
@@ -187,13 +187,13 @@ function botTalk(room, bot, level) {
       const loverChecked = Object.keys(mem.seerClaims || {}).some(pid => pid !== bot.id && (mem.seerClaims[pid].claims || []).some(c => c.result === 'wolf' && c.target === lp.id));
       const loverSusp = (mem.suspicion || {})[lp.id] > 30 || Object.keys(mem.seerClaims || {}).some(pid => pid !== bot.id && (mem.seerClaims[pid].claims || []).some(c => c.target === lp.id));
       if (loverChecked && level === 'smart') {
-        return chat(ctx.pick([
+        return chat(genPhrase('defend_lover', { name: ctx.nameById(room, lp.id) }) || ctx.pick([
           '别信查杀' + ctx.nameById(room, lp.id) + '的话，我了解' + ctx.nameById(room, lp.id) + '，不是狼',
           ctx.nameById(room, lp.id) + '是好人，查杀他的人才是狼，你们品品',
         ]));
       }
       if (loverSusp && ctx.rng().next() < 0.6) {
-        return chat(ctx.pick([
+        return chat(genPhrase('defend_lover', { name: ctx.nameById(room, lp.id) }) || ctx.pick([
           '先别怀疑' + ctx.nameById(room, lp.id) + '，他今天的发言没什么问题',
           '我保' + ctx.nameById(room, lp.id) + '，不是狼，出他浪费轮次',
         ]));
