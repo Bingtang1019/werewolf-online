@@ -32,8 +32,14 @@
   - 生成 `data/wolf-samples2.jsonl`，共 **325 条样本**
   - 包含 wolf 夜刀样本（isKill/label）与 vote 样本
 
+## wolf-god-v2 小样本训练（2026-08-17）
+- 用修复后的样本管道采集 20 局，得到 153 条 wolf 夜刀样本。
+- 训练出 `models/wolf-god-v2.json`（100 轮，pos=48/neg=105）。
+- 12p 50 局快速验证：狼 68% / 好 32%，**比默认 v1 更偏狼**。
+- 结论：当前 12p 狼已偏强，wolf-god-v2 不应默认启用；保留为 `WOLF_GOD_MODEL=wolf-god-v2.json` 可选开关，供狼偏弱配置使用。
+- 默认仍走 `wolf-god-v1.json`。
+
 ## 下一步
-- [ ] 用已修复的样本管道跑正式 wolf-god 训练
-- [ ] 重训 wolf-god 分类器
+- [ ] 按配置/阵营胜率决定哪些配置启用 wolf-god-v2
 - [ ] 狼侧 rollout / decideNightKill 接入
 - [ ] V5.2 自博弈对抗训练
