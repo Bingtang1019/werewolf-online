@@ -137,7 +137,7 @@ function buildVoteWorld(room, bot) {
   const _cfgKey = room.presetKey || (room.cap ? room.cap + 'p' : null);
   const _isHard = (bot.botLevel || 'easy') === 'simulate';
   const model = _isHard
-    ? ((process.env.VOTE_MODEL_MODE || 'v2') === 'v3' && _cfgKey === '12c' ? S.getVoteModelV2() || modelBase : modelBase) // 困难档：v3 主 + 12c per-config 回退 v2（配对劣化特例；Phase G 默认 v2）
+    ? ((process.env.VOTE_MODEL_MODE || 'adaboost') === 'v3' && _cfgKey === '12c' ? S.getVoteModelV2() || modelBase : modelBase) // 困难档：v3 主 + 12c per-config 回退 v2（配对劣化特例；默认 adaboost 重训模型）
     : (S.getVoteModelV2() || modelBase); // 简单/普通档：v2（12c 自然在 v2 内——无需特例）
   const _vsEnabled = process.env.LAB_VS !== '0'; // 1.8.0（P1）：LAB_VS=0 禁用房间级快照（配对验证对照——原实现）
   const _vsKey = room.day + ':' + (room.phase || '') + ':' + (room._voteCastCount || 0) + ':' + (room.messages ? room.messages.length : 0); // 1.8.0（P1）：快照失效键 day+phase+voteCastCount+messages.length——messages 投票轮内动态追加（talkCount 等发言派生字段随新发言重建）；票型实时读 room.votes
@@ -156,7 +156,7 @@ function buildVoteWorld(room, bot) {
     return 0.7;
   })();
   if (process.env.LAB_AUDIT_VOTE === '1') global._voteAuditSeq = (global._voteAuditSeq || 0) + 1; // 1.7.15：审计——每次投票决策一个时刻 id
-  const useModel = (process.env.VOTE_MODEL_MODE || 'v2') !== 'heuristic' && !!model && ctx.factionOf(room, bot) === 'good'; // Phase G：默认 v2（VOTE_MODEL_MODE=v3 可回退）
+  const useModel = (process.env.VOTE_MODEL_MODE || 'adaboost') !== 'heuristic' && !!model && ctx.factionOf(room, bot) === 'good'; // 默认 adaboost 重训模型（VOTE_MODEL_MODE=v2/v3 可回退）
   const scores = {};
   let wbCur = null; // 1.7.18+：候选循环内 wb 的审计快照（LAB_AUDIT_VOTE=1 埋点用）
   for (const p of room.players) {
@@ -185,7 +185,7 @@ function buildVoteWorld(room, bot) {
 // 固定档保留（BOT_SUSPICION_W env 覆盖 + LAB_DYN_W=0 禁用动态回固定档）：
 //   v3→0.4（扫描最优）/ v2→0.6（Phase G 默认，8/12/13 人局扫描利好好人）
 const dynW = process.env.LAB_DYN_W === '1' && bot.suspicionW == null && !process.env.BOT_SUSPICION_W; // 1.7.18+：动态权重实验门控（二十二节重验：静态 0.4 优于动态 +6.2pp——生产默认静态；LAB_DYN_W=1 启用动态实验）
-const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? bot.suspicionW : parseFloat(process.env.BOT_SUSPICION_W || ((process.env.VOTE_MODEL_MODE || 'v2') === 'v3' ? '0.4' : '0.6'))); // Phase G：默认 v2→0.6（VOTE_MODEL_MODE=v3 回退时 0.4）
+const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? bot.suspicionW : parseFloat(process.env.BOT_SUSPICION_W || ((process.env.VOTE_MODEL_MODE || 'adaboost') === 'v3' ? '0.4' : '0.6'))); // 默认 adaboost→0.6（VOTE_MODEL_MODE=v3 回退时 0.4）
           wbCur = wb; // 1.7.18+：审计用（候选循环内记录，LAB_AUDIT_VOTE=1 时写入埋点）
           s = wb * s + (1 - wb) * mp;
         }
