@@ -62,10 +62,11 @@ function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRol
     // 混合语义：质量= dv（大样本配对 0/300 不一致）、性能=部分加速；模型缺失 → fail-open 回退现有链
     // （归档：archive/v5-投票判定实验/README.md——rollout 好人侧 -12.4pp 退役、狼侧 +8.5pp 保留）
     const PI_MODES = ['pi', 'pi-snap', 'pi-pure', 'pi-snap-pure'];
-    const piMode = PI_MODES.includes(process.env.VOTE_STRATEGY || '') && ctx.campOf(bot) !== 'wolf';
-    const piUseSnap = process.env.VOTE_STRATEGY === 'pi-snap' || process.env.VOTE_STRATEGY === 'pi-snap-pure'; // 默认 pi-snap；'pi'/'pi-pure' 用信念版
-    const piPure = process.env.VOTE_STRATEGY === 'pi-pure' || process.env.VOTE_STRATEGY === 'pi-snap-pure';
-    const piRes = piMode ? S.piVote(room, bot.id, state, piUseSnap) : null;
+    const strat = bot.voteStrategy || process.env.VOTE_STRATEGY || ''; // per-bot 策略池：bot.voteStrategy 覆盖全局 env
+    const piMode = PI_MODES.includes(strat) && ctx.campOf(bot) !== 'wolf';
+    const piUseSnap = strat === 'pi-snap' || strat === 'pi-snap-pure'; // 默认 pi-snap；'pi'/'pi-pure' 用信念版
+    const piPure = strat === 'pi-pure' || strat === 'pi-snap-pure';
+    const piRes = piMode ? S.piVote(room, bot.id, state, piUseSnap, ctx.rng(), bot.piModel || undefined) : null;
     if (piMode && piRes) {
       if (piPure) {
         resTarget = piRes.target; // V5.2 纯 π：直接采用 π 决策（允许分歧）

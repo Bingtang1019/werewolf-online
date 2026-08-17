@@ -386,6 +386,9 @@ function lobbyAction(room, p, action, data) {
     // 1.7.17（D2 前置）：per-bot 嫌疑分混合权重（多样化 bot 变体——BOT_SUSPICION_W 的 per-bot 版）
     if (data.suspicionW != null) bot.suspicionW = parseFloat(data.suspicionW);
     if (data.followMode === 'strict' || data.followMode === 'loose' || data.followMode === 'none') bot.followMode = data.followMode; // 跟票变体
+    // V5.2 策略池：per-bot 投票策略/π 模型路径（覆盖全局 env；生产默认不设）
+    if (data.voteStrategy && ['pi', 'pi-snap', 'pi-pure', 'pi-snap-pure', 'dv'].includes(data.voteStrategy)) bot.voteStrategy = data.voteStrategy;
+    if (data.piModel) bot.piModel = String(data.piModel);
     // v1.5.0：态度模型风格参数（aggressive/balanced/conservative + 狼侧 charge/shark/normal）
     if (data.style === 'aggressive' || data.style === 'conservative' || data.style === 'balanced') bot.botStyle = data.style;
     if (data.wolfStyle === 'charge' || data.wolfStyle === 'shark' || data.wolfStyle === 'normal') bot.wolfStyle = data.wolfStyle;
