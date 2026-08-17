@@ -4,6 +4,7 @@ const shared = require('./shared');
 const ctx = shared.ctx;
 const register = shared.register;
 const S = shared.S;
+const wolfRollout = require('../../../wolfTrain/rollout.js'); // LAB_WOLF_ROLLOUT=1 启用 rollout-lite 夜刀精排
 
 function decisionSmart(room, bot) {
   ctx.updateSmartMemory(room, bot);
@@ -100,7 +101,14 @@ function decisionSmart(room, bot) {
               let t2 = null;
               if (wm) t2 = ctx.byId(room, S.wolfKillDecide(ctx.buildWolfKillWorld(room, bot), wm, { killPriority: { '女巫': 5, '预言家': 4, '猎人': 3, '守卫': 2, '摄梦人': 1 } }));
               if (!t2) { const nk = S.decideNightKill(world, enemies.map(p => p.id), ctx.rng()); t2 = nk.target ? ctx.byId(room, nk.target) : null; }
-              target = t2;
+              // LAB_WOLF_ROLLOUT=1：rollout-lite 夜刀精排（默认关，不影响生产）
+              if (process.env.LAB_WOLF_ROLLOUT === '1' && enemies.length) {
+                const cands = enemies.slice(0, 5).map(p => p.id);
+                const ranked = wolfRollout.rolloutNightKillSync(world, cands, wolfRollout.simulateWolfKillLite, { n: 8 });
+                if (ranked.length) { const best = ctx.byId(room, ranked[0].pid); if (best) target = best; }
+              } else {
+                target = t2;
+              }
             }
             if (!target) target = lp && !lp.isWolf ? null : ctx.pick(ctx.aliveOthers(room, bot));
           }
