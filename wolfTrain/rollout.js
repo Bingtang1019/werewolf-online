@@ -18,4 +18,27 @@ async function rolloutNightKill(world, candidates, simFn, { n = 30 } = {}) {
   }
   return out.sort((a, b) => b.winRate - a.winRate);
 }
-module.exports = { rolloutNightKill };
+
+/* rollout-lite 同步版：用同步 simFn 精排候选（LAB_WOLF_ROLLOUT=1 启用） */
+function rolloutNightKillSync(world, candidates, simFn, { n = 16 } = {}) {
+  const out = [];
+  for (const pid of candidates) {
+    let wolfWins = 0, draws = 0;
+    for (let k = 0; k < n; k++) {
+      const end = simFn(world, pid);
+      if (end === 'wolf') wolfWins++;
+      else if (end === null || end === undefined) draws++;
+    }
+    out.push({ pid, winRate: wolfWins / (n - draws || 1), draws });
+  }
+  return out.sort((a, b) => b.winRate - a.winRate);
+}
+
+/* 轻量 simFn：按狼 bot 当前信念判断“杀掉该候选是否利好狼”。
+ * 候选被相信是狼 → 杀掉狼对狼不利 → good；候选被相信是好人 → 杀掉好人对狼有利 → wolf。 */
+function simulateWolfKillLite(world, pid) {
+  const pWolf = (world.scores && world.scores[pid] != null) ? world.scores[pid] : 0.5;
+  return pWolf >= 0.5 ? 'good' : 'wolf';
+}
+
+module.exports = { rolloutNightKill, rolloutNightKillSync, simulateWolfKillLite };

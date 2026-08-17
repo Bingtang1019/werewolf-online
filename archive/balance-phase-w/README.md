@@ -54,8 +54,15 @@
 - 结果：12p 仍为 53/47，8p 50/50，13p 51/49，**与基线无差异**。
 - 结论：当前狼侧简单参数/模型替换不再改变胜率；Phase G 已达到平衡，Phase W 需更复杂训练（rollout/自博弈）才有意义。
 
+## rollout-lite 接入（2026-08-17）
+- 实现了 `wolfTrain/rollout.js` 同步版 `rolloutNightKillSync` + `simulateWolfKillLite`，并在 `smart.js` 中以 `LAB_WOLF_ROLLOUT=1` 接入。
+- 默认关闭，不影响生产。
+- 12p 100 局验证：好 44% / 狼 56%，**比平衡基线更偏狼**。
+- 结论：当前 rollout-lite 会破坏平衡，保持默认关闭；真正的狼侧 rollout 仍需完整“刀后世界模拟”。
+
 ## 下一步
 - [x] 在平衡基线上评估 wolf-god v2/v3
 - [x] 评估 WOLF_COUNTER_SEER
-- [ ] 狼侧 rollout / decideNightKill 接入
+- [x] rollout-lite 接入（默认关）
+- [ ] 完整狼侧 rollout（刀后世界模拟）
 - [ ] V5.2 自博弈对抗训练
