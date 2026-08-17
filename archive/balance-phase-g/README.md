@@ -1,7 +1,7 @@
 # Phase G：好人侧基线（2026-08-17）
 
-> 当前代码：`6724667`（C1 最小混沌层已合入后）
-> 数据文件：`data/baseline-g100.jsonl`（gitignore，本机保留）
+> 当前代码：`fc62c05`（500 局权重确认后）
+> 数据文件：`data/baseline-g8-newdefault2.jsonl`、`data/baseline-g12-newdefault2.jsonl`、`data/baseline-g13-newdefault2.jsonl`（gitignore，本机保留）
 
 ## 8 人局基线（100 局）
 
