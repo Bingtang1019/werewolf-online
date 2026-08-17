@@ -56,16 +56,24 @@ function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRol
     const wolfNoRollout = process.env.LAB_WOLF_NO_ROLLOUT === '1' && ctx.campOf(bot) === 'wolf';
     // 1.7.17（D0）：VOTE_STRATEGY=pi-snap（默认生产）→ π 快照版（13 维，与 dv 决策等价 300/300 实证——性能 113×）；
     // VOTE_STRATEGY=pi → π 信念版（17 维，实验——60.2%<dv 63.2% 不上线）；未设 → 现有 rollout+S.decideVote 链
+    // V5.2（VOTE_STRATEGY=pi-pure / pi-snap-pure）：纯 π 模式——不使用 dv 兜底，直接消费 π 输出。
+    //   默认仍混合（π 与 dv 一致处用 π，分歧处用 dv）；纯模式仅用于自博弈/对抗训练评估，生产默认不启用。
     // π 与 dv 一致处用 π（快，0.21ms）；分歧处用 dv（准——BC 分歧处质量低于规则老师）；
     // 混合语义：质量= dv（大样本配对 0/300 不一致）、性能=部分加速；模型缺失 → fail-open 回退现有链
     // （归档：archive/v5-投票判定实验/README.md——rollout 好人侧 -12.4pp 退役、狼侧 +8.5pp 保留）
-    const piMode = (process.env.VOTE_STRATEGY === 'pi' || process.env.VOTE_STRATEGY === 'pi-snap') && ctx.campOf(bot) !== 'wolf';
-    const piUseSnap = process.env.VOTE_STRATEGY !== 'pi'; // 默认 pi-snap；仅显式 'pi' 用信念版
+    const PI_MODES = ['pi', 'pi-snap', 'pi-pure', 'pi-snap-pure'];
+    const piMode = PI_MODES.includes(process.env.VOTE_STRATEGY || '') && ctx.campOf(bot) !== 'wolf';
+    const piUseSnap = process.env.VOTE_STRATEGY === 'pi-snap' || process.env.VOTE_STRATEGY === 'pi-snap-pure'; // 默认 pi-snap；'pi'/'pi-pure' 用信念版
+    const piPure = process.env.VOTE_STRATEGY === 'pi-pure' || process.env.VOTE_STRATEGY === 'pi-snap-pure';
     const piRes = piMode ? S.piVote(room, bot.id, state, piUseSnap) : null;
     if (piMode && piRes) {
-      const dvT = S.decideVote(world, state, ctx.rng()).target;
-      resTarget = piRes.target === dvT ? piRes.target : dvT; // 一致→π（快）；分歧→dv（准）
-      if (auditRollout) { const rec = room._rolloutAuditBuf[room._rolloutAuditBuf.length - 1]; if (rec && rec.bot === bot.id) { rec.pi = piRes.target; rec.piMargin = piRes.margin; rec.dv = dvT; rec.final = resTarget; rec.margin = null; rec.mix = resTarget === piRes.target ? 'pi' : 'dv'; } }
+      if (piPure) {
+        resTarget = piRes.target; // V5.2 纯 π：直接采用 π 决策（允许分歧）
+      } else {
+        const dvT = S.decideVote(world, state, ctx.rng()).target;
+        resTarget = piRes.target === dvT ? piRes.target : dvT; // 一致→π（快）；分歧→dv（准）
+      }
+      if (auditRollout) { const rec = room._rolloutAuditBuf[room._rolloutAuditBuf.length - 1]; if (rec && rec.bot === bot.id) { rec.pi = piRes.target; rec.piMargin = piRes.margin; rec.dv = piPure ? null : S.decideVote(world, state, ctx.rng()).target; rec.final = resTarget; rec.margin = null; rec.mix = piPure ? 'pi-pure' : (resTarget === piRes.target ? 'pi' : 'dv'); } }
     } else if (useRollout && !wolfNoRollout) {
       const rv = S.rolloutVote(world, state, ctx.rng(), { useValue: (bot.botLevel || 'easy') !== 'easy' }); // 1.8.0（人机三档）：普通/困难→V_wolf 价值前瞻；简单→解析版
       if (process.env.LAB_DEBUG_ROLLOUT === '1') console.log('[rollout-dbg] scores=' + JSON.stringify(Object.fromEntries(Object.entries(world.scores).map(([k, v]) => [k, +v.toFixed(2)]))) + ' rv=' + (rv && rv.target));
