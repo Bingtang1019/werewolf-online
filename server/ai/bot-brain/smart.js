@@ -97,9 +97,12 @@ function decisionSmart(room, bot) {
               target = t2;
             } else {
               // v1.7.7（α3）：刀神分类器优先（fail-open）；enemies 已排除队友+恋人
+              // V5.2 A 线：若启用 wolf-win 胜率模型，优先用“刀后狼胜概率”决策；否则回退刀神分类器
               const wm = ctx.loadWolfGodModel();
               let t2 = null;
-              if (wm) t2 = ctx.byId(room, S.wolfKillDecide(ctx.buildWolfKillWorld(room, bot), wm, { killPriority: { '女巫': 5, '预言家': 4, '猎人': 3, '守卫': 2, '摄梦人': 1 } }));
+              const wwin = ctx.loadWolfWinModel();
+              if (wwin) t2 = ctx.byId(room, S.wolfWinDecide(ctx.buildWolfKillWorld(room, bot), wwin));
+              if (!t2 && wm) t2 = ctx.byId(room, S.wolfKillDecide(ctx.buildWolfKillWorld(room, bot), wm, { killPriority: { '女巫': 5, '预言家': 4, '猎人': 3, '守卫': 2, '摄梦人': 1 } }));
               if (!t2) { const nk = S.decideNightKill(world, enemies.map(p => p.id), ctx.rng()); t2 = nk.target ? ctx.byId(room, nk.target) : null; }
               // LAB_WOLF_ROLLOUT=1：夜刀 rollout 精排（默认关，不影响生产）
               //   LAB_WOLF_ROLLOUT_FULL=1 → 完整刀后世界模拟；否则用 rollout-lite（历史实验）

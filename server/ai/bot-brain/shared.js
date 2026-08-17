@@ -66,6 +66,21 @@ function buildWolfKillWorld(room, bot) {
   return world;
 }
 const wolfKillDecide = require('../../../wolfTrain/kill.js').decideNightKill; // v1.7.7（α3）：刀神决策（区别于 legacy decideNightKill）
+/* V5.2 A 线：狼刀胜率模型（wolf-win@1）——直接预测“刀该候选 → 狼胜”概率；默认不启用，WOLF_WIN_MODEL 指定时加载 */
+let _wolfWinModel = null, _wolfWinTried = false;
+function loadWolfWinModel() {
+  if (_wolfWinTried) return _wolfWinModel;
+  _wolfWinTried = true;
+  try {
+    const { AdaBoost } = require('../../../wolfTrain/adaboost.js');
+    const name = process.env.WOLF_WIN_MODEL || 'wolf-win-v1.json';
+    const raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'models', name), 'utf8'));
+    if (raw.schema !== 'wolf-win@1' || !raw.adaboost) return null;
+    _wolfWinModel = AdaBoost.fromJSON(raw.adaboost);
+  } catch (e) { _wolfWinModel = null; }
+  return _wolfWinModel;
+}
+const wolfWinDecide = require('../../../wolfTrain/kill.js').decideWolfWin; // V5.2：狼刀胜率决策
 /* ================================================================
    bot-brain.js - 人机决策模块（v1.4.0，适配自开源补丁）
    级别（每个 bot 独立，bot.botLevel；未设置时按房间 botMode 映射：
@@ -235,7 +250,7 @@ const LEVEL_MAP = { easy: 'smart', smart: 'simulate', simulate: 'simulate_v2' };
 const ctx = {};
 function register(name, fn) { ctx[name] = fn; }
 // 共享状态对象（跨模块变量访问——其他模块通过 S.xxx 读写）
-const S = { _getBeliefsRef, _belMod, LEXICON, CUR_RNG, fs, path, _vModel, _wolfGodModel, wolfKillDecide, confidenceOf, getVoteModel, getVoteModelV2, modelProb, buildRoomVoteState, voteFeatures13, voteFeatures, rolloutVote, piVote, decideVote, decideNightKill, createRng, TALK_FLAVOR, TALK_PRESSURE, TALK_DEBATE_SEER, TALK_DEBATE_WOLF, TALK_WOLF_NIGHT, TALK_LAST_PLAIN, EVIDENCE, TRANSFER_5, LEVEL_MAP };
+const S = { _getBeliefsRef, _belMod, LEXICON, CUR_RNG, fs, path, _vModel, _wolfGodModel, wolfKillDecide, loadWolfWinModel, wolfWinDecide, confidenceOf, getVoteModel, getVoteModelV2, modelProb, buildRoomVoteState, voteFeatures13, voteFeatures, rolloutVote, piVote, decideVote, decideNightKill, createRng, TALK_FLAVOR, TALK_PRESSURE, TALK_DEBATE_SEER, TALK_DEBATE_WOLF, TALK_WOLF_NIGHT, TALK_LAST_PLAIN, EVIDENCE, TRANSFER_5, LEVEL_MAP };
 module.exports = { ctx, register, S };
 // 导出 shared 区函数（供 index.js 注册到 ctx）
-module.exports.sharedFns = { rng, getValueModelForBot, loadWolfGodModel, buildWolfKillWorld, byId, effRole, isWolfRole, campOf, factionOf, loverPartner, isCheckedTarget, randInt, pick, pickId, nameById, shuffle, alivePlayers, aliveOthers, getWolfCount, extractTarget };
+module.exports.sharedFns = { rng, getValueModelForBot, loadWolfGodModel, loadWolfWinModel, wolfWinDecide, buildWolfKillWorld, byId, effRole, isWolfRole, campOf, factionOf, loverPartner, isCheckedTarget, randInt, pick, pickId, nameById, shuffle, alivePlayers, aliveOthers, getWolfCount, extractTarget };
