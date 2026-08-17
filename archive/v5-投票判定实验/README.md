@@ -309,6 +309,10 @@ node tools/ai/exp-vote-bc.js --quick
 | dv（默认） | 59.0% | 41.0% | [53.4, 64.4] |
 | π 混合（`VOTE_STRATEGY=pi`，RWR 模型） | 59.0% | 41.0% | [53.4, 64.4] |
 | **π 纯（`VOTE_STRATEGY=pi-pure`，RWR 模型）** | **20.0%** | **80.0%** | [15.9, 24.9] |
+| **π 纯（变体池自举 RWR，`models/vote-pi-belief-rwr-variant.json`）** | **20.0%** | **80.0%** | [15.9, 24.9] |
+
+- 补充自举迭代（2026-08-17）：用上面纯 π 的 300 局变体池数据，从 BC 骨架 `vote-pi-belief-v1.json` 重新做 RWR（`tools/ai/ppo-vote.js`），得到 `vote-pi-belief-rwr-variant.json`；再以纯 π 模式评估 300 局——**结果仍为好 20%/狼 80%，与旧 RWR 完全一致**。
+- 原因：自举数据来自同一旧策略，RWR 只强化“旧策略已选且放逐狼”的票，不产生新决策信号；这是典型的 self-play 无进展（策略不变 → 数据不变 → 策略不变）。
 
 - 结论：
   1. 混合 π 与 dv 完全同结果（分歧时必回 dv），因此混合模式只是性能加速器，不是策略改进。
