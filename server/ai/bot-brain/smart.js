@@ -101,10 +101,12 @@ function decisionSmart(room, bot) {
               let t2 = null;
               if (wm) t2 = ctx.byId(room, S.wolfKillDecide(ctx.buildWolfKillWorld(room, bot), wm, { killPriority: { '女巫': 5, '预言家': 4, '猎人': 3, '守卫': 2, '摄梦人': 1 } }));
               if (!t2) { const nk = S.decideNightKill(world, enemies.map(p => p.id), ctx.rng()); t2 = nk.target ? ctx.byId(room, nk.target) : null; }
-              // LAB_WOLF_ROLLOUT=1：rollout-lite 夜刀精排（默认关，不影响生产）
+              // LAB_WOLF_ROLLOUT=1：夜刀 rollout 精排（默认关，不影响生产）
+              //   LAB_WOLF_ROLLOUT_FULL=1 → 完整刀后世界模拟；否则用 rollout-lite（历史实验）
               if (process.env.LAB_WOLF_ROLLOUT === '1' && enemies.length) {
                 const cands = enemies.slice(0, 5).map(p => p.id);
-                const ranked = wolfRollout.rolloutNightKillSync(world, cands, wolfRollout.simulateWolfKillLite, { n: 8 });
+                const simFn = process.env.LAB_WOLF_ROLLOUT_FULL === '1' ? wolfRollout.simulateWolfKillFull : wolfRollout.simulateWolfKillLite;
+                const ranked = wolfRollout.rolloutNightKillSync(world, cands, simFn, { n: 8, rng: ctx.rng() });
                 if (ranked.length) { const best = ctx.byId(room, ranked[0].pid); if (best) target = best; }
               } else {
                 target = t2;
