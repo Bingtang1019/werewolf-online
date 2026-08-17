@@ -60,9 +60,18 @@
 - 12p 100 局验证：好 44% / 狼 56%，**比平衡基线更偏狼**。
 - 结论：当前 rollout-lite 会破坏平衡，保持默认关闭；真正的狼侧 rollout 仍需完整“刀后世界模拟”。
 
+## 完整狼侧 rollout（刀后世界模拟，2026-08-17）
+- 实现 `wolfTrain/rollout.js` 的 `simulateWolfKillFull`：从 `world.allVoters` 移除被刀候选 → 按狼 bot 信念采样剩余身份（狼队友强制为狼）→ 模拟下一白天投票（好人跟票集中、狼投最低嫌疑非队友）→ 按放逐阵营判 wolf/good。
+- 接入：`LAB_WOLF_ROLLOUT=1` + `LAB_WOLF_ROLLOUT_FULL=1`（默认关，不影响生产；`LAB_WOLF_ROLLOUT=1` 单独仍走 lite）。
+- 验证（baseline，bot 全 smart）：
+  - 8p 100 局：好 48% / 狼 52%
+  - 12p 300 局：好 52.3% / 狼 47.7%（CI [46.7,57.9]）
+  - 13p 100 局：好 41% / 狼 59%（CI [31.9,50.8] 好）
+- 结论：完整版比 lite 更接近平衡，8/12p 可用作狼侧增强候选；13p 仍明显偏狼，整体保持默认关闭。后续可考虑按人数分档启用（如 13+ 不启用）或继续调模拟深度。
+
 ## 下一步
 - [x] 在平衡基线上评估 wolf-god v2/v3
 - [x] 评估 WOLF_COUNTER_SEER
 - [x] rollout-lite 接入（默认关）
-- [ ] 完整狼侧 rollout（刀后世界模拟）
+- [x] 完整狼侧 rollout（刀后世界模拟）
 - [ ] V5.2 自博弈对抗训练
