@@ -4,6 +4,7 @@ const shared = require('./shared');
 const ctx = shared.ctx;
 const { register } = shared;
 const { clock, chatRecorder, WOLF_ROLES, rooms, resetBotPerGame, injectGrudge } = shared;
+const { extractClaims } = require('../ai/nlu-claims.js'); // 1.8.0：真人聊天 NLU 声明抽取（belief-engine 证据源）
 
 function addMessage(room, p, ch, text, marker, claim) {
   const prev = room.messages[room.messages.length - 1];
@@ -51,6 +52,12 @@ function chatAction(room, p, data) {
   if (!p.isBot) chatRecorder.record(room, p, ch, text); // 1.8.0：真人聊天收集（NLU 语料冷启动；失败静默不阻塞）
   addMessage(room, p, ch, text, null, data.claim || null); // D1：结构化声明透传（bot 声明：查杀/金水）
   if (data.claim) ctx.pushEvent(room, 'claim', { from: p.id, type: data.claim.type, target: data.claim.target || null, night: data.claim.night != null ? data.claim.night : room.nightNum }); // V5.1：声明事件（belief-engine 证据源）
+  // 1.8.0：真人聊天 NLU 声明抽取——把“查杀/金水/攻击/自辩/跳身份”变成 belief-engine 可消费的结构化声明
+  if (!p.isBot) {
+    for (const c of extractClaims(room, p.id, text)) {
+      ctx.pushEvent(room, 'claim', { from: p.id, type: c.type, target: c.target, night: room.nightNum });
+    }
+  }
   ctx.bump(room);
   return { ok: true };
 }

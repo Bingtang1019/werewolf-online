@@ -195,6 +195,9 @@ function onClaim(engine, fromId, type, targetId) {
   else if (type === 'check_good') updatePosterior(engine, targetId, -w);
   else if (type === 'claim_seer') updatePosterior(engine, fromId, -0.1); // 跳预言家本身轻微降嫌疑（但会引来刀）
   else if (type === 'claim_god') updatePosterior(engine, fromId, -0.05);
+  // 1.8.0（NLU）：攻击/自辩证据——低权重，方向直观（攻击→嫌疑+；自辩→嫌疑-）
+  else if (type === 'attack') updatePosterior(engine, targetId, 0.15 * (0.4 + from.credibility * 1.2));
+  else if (type === 'defend') updatePosterior(engine, fromId, -0.15 * (0.4 + from.credibility * 1.2));
 }
 
 // ---- 事件分发（增量更新入口）----
