@@ -53,7 +53,8 @@ function chatAction(room, p, data) {
   addMessage(room, p, ch, text, null, data.claim || null); // D1：结构化声明透传（bot 声明：查杀/金水）
   if (data.claim) ctx.pushEvent(room, 'claim', { from: p.id, type: data.claim.type, target: data.claim.target || null, night: data.claim.night != null ? data.claim.night : room.nightNum }); // V5.1：声明事件（belief-engine 证据源）
   // 1.8.0：真人聊天 NLU 声明抽取——把“查杀/金水/攻击/自辩/跳身份”变成 belief-engine 可消费的结构化声明
-  if (!p.isBot) {
+  // LAB_NLU_PARSE_BOTS=1 时也解析 bot 消息（但跳过带结构化 claim 的消息，避免重复计数）
+  if (!p.isBot || (process.env.LAB_NLU_PARSE_BOTS === '1' && !data.claim)) {
     for (const c of extractClaims(room, p.id, text)) {
       ctx.pushEvent(room, 'claim', { from: p.id, type: c.type, target: c.target, night: room.nightNum });
     }
