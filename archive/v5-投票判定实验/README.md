@@ -340,6 +340,7 @@ node tools/ai/exp-vote-bc.js --quick
 - `chat.js` 对真人消息自动调用 `extractClaims` 并 `pushEvent('claim', ...)`；bot 消息继续走原有结构化 `data.claim`，不重复解析。
 - 意图分类：用 417 条全标注语料训练字符 bigram 朴素贝叶斯 `models/nlu-intent-nb.json`（训练集准确率 92.1%），`extractClaims` 先分类再抽目标；模型缺失时回退规则版。
 - 影响面：只影响真人局中的信念引擎，bot-vs-bot lab 平衡不变；这是“信息优势”路径的第一块落地。
+- Bot 解析实验：`LAB_NLU_PARSE_BOTS=1` 让 lab 也解析 bot 文本中的 attack/defend 证据（跳过带结构化 claim 的消息），12p 300 局仍为 **54/46**——当前攻击/自辩权重太弱，未改变 bot 生态平衡；预期在真人局中价值更大。
 - 下一步：在“注入真人风格聊天”的实验中验证对投票准确率/胜率的影响；语料继续扩充后可换更强分类器。
 
 ## 十六、信念正确性修复审计（AUC 0.40 方向性反常诊断——2026-08-08）
