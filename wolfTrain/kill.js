@@ -34,4 +34,23 @@ function decideNightKill(world, model, { killPriority = {} } = {}) {
   }
   return best;
 }
-module.exports = { decideNightKill };
+
+/* V5.2 A 线：狼刀胜率模型决策——直接选 P(狼胜|刀此候选) 最高的目标
+ * 模型为 AdaBoost（wolf-win@1），输入 wolfGodFeatures 13 维；fail-open 返回 null。 */
+function decideWolfWin(world, model) {
+  if (!model) return null;
+  const alive = (world.aliveIds || []).filter(id => {
+    const r = world.roles && world.roles.get ? world.roles.get(id) : null;
+    return r !== 'wolf' && r !== 'wolfBeauty';
+  });
+  if (!alive.length) return null;
+  let best = null, bestScore = -Infinity;
+  for (const pid of alive) {
+    const base = world.features && world.features.get ? world.features.get(pid) : null;
+    if (!base) continue;
+    const p = model.predict(base);
+    if (p > bestScore) { bestScore = p; best = pid; }
+  }
+  return best;
+}
+module.exports = { decideNightKill, decideWolfWin };
