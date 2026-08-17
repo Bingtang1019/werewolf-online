@@ -183,11 +183,11 @@ function buildVoteWorld(room, bot) {
 // 模型信度 β = |2·mp−1| × AUC_config（per-config 校准：4p 0.916 / 12a 0.727 / global 0.742）
 // wb(p) = α/(α + k·β)——证据少→模型主导；模型不确定(mp≈0.5)→信念主导；配置 AUC 高→模型更重
 // 固定档保留（BOT_SUSPICION_W env 覆盖 + LAB_DYN_W=0 禁用动态回固定档）：
-//   v3→0.4（扫描最优）/ adaboost→按人数：≤12 用 0.4，13+ 用 0.2（2026-08-17 扫描平衡点）
+//   v3→0.4（扫描最优）/ adaboost→按人数：≤12 用 0.35，13+ 用 0.3（2026-08-17 扫描 + 500 局确认）
 const _modeForW = process.env.VOTE_MODEL_MODE || 'adaboost';
-const _defW = process.env.BOT_SUSPICION_W || (_modeForW === 'v3' ? '0.4' : ((room.playerCap || room.cap || 0) >= 13 ? '0.2' : '0.4'));
+const _defW = process.env.BOT_SUSPICION_W || (_modeForW === 'v3' ? '0.4' : ((room.playerCap || room.cap || 0) >= 13 ? '0.3' : '0.35'));
 const dynW = process.env.LAB_DYN_W === '1' && bot.suspicionW == null && !process.env.BOT_SUSPICION_W; // 1.7.18+：动态权重实验门控（二十二节重验：静态 0.4 优于动态 +6.2pp——生产默认静态；LAB_DYN_W=1 启用动态实验）
-const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? bot.suspicionW : parseFloat(_defW)); // 默认 adaboost→0.4/0.2（按人数）
+const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? bot.suspicionW : parseFloat(_defW)); // 默认 adaboost→0.35/0.3（按人数）
           wbCur = wb; // 1.7.18+：审计用（候选循环内记录，LAB_AUDIT_VOTE=1 时写入埋点）
           s = wb * s + (1 - wb) * mp;
         }
