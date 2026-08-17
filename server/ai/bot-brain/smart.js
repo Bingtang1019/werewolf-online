@@ -111,6 +111,11 @@ function decisionSmart(room, bot) {
               } else {
                 target = t2;
               }
+              // LAB_WOLF_EPS：狼刀 ε-探索（自博弈数据采集用，默认关）
+              if (process.env.LAB_WOLF_EPS && enemies.length) {
+                const eps = parseFloat(process.env.LAB_WOLF_EPS || '0');
+                if (eps > 0 && ctx.rng().next() < eps) target = ctx.pick(enemies);
+              }
             }
             if (!target) target = lp && !lp.isWolf ? null : ctx.pick(ctx.aliveOthers(room, bot));
           }

@@ -29,15 +29,19 @@ function main() {
   const opt = parseArgs();
   const f = opt.records;
   if (!fs.existsSync(f)) { console.log('[ppo] 无数据: ' + f); process.exit(1); }
-  // v3：过程奖励（放逐结果）——critic 暂不参与（GAE 后续迭代）
+  // v3→v4：过程奖励 + critic baseline（A = R - V(s)），负优势也参与反向加权
   const base = JSON.parse(fs.readFileSync(opt.base, 'utf8'));
   const baseModel = MLP.fromJSON(base.mlp);
+  let critic = null;
+  try {
+    const cj = JSON.parse(fs.readFileSync(opt.critic, 'utf8'));
+    if (cj && cj.mlp) critic = MLP.fromJSON(cj.mlp);
+  } catch (e) { critic = null; }
+  if (!critic) console.log('[ppo] 警告：critic 未加载，A 退化为 R（无 baseline）');
   const lines = fs.readFileSync(f, 'utf8').split('\n').filter(Boolean);
 
-  // 收集：每票 {feats(信念版), dvTarget, A}——A = 过程奖励（放逐结果）而非终局稀疏奖励
-  // 1.7.17 v3（RWR 信用分配修正）：终局 0/1 对单票太稀疏（赢局也有坏票）——
-  // 改用过程奖励：本轮投票放逐狼 +1 / 放逐好人 -1 / 平票 0（每票都有信号）
-  const samples = []; // {feats, y(dv 目标), A}
+  // 收集：每票 {feats(信念版), dvTarget, A}——A = 过程奖励 - V(s)
+  const samples = []; // {fe, y, w}
   let games = 0;
   for (const l of lines) {
     const r = JSON.parse(l);
@@ -52,22 +56,26 @@ function main() {
     const truth = new Map(); for (const p of players) truth.set(p.id, String(p.roleKey || '').toLowerCase().includes('wolf') ? 1 : 0);
     let lastSnapTotals = null;
     // 投票时刻暂存（等待 exile 结算给过程奖励）
-    const pendingVotes = []; // {voter, feats, dvCand, cands}
+    const pendingVotes = []; // {voter, feats, dvCand, cands, V}
     let pending = [];
     for (const ev of r.events || []) { // 原序
       applyEvent(eng, ev);
       const t = ev.t;
       if (t === 'deaths' && ev.data && Array.isArray(ev.data.deaths)) { for (const d of ev.data.deaths) { const i = idx.get(typeof d === 'string' ? d : d.id); if (i != null) alive[i] = false; } }
       if (t === 'exile' && ev.data) {
-        // 过程奖励结算：本轮 pending 票的 A = 放逐结果（+1 狼 / -1 好人 / 0 平票）
+        // 过程奖励结算：本轮 pending 票的 A = 放逐结果（+1 狼 / -1 好人 / 0 平票） - V(s)
         const exiled = ev.data.exiled;
         let reward = 0;
         if (exiled) reward = truth.get(exiled) === 1 ? 1 : -1;
         for (const p of pending) {
+          const A = reward - (p.V != null ? p.V : 0.5);
+          if (Math.abs(A) < 1e-9) continue;
+          const w = Math.abs(A);
           for (const c of p.cands) {
-            const y = c.isDv ? 1 : 0;
-            const w = reward > 0 ? reward : 0; // 只强化有利票（RWR 标准形式）
-            if (w > 0) samples.push({ fe: c.fe, y, w });
+            // 正优势：强化 chosen(y=1)，弱化 non-chosen(y=0)
+            // 负优势：弱化 chosen(y=0)，相对强化 non-chosen(y=1)
+            const y = A > 0 ? (c.isDv ? 1 : 0) : (c.isDv ? 0 : 1);
+            samples.push({ fe: c.fe, y, w });
           }
         }
         pending = [];
@@ -84,6 +92,26 @@ function main() {
         const bel = getBeliefs(eng);
         const dvCand = ev.data.target;
         const cands = [];
+        // critic 状态特征（与 train-critic.js 同源）
+        const candRanks = [], candCred = [];
+        for (const cand of players) {
+          if (cand.id === voter || !alive[idx.get(cand.id)]) continue;
+          candRanks.push(bel.ranks[cand.id] != null ? bel.ranks[cand.id] : 0.5);
+          candCred.push(bel.credibility[cand.id] != null ? bel.credibility[cand.id] : 0.5);
+        }
+        const nC = candRanks.length;
+        let V = 0.5;
+        if (critic && nC >= 2) {
+          const maxR = Math.max(...candRanks), minR = Math.min(...candRanks);
+          const meanR = candRanks.reduce((a, b) => a + b, 0) / nC;
+          const varR = candRanks.reduce((a, b) => a + (b - meanR) ** 2, 0) / nC;
+          const meanC = candCred.reduce((a, b) => a + b, 0) / nC;
+          const votesArr = Object.values(tot);
+          const totN = votesArr.reduce((a, b) => a + b, 0) || 1;
+          const ent = -votesArr.reduce((a, b) => { const p = b / totN; return p > 0 ? a + p * Math.log(p) : a; }, 0) / Math.log(Math.max(2, votesArr.length));
+          const selfCred = bel.credibility[voter] != null ? bel.credibility[voter] : 0.5;
+          V = critic.predict([maxR, minR, meanR, varR, meanC, selfCred, nC / players.length, ent]);
+        }
         for (const cand of players) {
           if (cand.id === voter || !alive[idx.get(cand.id)]) continue;
           const feats = voteFeatures(room, voter, cand.id);
@@ -91,7 +119,7 @@ function main() {
           const fe = feats.concat([bel.posterior[cand.id] != null ? bel.posterior[cand.id] : 0.5, bel.credibility[cand.id] != null ? bel.credibility[cand.id] : 0.5, bel.credibility[voter] != null ? bel.credibility[voter] : 0.5, (tot[cand.id] || 0) / Math.max(1, Object.keys(tot).length)]);
           cands.push({ fe, isDv: cand.id === dvCand });
         }
-        if (cands.length) pending.push({ voter, cands });
+        if (cands.length) pending.push({ voter, cands, V });
       }
     }
   }

@@ -41,7 +41,7 @@ async function runOneLabGame(cfg) {
     for (const lv of line) {
       // 1.7.17（V5.2 轻量 B）：line 元素支持 {level, suspicionW, followMode} 对象（多样化 bot 变体）
       const l = typeof lv === 'object' ? lv.level : lv;
-      const res = Game.handleAction(room.id, host, 'add_bot', typeof lv === 'object' ? { level: l, suspicionW: lv.suspicionW, followMode: lv.followMode } : { level: l });
+      const res = Game.handleAction(room.id, host, 'add_bot', typeof lv === 'object' ? { level: l, suspicionW: lv.suspicionW, followMode: lv.followMode, voteStrategy: lv.voteStrategy, piModel: lv.piModel } : { level: l });
       if (!(res && res.ok)) throw { kind: 'config', msg: `add_bot: ${JSON.stringify(res)}` };
     }
     let res = Game.handleAction(room.id, host, 'start');

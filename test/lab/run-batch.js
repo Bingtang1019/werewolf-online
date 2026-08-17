@@ -81,6 +81,29 @@ if (variantRaw) {
     console.log(`[lab] 变体池: ${ws.map(v => v.w + ':' + v.mode).join('/')}（${cap - 1} bot 轮转）`);
   }
 }
+// V5.2 策略池：--strategy "pi-pure@models/a.json,dv,pi@models/b.json" → per-bot voteStrategy/piModel 轮转
+const strategyRaw = get('--strategy', '');
+if (strategyRaw) {
+  const parts = strategyRaw.split(',').map(x => x.trim()).filter(Boolean);
+  const pool = [];
+  for (const pt of parts) {
+    const [strategy, model] = pt.split('@');
+    if (!['pi', 'pi-snap', 'pi-pure', 'pi-snap-pure', 'dv'].includes(strategy)) {
+      console.error('[lab] --strategy 未知策略: ' + strategy + '（允许 pi/pi-snap/pi-pure/pi-snap-pure/dv）');
+      process.exit(1);
+    }
+    pool.push({ voteStrategy: strategy, piModel: model || undefined });
+  }
+  if (pool.length) {
+    const line = [];
+    for (let i = 0; i < cap - 1; i++) {
+      const s = pool[i % pool.length];
+      line.push(Object.assign({ level: baseCfg.botLevel }, s));
+    }
+    baseCfg.botLine = line;
+    console.log(`[lab] 策略池: ${pool.map(s => s.voteStrategy + (s.piModel ? '@' + s.piModel : '')).join('/')}（${cap - 1} bot 轮转）`);
+  }
+}
 const sampleFile = has('--sample') ? path.join(outDir, `${tag}.samples.jsonl`) : null;
 const auditFile = has('--audit') ? path.join(outDir, `${tag}.voteaudit.jsonl`) : null; // 1.7.18：投票审计落盘（v3 在线重训数据源——LAB_AUDIT_VOTE=1 时产出）
 
