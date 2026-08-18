@@ -13,6 +13,7 @@ const root = path.resolve(__dirname, '..', '..');
 function get(k, d) { const i = process.argv.indexOf('--' + k); if (i >= 0) return process.argv[i + 1]; const p = process.argv.find(x => x.startsWith('--' + k + '=')); return p ? p.slice(k.length + 3) : d; }
 const recordFile = path.resolve(root, get('records', 'data/records-selfplay-eps.jsonl'));
 const limit = parseInt(get('limit', '0'), 10) || Infinity;
+const fakeSeer = parseInt(get('fake-seer', '0'), 10) || 0;
 
 const lines = fs.readFileSync(recordFile, 'utf8').split('\n').filter(Boolean);
 let games = 0;
@@ -32,6 +33,11 @@ for (const line of lines) {
   const seerHistory = r.seerHistory || [];
   const alive = players.map(p => true);
   let seerClaimed = false;
+  let fakeClaimed = false;
+  const wolves = players.filter(p => String(p.roleKey || '').toLowerCase().includes('wolf'));
+  const goods = players.filter(p => !String(p.roleKey || '').toLowerCase().includes('wolf') && p.id !== (seerId && seerId.id));
+  const fakeSeerId = fakeSeer && wolves.length ? wolves[0].id : null;
+  const fakeTarget = fakeSeer && goods.length ? goods[0].id : null;
 
   const sample = () => {
     const belB = getBeliefs(engB), belN = getBeliefs(engN);
@@ -54,6 +60,12 @@ for (const line of lines) {
           if (!seerClaimed) { onClaim(engN, seerId.id, 'claim_seer', null); seerClaimed = true; }
           onClaim(engN, seerId.id, h.result === 'wolf' ? 'check_wolf' : 'check_good', h.target);
         }
+      }
+      // 狼悍跳预言家：首夜后注入一次假查杀（对好人），检验抗干扰
+      if (!fakeClaimed && fakeSeerId && fakeTarget) {
+        onClaim(engN, fakeSeerId, 'claim_seer', null);
+        onClaim(engN, fakeSeerId, 'check_wolf', fakeTarget);
+        fakeClaimed = true;
       }
     }
     if (ev.t === 'exile' && ev.data && ev.data.exiled) { const i = idx.get(ev.data.exiled); if (i != null) alive[i] = false; }
