@@ -415,6 +415,14 @@ node tools/ai/exp-vote-bc.js --quick
 
 - 结论：混合能把好人胜率从 25.5% 提升到 ~32.5%，同时保留 NLU on 相对 off 的 +15.5pp 收益。绝对胜率仍偏狼，因为该实验环境每天都有狼悍跳假预（极端对抗）；在真实分布下假预频率更低，预计会更接近平衡。
 
+## 十五·十三、NLU_VOTE=1 一键生产配置（2026-08-18）
+- 新增 `NLU_VOTE=1` 一键开关：
+  - `VOTE_MODEL_MODE` 默认走 v3；
+  - `V3_MODEL_PATH` 默认使用 `adaboost-vote-v3-nlu-fake.json`；
+  - `LAB_V3_BLEND` 默认 0.5（v3+v1 混合）。
+- 不设置时完全保持原有默认行为（adaboost-v1），生产零影响。
+- 冒烟验证：`NLU_VOTE=1` + `human-chat --nlu=1 --fake-seer=1` 正常运行，20 局好 35%/狼 65%（小样本噪声内）。
+
 ## 十六、信念正确性修复审计（AUC 0.40 方向性反常诊断——2026-08-08）
 
 ### 诊断（逐证据源 AUC + 分桶方向审计）

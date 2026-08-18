@@ -159,8 +159,8 @@ function buildVoteWorld(room, bot) {
   const useModel = (process.env.VOTE_MODEL_MODE || 'adaboost') !== 'heuristic' && !!model && ctx.factionOf(room, bot) === 'good'; // 默认 adaboost 重训模型（VOTE_MODEL_MODE=v2/v3 可回退）
   // 1.8.0（NLU 端到端实验）：LAB_USE_BELIEF_ENGINE=1 时把中央信念引擎后验直接混入嫌疑分（默认关）
   const engBeliefs = process.env.LAB_USE_BELIEF_ENGINE === '1' && room._beliefEngine ? S._getBeliefsRef(room._beliefEngine) : null;
-  // 1.8.0（v3 混合）：LAB_V3_BLEND=α（0<α<1）时，v3 模型输出与 v1 模型输出线性混合（拉回绝对平衡）
-  const v3Blend = parseFloat(process.env.LAB_V3_BLEND || '0');
+  // 1.8.0（v3 混合）：LAB_V3_BLEND=α（0<α<1）时，v3 模型输出与 v1 模型输出线性混合（拉回绝对平衡）；NLU_VOTE=1 默认 0.5
+  const v3Blend = process.env.LAB_V3_BLEND != null ? parseFloat(process.env.LAB_V3_BLEND) : (process.env.NLU_VOTE === '1' ? 0.5 : 0);
   const v1Model = v3Blend > 0 ? S.getVoteModelV1() : null;
   const scores = {};
   let wbCur = null; // 1.7.18+：候选循环内 wb 的审计快照（LAB_AUDIT_VOTE=1 埋点用）
@@ -198,7 +198,7 @@ function buildVoteWorld(room, bot) {
 // wb(p) = α/(α + k·β)——证据少→模型主导；模型不确定(mp≈0.5)→信念主导；配置 AUC 高→模型更重
 // 固定档保留（BOT_SUSPICION_W env 覆盖 + LAB_DYN_W=0 禁用动态回固定档）：
 //   v3→0.4（扫描最优）/ adaboost→按人数：≤12 用 0.35，13+ 用 0.3（2026-08-17 扫描 + 500 局确认）
-const _modeForW = process.env.VOTE_MODEL_MODE || 'adaboost';
+const _modeForW = process.env.VOTE_MODEL_MODE || (process.env.NLU_VOTE === '1' ? 'v3' : 'adaboost');
 const _defW = process.env.BOT_SUSPICION_W || (_modeForW === 'v3' ? '0.4' : ((room.playerCap || room.cap || 0) >= 13 ? '0.3' : '0.35'));
 const dynW = process.env.LAB_DYN_W === '1' && bot.suspicionW == null && !process.env.BOT_SUSPICION_W; // 1.7.18+：动态权重实验门控（二十二节重验：静态 0.4 优于动态 +6.2pp——生产默认静态；LAB_DYN_W=1 启用动态实验）
 const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? bot.suspicionW : parseFloat(_defW)); // 默认 adaboost→0.35/0.3（按人数）

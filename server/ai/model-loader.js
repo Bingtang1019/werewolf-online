@@ -9,7 +9,7 @@ const path = require('path');
 const { FEATURE_NAMES } = require('./features.js'); // 1.7.3（P1-1）：特征数量/名称联动校验（features.js 无副作用依赖，require 安全）
 const MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v1.json');
 const V2_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v2.json');
-const V3_MODEL_PATH = process.env.V3_MODEL_PATH || path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v3-v2.json'); // 1.7.18+：vote-v3 干净数据重训版（v3-25d 脏数据退役，见模型卡二十四节）；V3_MODEL_PATH 可覆盖（NLU 重训实验）
+const V3_MODEL_PATH = process.env.V3_MODEL_PATH || path.join(__dirname, '..', '..', 'models', process.env.NLU_VOTE === '1' ? 'adaboost-vote-v3-nlu-fake.json' : 'adaboost-vote-v3-v2.json'); // 1.7.18+：vote-v3 干净数据重训版；NLU_VOTE=1 时默认使用 NLU 抗干扰重训版，V3_MODEL_PATH 可覆盖
 const V4_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v4.json'); // 1.7.18+：vote-v4 蒸馏版（MLP，25d AdaBoost → 概率输出）
 /* 1.7.18+：回退链（三级）——v3 → v2 → v1+iso过渡 → v1原始 → heuristic（null）
  * VOTE_MODEL_MODE: v3（1.7.18+ 生产默认，干净数据版 v3v2）| v2（env 一键回退）| adaboost（v1+iso过渡）| heuristic（纯信念，最后保底） */
@@ -106,7 +106,7 @@ function getVoteModel() {
   _tried = true;
   if (process.env.LAB_NO_MODEL === '1') { _model = null; return _model; } // 1.7.0（B1-4）：对照实验禁用模型（lab 平台）
   if (process.env.VOTE_MODEL_MODE === 'heuristic') { _model = null; return _model; } // 1.7.15：感知层门控（审计止血）——启发式
-  const mode = process.env.VOTE_MODEL_MODE || 'adaboost'; // 2026-08-17：默认使用重训 v1 模型（9611 条 vote 样本，12p 好 46%/狼 54%；VOTE_MODEL_MODE=v2/v3 可回退）
+  const mode = process.env.VOTE_MODEL_MODE || (process.env.NLU_VOTE === '1' ? 'v3' : 'adaboost'); // 2026-08-17：默认使用重训 v1 模型；NLU_VOTE=1 默认走 v3-NLU
   // 1.7.18：v3-fast（vote-v4 蒸馏 MLP）优先 → v3（schema@3）→ v2（schema@2）→ v1+iso → null（heuristic）
   try {
     if (mode === 'v3-fast') {
