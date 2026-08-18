@@ -3,6 +3,7 @@
  * 运行：node test/check-nlu-claims.js
  */
 const { createBeliefEngine, applyEvent, getBeliefs } = require('../server/ai/belief-engine.js');
+const { extractClaims } = require('../server/ai/nlu-claims.js');
 let failures = 0;
 const assert = (c, m) => { if (c) console.log(' ✓ ' + m); else { failures++; console.error(' ✗ FAIL: ' + m); } };
 
@@ -42,6 +43,18 @@ function makeEngine() {
   applyEvent(eng, { t: 'claim', data: { from: 'b', type: 'defend', target: 'b' }, night: 1 });
   const afterB = getBeliefs(eng).posterior.b;
   assert(afterB < beforeB, `N3 自辩后自身嫌疑降（${beforeB.toFixed(3)}→${afterB.toFixed(3)}）`);
+}
+
+// N4-N6: 运行时声明抽取
+{
+  const room = { players: [{ id: 'a', name: '小明' }, { id: 'b', name: '小红' }, { id: 'c', name: '小刚' }] };
+  const c1 = extractClaims(room, 'x', '我跳预言家，查杀小明');
+  assert(c1.some(c => c.type === 'claim_seer'), 'N4 跳预被抽取');
+  assert(c1.some(c => c.type === 'check_wolf' && c.target === 'a'), 'N4 查杀目标被抽取');
+  const c2 = extractClaims(room, 'x', '小红是狼');
+  assert(c2.some(c => c.type === 'attack' && c.target === 'b'), 'N5 攻击被抽取');
+  const c3 = extractClaims(room, 'a', '我不是狼');
+  assert(c3.some(c => c.type === 'defend' && c.target === 'a'), 'N6 自辩被抽取');
 }
 
 if (failures) { console.error(`\n共 ${failures} 处失败`); process.exit(1); }
