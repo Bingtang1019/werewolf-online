@@ -10,8 +10,8 @@ const root = path.resolve(__dirname, '..', '..');
 const args = {};
 process.argv.slice(2).forEach(a => { const m = a.match(/^--([^=]+)=(.*)$/); if (m) args[m[1]] = m[2]; });
 
-const input = path.join(root, 'data', 'nlu', 'corpus-clean.annotated.jsonl');
-const outFile = path.join(root, args.out || 'models/nlu-intent-nb.json');
+const input = path.resolve(root, args.input || 'data/nlu/corpus-clean.annotated.jsonl');
+const outFile = path.resolve(root, args.out || 'models/nlu-intent-nb.json');
 const minDf = parseInt(args['min-df'] || '2', 10);
 const topN = parseInt(args.top || '3000', 10);
 const alpha = parseFloat(args.alpha || '0.3');
