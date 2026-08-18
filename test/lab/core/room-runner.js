@@ -30,7 +30,7 @@ async function runOneLabGame(cfg) {
   if (cfg.loverTest) room.loverTest = cfg.loverTest; // A/B 注入（M3.5）：'cupid-dead-n1' / 'cupid-immortal'
   if (cfg.loverLocked) room.loverLocked = !!cfg.loverLocked; // A/B 注入（M3.5）：解绑禁用（G3）
     for (const [a, d] of [
-      ['settings', { sheriff: false, winMode: cfg.winMode || 'edge', tieRule: 'pk', botMode: 'auto' }],
+      ['settings', { sheriff: false, winMode: cfg.winMode || 'edge', tieRule: 'pk', botMode: 'auto', thirdWinMode: cfg.thirdWinMode || 'majority' }],
       ['setCounts', { counts: cfg.counts }],
       ['setCap', { cap: cfg.cap }],
     ]) {

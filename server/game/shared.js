@@ -266,7 +266,7 @@ function createRoom(hostName, deviceId) {
     dayNum: 0, nightNum: 0, nightStep: null,
     playerCap: 6,
     roleCounts: defaultCounts(6),
-    settings: { sheriff: true, winMode: 'edge', tieRule: 'pk', thief: false, botMode: 'auto' }, // botMode: 人机难度 'auto'简单AI | 'passive'挂机
+    settings: { sheriff: true, winMode: 'edge', tieRule: 'pk', thief: false, botMode: 'auto', thirdWinMode: 'majority' }, // botMode: 人机难度 'auto'简单AI | 'passive'挂机；thirdWinMode: 'classic'仅剩神眷者胜 | 'majority'神眷者人数≥非神眷者胜（默认）
     loverMode: 'classic', // v2（恋人权能系统）：'off'关闭恋人机制 | 'classic'现行规则（冻结行为，α9 零破坏）| 'v2'权能+解绑+恋人刀（loverCore 驱动）
     presetKey: null, // v3（分层价值模型）：配置标识（4p/6p/8p/9a/9d/12a/12b/12d/15p）——rollout payoff 的 local/α/payoffScale 路由键
     loverTest: null, // A/B 注入（M3.5）：'cupid-dead-n1'首夜丘比特必死 / 'cupid-immortal'丘比特免疫一切死亡
@@ -373,6 +373,7 @@ function lobbyAction(room, p, action, data) {
     if (typeof data.sheriff === 'boolean') s.sheriff = data.sheriff;
     if (data.winMode === 'city' || data.winMode === 'edge') s.winMode = data.winMode;
     if (data.tieRule === 'none' || data.tieRule === 'pk') s.tieRule = data.tieRule;
+    if (data.thirdWinMode === 'classic' || data.thirdWinMode === 'majority') s.thirdWinMode = data.thirdWinMode;
     if (typeof data.thief === 'boolean') s.thief = data.thief;
     if (data.botMode === 'passive' || data.botMode === 'auto') s.botMode = data.botMode;
     bump(room); return { ok: true };
