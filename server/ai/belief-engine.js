@@ -116,12 +116,15 @@ function onExile(engine, exiledId, role, night) {
   exiled.posterior = isWolf ? 0.999 : 0.001;
   // 客观 1.0：放逐者身份验证——谁查杀过它、谁保过它
   for (const c of exiled.claimsAbout) {
+    c.verified = true;
+    const fromNode = engine.nodes[c.from];
+    const isSeerClaimant = !!(fromNode && fromNode.claims.some(x => x.type === 'claim_seer'));
     if (c.type === 'check_wolf') {
-      // 查杀者：被查杀者是狼 → 可信度 +；是好人 → 可信度 -（假查杀）
-      updateCredibility(engine, c.from, isWolf ? 0.15 : -0.25);
+      // 查杀者：被查杀者是狼 → 可信度 +；是好人 → 可信度 -（假查杀）；跳预者加减更陡
+      updateCredibility(engine, c.from, isWolf ? (isSeerClaimant ? 0.25 : 0.15) : (isSeerClaimant ? -0.35 : -0.25));
     }
     if (c.type === 'check_good') {
-      updateCredibility(engine, c.from, !isWolf ? 0.15 : -0.25);
+      updateCredibility(engine, c.from, !isWolf ? (isSeerClaimant ? 0.25 : 0.15) : (isSeerClaimant ? -0.35 : -0.25));
     }
   }
   // 狼被放逐 → 其声明是谎言（污蔑）→ 目标嫌疑降；好人被放逐 → 其查杀更可信
@@ -185,7 +188,7 @@ function onVoteSettle(engine, night) {
 function onClaim(engine, fromId, type, targetId) {
   const from = engine.nodes[fromId];
   if (!from) return;
-  const claim = { from: fromId, type, target: targetId, night: engine.currentNight || 0 };
+  const claim = { from: fromId, type, target: targetId, night: engine.currentNight || 0, verified: false };
   from.claims.push(claim);
   if (targetId && engine.nodes[targetId]) engine.nodes[targetId].claimsAbout.push(claim);
   engine.claims.push(claim);
@@ -193,11 +196,14 @@ function onClaim(engine, fromId, type, targetId) {
   const w = W.claim * (0.4 + from.credibility * 1.2); // 0.3 × (0.4 + cred×1.2)：cred=0.5 → 0.3；cred=0.9 → 0.45
   // 1.8.0（NLU）：声称过预言家的玩家再报查验 → 按“真预言家查验”方向处理（泛用 check 方向在 bot 生态被狼悍跳污染）
   const isSeerClaimant = from.claims.some(c => c.type === 'claim_seer');
+  const hasVerifiedCheck = from.claims.some(c => c.verified && (c.type === 'check_wolf' || c.type === 'check_good'));
+  // 未经验证的跳预者查验打 5 折（真假都打折；验证后恢复全权重）
+  const seerDiscount = isSeerClaimant && !hasVerifiedCheck ? 0.7 : 1;
   if (type === 'check_wolf') {
-    if (isSeerClaimant) updatePosterior(engine, targetId, 0.6 * (0.4 + from.credibility * 1.2));
+    if (isSeerClaimant) updatePosterior(engine, targetId, 0.6 * seerDiscount * (0.4 + from.credibility * 1.2));
     else updatePosterior(engine, targetId, w);
   } else if (type === 'check_good') {
-    if (isSeerClaimant) updatePosterior(engine, targetId, -0.6 * (0.4 + from.credibility * 1.2));
+    if (isSeerClaimant) updatePosterior(engine, targetId, -0.6 * seerDiscount * (0.4 + from.credibility * 1.2));
     else updatePosterior(engine, targetId, -w);
   } else if (type === 'claim_seer') {
     updatePosterior(engine, fromId, -0.1); // 跳预言家本身轻微降嫌疑（但会引来刀）
