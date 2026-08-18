@@ -178,7 +178,7 @@ function checkWin(room) {
   const third = thirdFaction(room);
   if (third.length && alive.every(p => third.includes(p.id))) {
     room.winner = 'third';
-    room.endInfo = { winner: 'third', text: '第三方阵营获胜（丘比特阵营）', roles: endRoles() };
+    room.endInfo = { winner: 'third', text: '神眷者阵营获胜（丘比特阵营）', roles: endRoles() };
     room.phase = 'ended';
     ctx.bump(room);
     return room.winner;

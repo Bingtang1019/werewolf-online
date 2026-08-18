@@ -10,7 +10,7 @@ if (!file) { console.error('用法: node tools/ai/third-party-stats.js <records.
 const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
 const byName = {};
 for (const l of lines) { let r; try { r = JSON.parse(l); } catch (e) { continue; } const n = r.config.name || '?'; (byName[n] = byName[n] || []).push(r); }
-const isLover = r => (r.players || []).some(p => p.camp === '第三方');
+const isLover = r => (r.players || []).some(p => p.camp === '神眷者' || p.camp === '第三方');
 function analyze(recs) {
   const o = { n: recs.length, lover: 0, loverWin: { good: 0, wolf: 0, third: 0 }, normalWin: { good: 0, wolf: 0, third: 0, draw: 0 } };
   for (const r of recs) { const isL = isLover(r); if (isL) { o.lover++; o.loverWin[r.result.winner] = (o.loverWin[r.result.winner] || 0) + 1; } else o.normalWin[r.result.winner] = (o.normalWin[r.result.winner] || 0) + 1; }

@@ -740,6 +740,6 @@ function renderEnded() {
 function campClass(c) {
   if (c === '好人') return 'good';
   if (c === '狼人') return 'wolf';
-  if (c === '第三方') return 'third';
+  if (c === '第三方' || c === '神眷者') return 'third';
   return '';
 }

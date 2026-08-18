@@ -230,7 +230,7 @@ function roleText(room, p) {
 }
 function campText(room, p) {
   const c = campOf(room, p);
-  return c === 'good' ? '好人' : c === 'wolf' ? '狼人' : c === 'third' ? '第三方' : '待定';
+  return c === 'good' ? '好人' : c === 'wolf' ? '狼人' : c === 'third' ? '神眷者' : '待定';
 }
 function defaultCounts(n) {
   const wolf = n >= 5 ? 2 : 1;
