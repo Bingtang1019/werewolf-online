@@ -153,6 +153,18 @@ function modelProb(m, features, configKey) {
   return p;
 }
 
+// 1.7.18：v1 独立缓存——v3 混合实验用（LAB_V3_BLEND 时与 v3 输出做线性混合）
+let _v1Model = null, _v1Tried = false;
+function getVoteModelV1() {
+  if (_v1Tried) return _v1Model;
+  _v1Tried = true;
+  try {
+    const m = JSON.parse(fs.readFileSync(MODEL_PATH, 'utf8'));
+    if (validModel(m)) _v1Model = m; else _v1Model = null;
+  } catch (e) { _v1Model = null; }
+  return _v1Model;
+}
+
 // 1.7.18：v2 模型独立缓存——per-config 回退用（12c 劣化配置：v3 特征在特殊机制上误导投票 → 分配置回退 v2）
 let _v2Model = null, _v2Tried = false;
 function getVoteModelV2() {
@@ -167,4 +179,4 @@ function getVoteModelV2() {
   } catch (e) { _v2Model = null; }
   return _v2Model;
 }
-module.exports = { getVoteModel, getVoteModelV2, modelProb, MODEL_PATH };
+module.exports = { getVoteModel, getVoteModelV1, getVoteModelV2, modelProb, MODEL_PATH };

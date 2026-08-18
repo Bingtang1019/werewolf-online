@@ -159,6 +159,9 @@ function buildVoteWorld(room, bot) {
   const useModel = (process.env.VOTE_MODEL_MODE || 'adaboost') !== 'heuristic' && !!model && ctx.factionOf(room, bot) === 'good'; // 默认 adaboost 重训模型（VOTE_MODEL_MODE=v2/v3 可回退）
   // 1.8.0（NLU 端到端实验）：LAB_USE_BELIEF_ENGINE=1 时把中央信念引擎后验直接混入嫌疑分（默认关）
   const engBeliefs = process.env.LAB_USE_BELIEF_ENGINE === '1' && room._beliefEngine ? S._getBeliefsRef(room._beliefEngine) : null;
+  // 1.8.0（v3 混合）：LAB_V3_BLEND=α（0<α<1）时，v3 模型输出与 v1 模型输出线性混合（拉回绝对平衡）
+  const v3Blend = parseFloat(process.env.LAB_V3_BLEND || '0');
+  const v1Model = v3Blend > 0 ? S.getVoteModelV1() : null;
   const scores = {};
   let wbCur = null; // 1.7.18+：候选循环内 wb 的审计快照（LAB_AUDIT_VOTE=1 埋点用）
   for (const p of room.players) {
@@ -184,6 +187,11 @@ function buildVoteWorld(room, bot) {
           if (model.schema === 'adaboost-vote@2' || model.schema === 'adaboost-vote@3') mp = 1 / (1 + Math.exp(-mp)); // v2/v3：raw score → 单调 sigmoid（仅排序消费，未校准——禁止概率阈值/置信度下游）
           else if (model.schema === 'vote-mlp@1') { /* v4：概率输出（sigmoid 内建）——直接消费 */ }
           else { const mi = isoVote(mp); if (mi != null) mp = mi; } // v1：Platt 概率 + iso 过渡校准
+          // 1.8.0（v3 混合）：与 v1 模型输出做线性混合（v3 用前 13 维喂 v1）
+          if (v1Model && model.schema === 'adaboost-vote@3' && f.length >= 13) {
+            const mp1 = S.modelProb(v1Model, f.slice(0, 13), room.presetKey || (room.cap ? room.cap + 'p' : null));
+            if (mp1 != null) mp = v3Blend * mp + (1 - v3Blend) * mp1;
+          }
           // 1.7.18：动态权重（数学方法——最优线性组合形态：各按信度反比加权）
 // 信念信度 α = 证据量 ev（查验/票型/死亡/发言 7 类证据源的贝叶斯更新次数）
 // 模型信度 β = |2·mp−1| × AUC_config（per-config 校准：4p 0.916 / 12a 0.727 / global 0.742）
