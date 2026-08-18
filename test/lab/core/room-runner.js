@@ -81,7 +81,7 @@ async function runOneLabGame(cfg) {
     const roles = (room.endInfo && room.endInfo.roles) || [];
     const players = roles.map((x, i) => {
       const rp = room.players.find(p => p.id === x.id);
-      return { seat: x.seat || (i + 1), id: x.id, role: x.role, roleKey: rp ? rp.role : null, camp: x.camp, isBot: !!x.isBot }; // 1.7.4：roleKey=真实角色（英文，供 V 重建/训练标签）
+      return { seat: x.seat || (i + 1), id: x.id, role: x.role, roleKey: rp ? rp.role : null, camp: x.camp, isBot: !!x.isBot, alive: !!x.alive }; // 1.7.4：roleKey=真实角色（英文，供 V 重建/训练标签）；1.8.x：alive 供终局分析
     });
     const fk = (room.events || []).find(e => e.type === 'wolf_kill' && e.night === 1);
     const firstKill = fk ? { id: fk.data.kill, camp: roles.find(x => x.id === fk.data.kill) ? roles.find(x => x.id === fk.data.kill).camp : '?' } : null;

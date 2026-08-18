@@ -91,10 +91,21 @@ function decisionSmart(room, bot) {
               const val = { '女巫': 5, '预言家': 4, '猎人': 3, '守卫': 2, '摄梦人': 1 };
               const claims = world.roleClaims || {};
               const pool = enemies.filter(q => ctx.factionOf(room, q) !== 'third');
+              // 1.8.x（终局连锁）：只剩 2 个非神眷者且一神一民时，优先刀自称猎人者，
+              // 期望猎人开枪带走最后一个非神眷者，使神眷者在一夜内同时清场获胜。
+              const nGod = world.nonThirdGodAlive || 0;
+              const nVill = world.nonThirdVillAlive || 0;
+              const nWolf = world.nonThirdWolfAlive || 0;
+              if ((nGod + nVill + nWolf) === 2 && nGod > 0 && nVill > 0) {
+                const hunter = pool.find(q => claims[q.id] === '猎人');
+                if (hunter) { target = hunter; }
+              }
               let t2 = null, bestV = -1;
-              for (const q of pool) { const r = claims[q.id]; if (r && (val[r] || 0) > bestV) { bestV = val[r] || 0; t2 = q; } }
-              if (!t2 && pool.length) t2 = pool.slice().sort((a, b) => (world.scores[a.id] || 0.5) - (world.scores[b.id] || 0.5))[0];
-              target = t2;
+              if (!target) {
+                for (const q of pool) { const r = claims[q.id]; if (r && (val[r] || 0) > bestV) { bestV = val[r] || 0; t2 = q; } }
+                if (!t2 && pool.length) t2 = pool.slice().sort((a, b) => (world.scores[a.id] || 0.5) - (world.scores[b.id] || 0.5))[0];
+                target = t2;
+              }
             } else {
               // v1.7.7（α3）：刀神分类器优先（fail-open）；enemies 已排除队友+恋人
               // V5.2 A 线：若启用 wolf-win 胜率模型，优先用“刀后狼胜概率”决策；否则回退刀神分类器
@@ -140,6 +151,12 @@ function decisionSmart(room, bot) {
             if (charmTarget) data.charm = charmTarget.id;
             if (data.charm) { if (!room.wolfPackMemory) room.wolfPackMemory = {}; room.wolfPackMemory.charmTarget = data.charm; } // v1.5.2：狼队共享魅惑目标（卖狼美人）
           }
+        }
+        // 1.8.x（神眷者训练）：狼恋人发现狼队已选自己的好恋人时，强制改刀到安全目标（恋人互知，规则内）
+        const lp2 = ctx.loverPartner(room, bot);
+        if (lp2 && !lp2.isWolf && room.night.wolf.kill === lp2.id) {
+          const safe = ctx.aliveOthers(room, bot).filter(q => ctx.campOf(q) !== 'wolf' && q.id !== lp2.id);
+          data.kill = safe.length ? ctx.pick(safe).id : null;
         }
         return { action: 'wolf_set', data };
       }

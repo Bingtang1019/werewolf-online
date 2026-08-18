@@ -287,8 +287,36 @@ const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? b
     hasPreset: !!room.presetKey, // v1.7.14：A-2 双轨判定（lab preset 标签 / 生产 cap fallback）
     vGood, // 1.7.6：第三方平衡用（好人胜率估值）
     roleClaims, // 1.7.6：公开自称神职者（{id: 角色}）——第三方神职优先目标
+    isCupid: ctx.effRole(bot) === 'cupid', // 1.8.x：丘比特 sabotage 实验用
+    myLovers: ctx.effRole(bot) === 'cupid' ? (room.lovers || []).slice() : [], // 1.8.x：仅丘比特知道情侣（规则内）
     isWolfLover: myFaction === 'third' && ctx.isWolfRole(bot), // 1.7.6：第三方狼恋人（投狼/刀狼=狼队自爆红线）
     thirdAlive, // 1.7.6：第三方存活数（bot 视角：情侣+丘比特）
+    thirdIds: myFaction === 'third' ? (() => { // 1.8.x：第三方成员 id（仅第三方视角填充，避免向狼/好人泄漏阵营信息）
+      const ids = [];
+      if (room.lovers) for (const id of room.lovers) { const q = ctx.byId(room, id); if (q && q.alive) ids.push(id); }
+      const cup = room.players.find(q => ctx.effRole(q) === 'cupid');
+      if (cup && cup.alive && (!room.lovers || !room.lovers.includes(cup.id))) ids.push(cup.id);
+      return ids;
+    })() : [],
+    // 1.8.x：第三方视角的“非神眷者”各类存活数（用于终局判断：屠边会在只剩单类非神眷者时抢先结束）
+    nonThirdWolfAlive: myFaction === 'third' ? (() => {
+      const t = new Set((room.lovers || []).map(l => l.id));
+      const cup = room.players.find(q => ctx.effRole(q) === 'cupid');
+      if (cup && cup.alive && (!room.lovers || !room.lovers.includes(cup.id))) t.add(cup.id);
+      return Math.max(0, wolfAlive - room.players.filter(q => q.alive && t.has(q.id) && (q.role === 'wolf' || q.role === 'wolfBeauty')).length);
+    })() : 0,
+    nonThirdGodAlive: myFaction === 'third' ? (() => {
+      const t = new Set((room.lovers || []).map(l => l.id));
+      const cup = room.players.find(q => ctx.effRole(q) === 'cupid');
+      if (cup && cup.alive && (!room.lovers || !room.lovers.includes(cup.id))) t.add(cup.id);
+      return Math.max(0, godAlive - room.players.filter(q => q.alive && t.has(q.id) && ['seer', 'witch', 'hunter', 'guard', 'dreamer'].includes(q.role)).length);
+    })() : 0,
+    nonThirdVillAlive: myFaction === 'third' ? (() => {
+      const t = new Set((room.lovers || []).map(l => l.id));
+      const cup = room.players.find(q => ctx.effRole(q) === 'cupid');
+      if (cup && cup.alive && (!room.lovers || !room.lovers.includes(cup.id))) t.add(cup.id);
+      return Math.max(0, villAlive - room.players.filter(q => q.alive && t.has(q.id) && q.role === 'villager').length);
+    })() : 0,
     // 1.7.4（动态 payoff）：公开量 + 曲率参数（env 可配，lab 参数纪律：每版记录）
     //   默认 p=1,q=0：进度侧保留（配对 34:9，p=0.0003 显著，好人+6.3pp）；容错侧回退（28:26，p=0.89 不显著）
     wolfAlive, godAlive, villAlive,

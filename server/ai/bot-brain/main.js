@@ -4,6 +4,7 @@ const shared = require('./shared');
 const ctx = shared.ctx;
 const register = shared.register;
 const S = shared.S;
+const cupidPick = require('./cupid');
 
 function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRollout=true → 叠加 rollout 规划层（新 simulate 档）
   ctx.updateSmartMemory(room, bot);
@@ -75,7 +76,7 @@ function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRol
         resTarget = piRes.target === dvT ? piRes.target : dvT; // 一致→π（快）；分歧→dv（准）
       }
       if (auditRollout) { const rec = room._rolloutAuditBuf[room._rolloutAuditBuf.length - 1]; if (rec && rec.bot === bot.id) { rec.pi = piRes.target; rec.piMargin = piRes.margin; rec.dv = piPure ? null : S.decideVote(world, state, ctx.rng()).target; rec.final = resTarget; rec.margin = null; rec.mix = piPure ? 'pi-pure' : (resTarget === piRes.target ? 'pi' : 'dv'); } }
-    } else if (useRollout && !wolfNoRollout) {
+    } else if (useRollout && !wolfNoRollout && !(world.faction === 'third' && process.env.THIRD_NO_ROLLOUT === '1')) {
       const rv = S.rolloutVote(world, state, ctx.rng(), { useValue: (bot.botLevel || 'easy') !== 'easy' }); // 1.8.0（人机三档）：普通/困难→V_wolf 价值前瞻；简单→解析版
       if (process.env.LAB_DEBUG_ROLLOUT === '1') console.log('[rollout-dbg] scores=' + JSON.stringify(Object.fromEntries(Object.entries(world.scores).map(([k, v]) => [k, +v.toFixed(2)]))) + ' rv=' + (rv && rv.target));
       // v1.7.2（4-①）：rollout 得分差距 <ε 时回退 S.decideVote 的跟票目标——低信息局（无查杀/票数接近）
@@ -184,22 +185,10 @@ function createBotDecision(room, bot) {
   if (room.phase === 'night') {
     switch (room.nightStep) {
       case 'cupid': {
-        if (room.nightNum === 1) {
-          // 1.8.x（神眷者训练）：丘比特默认不连自己——非自连时第三方概率 2/3 vs 自连 1/2；
-          // CUPID_ALLOW_SELF=1 可恢复旧行为（实验对照）。
-          const pool = ctx.alivePlayers(room);
-          const allowSelf = process.env.CUPID_ALLOW_SELF === '1';
-          const pickPool = allowSelf ? pool : pool.filter(q => q.id !== bot.id);
-          const a = ctx.pick(pickPool.length ? pickPool : pool);
-          const b = ctx.pick(ctx.alivePlayers(room).filter(q => q.id !== (a && a.id) && (allowSelf || q.id !== bot.id)));
-          if (!a || !b) return null;
-          if (room.loverMode === 'v2') { // v2（M1/M2）：权能槽二选一——人狼恋→复仇（殉情常态，宣言反制绑架）；同阵营→守护（保命价值最高）；丘比特知情侣身份（v1.7.6）
-            const power = (ctx.isWolfRole(a) !== ctx.isWolfRole(b)) ? 'vengeance' : 'guard';
-            return { action: 'cupid_pick', data: { ids: [a.id, b.id], power } };
-          }
-          return { action: 'cupid_pick', data: { ids: [a.id, b.id] } };
-        }
-        return { action: 'cupid_pick', data: { ids: null } }; // 挂机：放弃重选
+        // 1.8.x（神眷者训练）：首夜保持“不连自己”随机；情侣全灭后智能重选
+        // （用信念重造人狼恋，不再挂机放弃重选）。
+        const d = cupidPick.decideCupidPick(room, bot);
+        return d || null;
       }
       case 'lovers': return { action: 'lovers_ok', data: {} };
       default: break;

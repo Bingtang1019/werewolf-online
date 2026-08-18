@@ -53,6 +53,15 @@ if (world.faction === 'third') {
   const goodAlive = (world.godAlive || 0) + (world.villAlive || 0);
   const wolfAlive = world.wolfAlive || 0;
   const goodAdv = goodAlive >= wolfAlive;
+  // 1.8.x（神眷者终局保护）：若只剩 2 个非神眷者且分属“神/民”两类，
+  // 白天放逐任何一个都会触发屠边提前结束（狼/好人胜）。此时神眷者应弃票，
+  // 把机会留给夜晚的连锁死亡（例如狼恋人刀猎人 → 猎人枪带另一个）。
+  const nGod = world.nonThirdGodAlive || 0;
+  const nVill = world.nonThirdVillAlive || 0;
+  const nWolf = world.nonThirdWolfAlive || 0;
+  if ((nGod + nVill + nWolf) === 2 && nGod > 0 && nVill > 0) {
+    return { ranked: pool.map(id => ({ id, score: scoreOf(id) })).sort((a, b) => b.score - a.score), target: null };
+  }
   // 神眷者训练模式（THIRD_TRAIN=1）：狼恋人也走 kingmaker，不再伪装跟狼队——目标是让神眷者活到最后
   const wolfLoverFollow = world.isWolfLover && process.env.THIRD_TRAIN !== '1';
   if (wolfLoverFollow) {
@@ -86,6 +95,12 @@ if (world.faction === 'third') {
   const sorted = pool.map(id => ({ id, score: scoreOf(id) })).sort((a, b) => b.score - a.score);
   return { ranked: sorted, target: sorted.length ? sorted[0].id : null };
 }
+  // 1.8.x（丘比特 sabotage 实验）：非神眷者丘比特若想重造人狼恋，
+  // 可以主动把当前情侣放逐出局（仅当自己不在情侣中），从而解锁重选。
+  if (world.isCupid && process.env.CUPID_SABOTAGE === '1' && !(world.myLovers || []).includes(world.me)) {
+    const lover = (world.myLovers || []).find(id => state.includes(id));
+    if (lover) return { ranked: state.map(id => ({ id, score: scoreOf(id) })).sort((a, b) => b.score - a.score), target: lover };
+  }
   // 跟票集中（防分票）：嫌疑前二且已有人投 → 跟票（1.7.17（V5.2 轻量 B）：FOLLOW_MODE 变体——strict 默认 / loose 前二独立 / none 最高嫌疑）
   const votes = world.votes || {};
   const counts = {};
