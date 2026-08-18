@@ -46,7 +46,7 @@ async function runOneLabGame(cfg) {
     }
     let res = Game.handleAction(room.id, host, 'start');
     if (!(res && res.ok)) throw { kind: 'config', msg: `start: ${JSON.stringify(res)}` };
-    res = Game.handleAction(room.id, host, 'hostPick', { role: 'random' });
+    res = Game.handleAction(room.id, host, 'hostPick', { role: cfg.hostRole || 'random' });
     if (!(res && res.ok)) throw { kind: 'config', msg: `hostPick: ${JSON.stringify(res)}` };
 
     // ---- 驱动到终局：虚拟模式无脑推时钟，游戏自动跑完 ----
@@ -61,6 +61,11 @@ async function runOneLabGame(cfg) {
           const r2 = Game.handleAdvance(room.id, host);
           if (!(r2 && r2.ok)) throw { kind: 'stall', msg: `卡死 phase=${room.phase} step=${room.nightStep}` };
           continue;
+        }
+        // 1.8.0（NLU 端到端）：onDiscuss 钩子——每个白天讨论阶段注入一次真人风格聊天（host 非 bot）
+        if (cfg.onDiscuss && room.phase === 'discuss' && room._nluInjectedDay !== room.dayNum) {
+          cfg.onDiscuss(room, host);
+          room._nluInjectedDay = room.dayNum;
         }
         clock.tickNext();
         await new Promise(r3 => setImmediate(r3));           // 让渡 microtask
