@@ -64,6 +64,7 @@ async function runOneLabGame(cfg) {
         }
         // 1.8.0（NLU 端到端）：onDiscuss 钩子——每个白天讨论阶段注入一次真人风格聊天（host 非 bot）
         if (cfg.onDiscuss && room.phase === 'discuss' && room._nluInjectedDay !== room.dayNum) {
+          if (process.env.LAB_DEBUG_NLU === '1') console.log('[nlu-debug] onDiscuss day=' + room.dayNum + ' phase=' + room.phase + ' host=' + host);
           cfg.onDiscuss(room, host);
           room._nluInjectedDay = room.dayNum;
         }

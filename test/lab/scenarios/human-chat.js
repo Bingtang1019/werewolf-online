@@ -11,16 +11,34 @@ const { summarize } = require('../stats/report');
 
 function injectSeerChat(room, host) {
   const hostP = room.players.find(p => p.id === host);
-  if (!hostP || String(hostP.role || '').toLowerCase() !== 'seer') return; // 死后仍可发言（遗言/死后聊天），保证查验信息能注入
+  const role = String(hostP && (hostP.roleKey || hostP.role) || '').toLowerCase();
+  if (!hostP || (!role.includes('seer') && !role.includes('预言家'))) return; // 死后仍可发言（遗言/死后聊天），保证查验信息能注入
   if (!room._nluInjectedClaims) room._nluInjectedClaims = new Set();
-  for (const h of room.seerHistory || []) {
-    if (h.night >= room.dayNum) continue; // 只报已经过去的夜
-    const key = h.night + ':' + h.target;
-    if (room._nluInjectedClaims.has(key)) continue;
-    const target = room.players.find(p => p.id === h.target);
-    if (!target) continue;
-    const text = `我是预言家，昨晚查了${target.name}：${h.result === 'wolf' ? '查杀' : '金水'}`;
-    try { Game.handleAction(room.id, host, 'chat', { ch: 'all', text }); room._nluInjectedClaims.add(key); } catch (e) { /* 注入失败不影响 */ }
+  if (process.env.LAB_DEBUG_NLU === '1') console.log('[nlu-debug] injectSeerChat role=' + role + ' seerHistory=' + JSON.stringify(room.seerHistory));
+  const reported = room._nluInjectedClaims;
+  // 优先用真实 seerHistory；lab 中 host 是真人不会自动查验，则用真实身份模拟“完美预言家”报查验
+  let targets = [];
+  if (room.seerHistory && room.seerHistory.length) {
+    for (const h of room.seerHistory) {
+      if (h.night >= room.dayNum) continue;
+      const key = 'h:' + h.night + ':' + h.target;
+      if (reported.has(key)) continue;
+      const target = room.players.find(p => p.id === h.target);
+      if (!target) continue;
+      targets.push({ target, isWolf: h.result === 'wolf', key });
+    }
+  }
+  if (!targets.length) {
+    const cand = room.players.find(p => p.id !== host && p.role && !reported.has('t:' + p.id));
+    if (cand) {
+      const isWolf = cand.role === 'wolf' || cand.role === 'wolfBeauty';
+      targets.push({ target: cand, isWolf, key: 't:' + cand.id });
+    }
+  }
+  for (const { target, isWolf, key } of targets) {
+    const text = `我是预言家，昨晚查了${target.name}：${isWolf ? '查杀' : '金水'}`;
+    if (process.env.LAB_DEBUG_NLU === '1') console.log('[nlu-debug] inject seer claim target=' + target.name + ' isWolf=' + isWolf + ' text=' + text);
+    try { const rr = Game.handleChat(room.id, host, { ch: 'all', text }, 0); if (process.env.LAB_DEBUG_NLU === '1') console.log('[nlu-debug] chat result', JSON.stringify(rr)); reported.add(key); } catch (e) { if (process.env.LAB_DEBUG_NLU === '1') console.log('[nlu-debug] chat error', e.message); }
   }
 }
 
