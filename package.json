@@ -11,7 +11,8 @@
     "nlu:eval:fake": "node tools/ai/eval-nlu-claims.js --records=data/records-selfplay-eps.jsonl --fake-seer=1",
     "nlu:e2e:on": "node test/lab/lab.js human-chat --games=200 --cap=12 --counts wolf3,seer1,witch1,villager7 --parallel=8 --nlu=1",
     "nlu:e2e:off": "node test/lab/lab.js human-chat --games=200 --cap=12 --counts wolf3,seer1,witch1,villager7 --parallel=8 --nlu=0",
-    "nlu:e2e:fake": "node test/lab/lab.js human-chat --games=200 --cap=12 --counts wolf3,seer1,witch1,villager7 --parallel=8 --nlu=1 --fake-seer=1"
+    "nlu:e2e:fake": "node test/lab/lab.js human-chat --games=200 --cap=12 --counts wolf3,seer1,witch1,villager7 --parallel=8 --nlu=1 --fake-seer=1",
+    "nlu:pipeline": "node tools/ai/nlu-retrain-pipeline.js"
   },
   "engines": {
     "node": ">=18"
