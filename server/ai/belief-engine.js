@@ -191,10 +191,19 @@ function onClaim(engine, fromId, type, targetId) {
   engine.claims.push(claim);
   // 声明更新（0.3 × 可信度）
   const w = W.claim * (0.4 + from.credibility * 1.2); // 0.3 × (0.4 + cred×1.2)：cred=0.5 → 0.3；cred=0.9 → 0.45
-  if (type === 'check_wolf') updatePosterior(engine, targetId, w);
-  else if (type === 'check_good') updatePosterior(engine, targetId, -w);
-  else if (type === 'claim_seer') updatePosterior(engine, fromId, -0.1); // 跳预言家本身轻微降嫌疑（但会引来刀）
+  // 1.8.0（NLU）：声称过预言家的玩家再报查验 → 按“真预言家查验”方向处理（泛用 check 方向在 bot 生态被狼悍跳污染）
+  const isSeerClaimant = from.claims.some(c => c.type === 'claim_seer');
+  if (type === 'check_wolf') {
+    if (isSeerClaimant) updatePosterior(engine, targetId, 0.6 * (0.4 + from.credibility * 1.2));
+    else updatePosterior(engine, targetId, w);
+  } else if (type === 'check_good') {
+    if (isSeerClaimant) updatePosterior(engine, targetId, -0.6 * (0.4 + from.credibility * 1.2));
+    else updatePosterior(engine, targetId, -w);
+  } else if (type === 'claim_seer') updatePosterior(engine, fromId, -0.1); // 跳预言家本身轻微降嫌疑（但会引来刀）
   else if (type === 'claim_god') updatePosterior(engine, fromId, -0.05);
+  // 1.8.0（NLU）：真预言家查验——方向与泛用 check_wolf 相反（泛用声明在 bot 生态多为狼悍跳）
+  else if (type === 'seer_check_wolf') updatePosterior(engine, targetId, 0.6 * (0.4 + from.credibility * 1.2));
+  else if (type === 'seer_check_good') updatePosterior(engine, targetId, -0.6 * (0.4 + from.credibility * 1.2));
   // 1.8.0（NLU）：攻击/自辩证据——低权重，方向直观（攻击→嫌疑+；自辩→嫌疑-）
   else if (type === 'attack') updatePosterior(engine, targetId, 0.15 * (0.4 + from.credibility * 1.2));
   else if (type === 'defend') updatePosterior(engine, fromId, -0.15 * (0.4 + from.credibility * 1.2));
@@ -253,4 +262,4 @@ function getBeliefs(engine, opts) {
   return { posterior, credibility, follows, ranks };
 }
 
-module.exports = { createBeliefEngine, applyEvent, getBeliefs, W };
+module.exports = { createBeliefEngine, applyEvent, getBeliefs, onClaim, W };
