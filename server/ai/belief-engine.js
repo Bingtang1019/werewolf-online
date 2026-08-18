@@ -199,8 +199,12 @@ function onClaim(engine, fromId, type, targetId) {
   } else if (type === 'check_good') {
     if (isSeerClaimant) updatePosterior(engine, targetId, -0.6 * (0.4 + from.credibility * 1.2));
     else updatePosterior(engine, targetId, -w);
-  } else if (type === 'claim_seer') updatePosterior(engine, fromId, -0.1); // 跳预言家本身轻微降嫌疑（但会引来刀）
-  else if (type === 'claim_god') updatePosterior(engine, fromId, -0.05);
+  } else if (type === 'claim_seer') {
+    updatePosterior(engine, fromId, -0.1); // 跳预言家本身轻微降嫌疑（但会引来刀）
+    // 对跳压制：已有其他跳预者时，所有跳预者可信度下降（真假各半，防狼悍跳带崩）
+    const seerClaimants = [...new Set(engine.claims.filter(c => c.type === 'claim_seer').map(c => c.from))];
+    if (seerClaimants.length >= 2) for (const sid of seerClaimants) updateCredibility(engine, sid, -0.15);
+  } else if (type === 'claim_god') updatePosterior(engine, fromId, -0.05);
   // 1.8.0（NLU）：真预言家查验——方向与泛用 check_wolf 相反（泛用声明在 bot 生态多为狼悍跳）
   else if (type === 'seer_check_wolf') updatePosterior(engine, targetId, 0.6 * (0.4 + from.credibility * 1.2));
   else if (type === 'seer_check_good') updatePosterior(engine, targetId, -0.6 * (0.4 + from.credibility * 1.2));
