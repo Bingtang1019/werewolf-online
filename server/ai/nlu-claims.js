@@ -11,6 +11,7 @@ function extractClaims(room, fromId, text) {
   const claims = [];
   const players = room.players || [];
   const seen = new Set();
+  const checkedTargets = new Set();
   const has = re => re.test(text);
   const add = (type, target) => {
     const k = type + ':' + (target || '');
@@ -26,15 +27,16 @@ function extractClaims(room, fromId, text) {
   for (const p of players) {
     if (!p.name || !p.id || p.id === fromId) continue;
     if (!text.includes(p.name)) continue;
-    if (intent === 'check' || has(/查杀/)) {
-      if (has(/查杀/) && text.includes(p.name)) add('check_wolf', p.id);
-      if (has(/金水/) && text.includes(p.name)) add('check_good', p.id);
+    if (intent === 'check' || has(/查杀|金水|查验|验了|查了/)) {
+      if (has(/查杀|是狼|狼/) && text.includes(p.name)) { add('check_wolf', p.id); checkedTargets.add(p.id); }
+      if (has(/金水|好人/) && text.includes(p.name)) { add('check_good', p.id); checkedTargets.add(p.id); }
     }
-    if (intent === 'attack' || has(/是狼|像狼|狼面|怀疑|踩|铁狼|带节奏/)) {
+    if ((intent === 'attack' || has(/是狼|像狼|狼面|怀疑|踩|铁狼|带节奏/)) && !checkedTargets.has(p.id)) {
       if (has(/是狼|像狼|狼面|怀疑|踩|铁狼|带节奏/) && text.includes(p.name)) add('attack', p.id);
     }
   }
-  if (intent === 'defend' || has(/我不是狼|我是好人|别投我|冤枉|别出我|我不是/)) add('defend', fromId);
+  const mentionsOther = players.some(p => p.name && p.id !== fromId && text.includes(p.name));
+  if (((intent === 'defend' && !mentionsOther) || has(/我不是狼|我是好人|别投我|冤枉|别出我|我不是/))) add('defend', fromId);
   return claims;
 }
 
