@@ -166,7 +166,7 @@ function buildVoteWorld(room, bot) {
     let s = beliefs[p.id] ? beliefs[p.id].wolf : Math.min(1, (suspicion[p.id] || 0) / 100); // smart/simulate 用信念，easy 用关键词嫌疑（归一化到 0..1）
     if (engBeliefs) {
       const ep = engBeliefs.posterior[p.id] != null ? engBeliefs.posterior[p.id] : 0.5;
-      s = 0.5 * s + 0.5 * ep; // 实验：中央信念与 botMemory 信念各半
+      s = process.env.LAB_USE_BELIEF_ENGINE === '2' ? ep : 0.5 * s + 0.5 * ep; // 实验：=1 各半，=2 全用中央信念
     }
     // 1.7.0（B1-4）：每轮投票前动态似然——模型 P(wolf) 混合（0.6 信念 + 0.4 模型；不改 beliefs 防累积饱和）
     let f = null, mp = null;
