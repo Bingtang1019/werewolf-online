@@ -5,6 +5,11 @@ const ctx = shared.ctx;
 const register = shared.register;
 const S = shared.S;
 
+/* 1.8.x：NLU 模型/混合仅用于有人类玩家的房间（真人聊天可被 NLU 抽取）；全 bot 房间保持经典策略 */
+function nluRoom(room) {
+  return process.env.NLU_VOTE !== '0' && room && Array.isArray(room.players) && (room.cap || room.playerCap || 0) >= 12 && room.players.some(p => p && !p.isBot);
+}
+
 function wolfProb(room, bot, playerId) {
   if (!bot.botMemory || !bot.botMemory.beliefs) return 0.5;
   const b = bot.botMemory.beliefs[playerId];
@@ -132,13 +137,13 @@ function buildVoteWorld(room, bot) {
   const b = bot.botMemory || {};
   const beliefs = b.beliefs || {};
   const suspicion = b.suspicion || {};
-  const modelBase = S.getVoteModel(); // 1.7.0（B1-4）：fail-open——模型缺失/损坏回退纯信念；仅好人侧注入（狼侧用模型会反向增强）
+  const modelBase = S.getVoteModel(room); // 1.7.0（B1-4）：fail-open——模型缺失/损坏回退纯信念；仅好人侧注入（狼侧用模型会反向增强）；1.8.x 按房间是否有人类选 NLU/经典模型
   // 1.8.0（人机三档）：投票感知按 bot 等级路由——简单/普通（easy/smart）→ v2（13 维）；困难（simulate）→ v3（25 维干净版）
   const _cfgKey = room.presetKey || (room.cap ? room.cap + 'p' : null);
   const _isHard = (bot.botLevel || 'easy') === 'simulate';
   const model = _isHard
     ? ((process.env.VOTE_MODEL_MODE || 'adaboost') === 'v3' && _cfgKey === '12c' ? S.getVoteModelV2() || modelBase : modelBase) // 困难档：v3 主 + 12c per-config 回退 v2（配对劣化特例；默认 adaboost 重训模型）
-    : (S.getVoteModel() || S.getVoteModelV2() || modelBase); // 简单/普通档：默认用主模型（adaboost 重训），v2 回退
+    : (S.getVoteModel(room) || S.getVoteModelV2() || modelBase); // 简单/普通档：默认用主模型（adaboost 重训），v2 回退；1.8.x 按房间选模型
   const _vsEnabled = process.env.LAB_VS !== '0'; // 1.8.0（P1）：LAB_VS=0 禁用房间级快照（配对验证对照——原实现）
   const _vsKey = room.day + ':' + (room.phase || '') + ':' + (room._voteCastCount || 0) + ':' + (room.messages ? room.messages.length : 0); // 1.8.0（P1）：快照失效键 day+phase+voteCastCount+messages.length——messages 投票轮内动态追加（talkCount 等发言派生字段随新发言重建）；票型实时读 room.votes
   if (_vsEnabled) {
@@ -160,7 +165,7 @@ function buildVoteWorld(room, bot) {
   // 1.8.0（NLU 端到端实验）：LAB_USE_BELIEF_ENGINE=1 时把中央信念引擎后验直接混入嫌疑分（默认关）
   const engBeliefs = process.env.LAB_USE_BELIEF_ENGINE === '1' && room._beliefEngine ? S._getBeliefsRef(room._beliefEngine) : null;
   // 1.8.0（v3 混合）：LAB_V3_BLEND=α（0<α<1）时，v3 模型输出与 v1 模型输出线性混合（拉回绝对平衡）；NLU_VOTE=1 默认 0.5
-  const v3Blend = process.env.LAB_V3_BLEND != null ? parseFloat(process.env.LAB_V3_BLEND) : (process.env.NLU_VOTE === '1' ? 0.5 : 0);
+  const v3Blend = process.env.LAB_V3_BLEND != null ? parseFloat(process.env.LAB_V3_BLEND) : (nluRoom(room) ? 0.5 : 0);
   const v1Model = v3Blend > 0 ? S.getVoteModelV1() : null;
   const scores = {};
   let wbCur = null; // 1.7.18+：候选循环内 wb 的审计快照（LAB_AUDIT_VOTE=1 埋点用）
@@ -198,7 +203,7 @@ function buildVoteWorld(room, bot) {
 // wb(p) = α/(α + k·β)——证据少→模型主导；模型不确定(mp≈0.5)→信念主导；配置 AUC 高→模型更重
 // 固定档保留（BOT_SUSPICION_W env 覆盖 + LAB_DYN_W=0 禁用动态回固定档）：
 //   v3→0.4（扫描最优）/ adaboost→按人数：≤12 用 0.35，13+ 用 0.3（2026-08-17 扫描 + 500 局确认）
-const _modeForW = process.env.VOTE_MODEL_MODE || (process.env.NLU_VOTE === '1' ? 'v3' : 'adaboost');
+const _modeForW = process.env.VOTE_MODEL_MODE || (nluRoom(room) ? 'v3' : 'adaboost');
 const _defW = process.env.BOT_SUSPICION_W || (_modeForW === 'v3' ? '0.4' : ((room.playerCap || room.cap || 0) >= 13 ? '0.3' : '0.35'));
 const dynW = process.env.LAB_DYN_W === '1' && bot.suspicionW == null && !process.env.BOT_SUSPICION_W; // 1.7.18+：动态权重实验门控（二十二节重验：静态 0.4 优于动态 +6.2pp——生产默认静态；LAB_DYN_W=1 启用动态实验）
 const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? bot.suspicionW : parseFloat(_defW)); // 默认 adaboost→0.35/0.3（按人数）

@@ -9,12 +9,21 @@ const path = require('path');
 const { FEATURE_NAMES } = require('./features.js'); // 1.7.3（P1-1）：特征数量/名称联动校验（features.js 无副作用依赖，require 安全）
 const MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v1.json');
 const V2_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v2.json');
-const V3_MODEL_PATH = process.env.V3_MODEL_PATH || path.join(__dirname, '..', '..', 'models', process.env.NLU_VOTE === '1' ? 'adaboost-vote-v3-nlu-fake.json' : 'adaboost-vote-v3-v2.json'); // 1.7.18+：vote-v3 干净数据重训版；NLU_VOTE=1 时默认使用 NLU 抗干扰重训版，V3_MODEL_PATH 可覆盖
+const NLU_ENABLED = process.env.NLU_VOTE !== '0'; // 1.8.x：NLU 默认生产开启，NLU_VOTE=0 可关闭
+const V3_NLU_MODEL_PATH = process.env.V3_MODEL_PATH || path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v3-nlu-prod.json'); // 1.8.x：NLU 生产模型（真实预言家重训）
+const V3_CLASSIC_MODEL_PATH = process.env.V3_MODEL_PATH || path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v3-v2.json'); // 1.7.18+：vote-v3 干净数据重训版
+/* 1.8.x：NLU 模型只用于有人类玩家的房间（真人聊天可被 NLU 抽取）；全 bot 房间走经典模型，避免 bot-only 失衡 */
+function isNluRoom(room) {
+  if (process.env.NLU_VOTE === '0') return false;
+  if (!room || !Array.isArray(room.players)) return false;
+  if ((room.cap || room.playerCap || 0) < 12) return false; // NLU 模型目前按 12 人局训练/验证，小配置继续走经典
+  return room.players.some(p => p && !p.isBot);
+}
 const V4_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v4.json'); // 1.7.18+：vote-v4 蒸馏版（MLP，25d AdaBoost → 概率输出）
 /* 1.7.18+：回退链（三级）——v3 → v2 → v1+iso过渡 → v1原始 → heuristic（null）
  * VOTE_MODEL_MODE: v3（1.7.18+ 生产默认，干净数据版 v3v2）| v2（env 一键回退）| adaboost（v1+iso过渡）| heuristic（纯信念，最后保底） */
-let _model = null;
-let _tried = false;
+let _nluModel = null, _nluTried = false;
+let _classicModel = null, _classicTried = false;
 /* v1.7.16：schema@2 校验——9 配置路由 + 特征联动 + local/capLocal 结构 */
 function validModelV2(m) {
   if (!m || m.schema !== 'adaboost-vote@2') return false;
@@ -101,40 +110,52 @@ function validModel(m) {
   }
   return true;
 }
-function getVoteModel() {
-  if (_tried) return _model;
-  _tried = true;
-  if (process.env.LAB_NO_MODEL === '1') { _model = null; return _model; } // 1.7.0（B1-4）：对照实验禁用模型（lab 平台）
-  if (process.env.VOTE_MODEL_MODE === 'heuristic') { _model = null; return _model; } // 1.7.15：感知层门控（审计止血）——启发式
-  const mode = process.env.VOTE_MODEL_MODE || (process.env.NLU_VOTE === '1' ? 'v3' : 'adaboost'); // 2026-08-17：默认使用重训 v1 模型；NLU_VOTE=1 默认走 v3-NLU
-  // 1.7.18：v3-fast（vote-v4 蒸馏 MLP）优先 → v3（schema@3）→ v2（schema@2）→ v1+iso → null（heuristic）
+function loadVoteModel(mode, v3Path) {
+  let m = null;
   try {
     if (mode === 'v3-fast') {
-      _model = JSON.parse(fs.readFileSync(V4_MODEL_PATH, 'utf8'));
-      if (validModelV4(_model)) return _model;
-      _model = null; // v4 损坏 → 回退 v3 路径
+      m = JSON.parse(fs.readFileSync(V4_MODEL_PATH, 'utf8'));
+      if (validModelV4(m)) return m;
+      m = null;
     }
-  } catch (e) { _model = null; }
+  } catch (e) { m = null; }
   try {
     if (mode === 'v3' || mode === 'v3-fast') {
-      _model = JSON.parse(fs.readFileSync(V3_MODEL_PATH, 'utf8'));
-      if (validModelV3(_model)) return _model;
-      _model = null; // v3 损坏 → 回退 v2 路径
+      m = JSON.parse(fs.readFileSync(v3Path, 'utf8'));
+      if (validModelV3(m)) return m;
+      m = null;
     }
-  } catch (e) { _model = null; }
+  } catch (e) { m = null; }
   try {
     if (mode === 'v2' || mode === 'v3') {
-      _model = JSON.parse(fs.readFileSync(V2_MODEL_PATH, 'utf8'));
-      if (validModelV2(_model)) return _model;
-      _model = null; // v2 损坏 → 回退 v1 路径（下方重新加载）
+      m = JSON.parse(fs.readFileSync(V2_MODEL_PATH, 'utf8'));
+      if (validModelV2(m)) return m;
+      m = null;
     }
-  } catch (e) { _model = null; }
+  } catch (e) { m = null; }
   try {
-    const m = JSON.parse(fs.readFileSync(MODEL_PATH, 'utf8'));
-    if (validModel(m)) { _model = m; return _model; }
-    _model = null;
-  } catch (e) { _model = null; }
-  return _model;
+    const m1 = JSON.parse(fs.readFileSync(MODEL_PATH, 'utf8'));
+    if (validModel(m1)) return m1;
+  } catch (e) { /* fallthrough */ }
+  return null;
+}
+/* 1.8.x：按房间选择模型——有人类玩家 → NLU v3 生产模型；全 bot → 经典 adaboost（保持旧平衡） */
+function getVoteModel(room) {
+  const useNlu = isNluRoom(room);
+  if (useNlu) {
+    if (_nluTried) return _nluModel;
+    _nluTried = true;
+    if (process.env.LAB_NO_MODEL === '1' || process.env.VOTE_MODEL_MODE === 'heuristic') { _nluModel = null; return _nluModel; }
+    const mode = process.env.VOTE_MODEL_MODE || 'v3';
+    _nluModel = loadVoteModel(mode, V3_NLU_MODEL_PATH);
+    return _nluModel;
+  }
+  if (_classicTried) return _classicModel;
+  _classicTried = true;
+  if (process.env.LAB_NO_MODEL === '1' || process.env.VOTE_MODEL_MODE === 'heuristic') { _classicModel = null; return _classicModel; }
+  const mode = process.env.VOTE_MODEL_MODE || 'adaboost'; // 全 bot 默认保持旧 adaboost 平衡
+  _classicModel = loadVoteModel(mode, V3_CLASSIC_MODEL_PATH);
+  return _classicModel;
 }
 function modelProb(m, features, configKey) {
   if (!m || !Array.isArray(features)) return null;
@@ -179,4 +200,4 @@ function getVoteModelV2() {
   } catch (e) { _v2Model = null; }
   return _v2Model;
 }
-module.exports = { getVoteModel, getVoteModelV1, getVoteModelV2, modelProb, MODEL_PATH };
+module.exports = { getVoteModel, getVoteModelV1, getVoteModelV2, modelProb, MODEL_PATH, isNluRoom };
