@@ -93,6 +93,8 @@ async function runOneLabGame(cfg) {
       perf: { ticks: guard, wallMs: Date.now() - t0 }, // v1.8.0：决策性能信号（墙钟/虚拟时间解耦——超时诊断用）
       config: { cap: cfg.cap, counts: cfg.counts, botLine: line, winMode: cfg.winMode || 'edge', name: cfg.name || null, loverMode: room.loverMode, presetKey: room.presetKey || null },
       result: { winner: room.endInfo ? room.endInfo.winner : null, timeout: false, error: null, ...(lv ? { loverMeta: lv } : {}) },
+      lovers: room.lovers ? room.lovers.map(id => { const q = room.players.find(p => p.id === id); return { id, roleKey: q ? q.roleKey : null, role: q ? q.role : null }; }) : null,
+      cupidCamp: room.cupidCamp || null,
       players,
       seerHistory: Array.isArray(room.seerHistory) ? room.seerHistory.map(h => ({ target: h.target, result: h.result, night: h.night })) : null, // v4.2：查验历史（信息特征 checkedWolves/checkedCount——训练侧数据源）
       events: (room.events || []).map(e => ({

@@ -53,13 +53,24 @@ if (world.faction === 'third') {
   const goodAlive = (world.godAlive || 0) + (world.villAlive || 0);
   const wolfAlive = world.wolfAlive || 0;
   const goodAdv = goodAlive >= wolfAlive;
-  if (world.isWolfLover) {
+  // 神眷者训练模式（THIRD_TRAIN=1）：狼恋人也走 kingmaker，不再伪装跟狼队——目标是让神眷者活到最后
+  const wolfLoverFollow = world.isWolfLover && process.env.THIRD_TRAIN !== '1';
+  if (wolfLoverFollow) {
     // 狼恋人：跟当前票型最高者（狼队共识目标，通常为好人），若非自己阵营；无票型则弃票
     const counts = {};
     for (const k of Object.keys(world.votes || {})) { const t = world.votes[k]; if (t && pool.includes(t)) counts[t] = (counts[t] || 0) + 1; }
     let best = null, bestN = 0;
     for (const k of Object.keys(counts)) if (counts[k] > bestN) { bestN = counts[k]; best = k; }
     return { ranked: pool.map(id => ({ id, score: scoreOf(id) })).sort((a, b) => b.score - a.score), target: best };
+  }
+  // 神眷者训练激进模式：THIRD_AGGRESSION=wolf → 白天只投狼；THIRD_AGGRESSION=good → 白天只投好人
+  if (process.env.THIRD_TRAIN === '1' && process.env.THIRD_AGGRESSION === 'wolf') {
+    const sorted = pool.map(id => ({ id, score: scoreOf(id) })).sort((a, b) => b.score - a.score);
+    return { ranked: sorted, target: sorted.length ? sorted[0].id : null };
+  }
+  if (process.env.THIRD_TRAIN === '1' && process.env.THIRD_AGGRESSION === 'good') {
+    const sorted = pool.map(id => ({ id, score: -scoreOf(id) })).sort((a, b) => b.score - a.score);
+    return { ranked: sorted, target: sorted.length ? sorted[0].id : null };
   }
   if (goodAdv) {
     // 好人优势 → 投自称高价值神职者（女巫>预言家>猎人>守卫>摄梦人），无则投最像好人者（P(wolf)低）

@@ -185,8 +185,13 @@ function createBotDecision(room, bot) {
     switch (room.nightStep) {
       case 'cupid': {
         if (room.nightNum === 1) {
-          const a = ctx.pick(ctx.alivePlayers(room));
-          const b = ctx.pick(ctx.alivePlayers(room).filter(q => q.id !== (a && a.id)));
+          // 1.8.x（神眷者训练）：丘比特默认不连自己——非自连时第三方概率 2/3 vs 自连 1/2；
+          // CUPID_ALLOW_SELF=1 可恢复旧行为（实验对照）。
+          const pool = ctx.alivePlayers(room);
+          const allowSelf = process.env.CUPID_ALLOW_SELF === '1';
+          const pickPool = allowSelf ? pool : pool.filter(q => q.id !== bot.id);
+          const a = ctx.pick(pickPool.length ? pickPool : pool);
+          const b = ctx.pick(ctx.alivePlayers(room).filter(q => q.id !== (a && a.id) && (allowSelf || q.id !== bot.id)));
           if (!a || !b) return null;
           if (room.loverMode === 'v2') { // v2（M1/M2）：权能槽二选一——人狼恋→复仇（殉情常态，宣言反制绑架）；同阵营→守护（保命价值最高）；丘比特知情侣身份（v1.7.6）
             const power = (ctx.isWolfRole(a) !== ctx.isWolfRole(b)) ? 'vengeance' : 'guard';
