@@ -452,6 +452,16 @@ node tools/ai/exp-vote-bc.js --quick
   - 一对多 MLP：78.4%（小语料下不如 NB）
 - 结论：**当前语料规模下字符 bigram NB 仍是最优**；增强/MLP 工具保留，待真实语料继续扩充后再复用。生产仍用 `models/nlu-intent-nb.json`。
 
+## 十五·十六、神眷者/第三方阵营胜率计算验证（2026-08-18）
+- 新增 `test/check-third-win.js`：
+  - `checkWin` 在“场上仅剩第三方”时返回 `third`；
+  - lab `summarize` 能统计 `third` 胜场；
+  - `thirdFaction` 名单 = 情侣两人 + 丘比特（不在情侣中）。
+- 补充实测（12p 含狼美/丘比特/猎/守，50 局 baseline）：
+  - 首刀分布已能识别并统计“第三方”目标（2.7%）；
+  - winner 统计中 `third` 胜场为 0（符合现有规则：第三方需活到最后才胜，实际极难触发）。
+- 结论：**第三方胜率计算链路（checkWin → summarize → 首刀分布）已就绪**；若“神眷者”作为新的独立第三方角色/阵营加入，只需在角色配置与 `thirdFaction`/`checkWin` 中扩展名单即可，统计层无需改动。
+
 ## 十六、信念正确性修复审计（AUC 0.40 方向性反常诊断——2026-08-08）
 
 ### 诊断（逐证据源 AUC + 分桶方向审计）
