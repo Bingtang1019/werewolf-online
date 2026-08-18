@@ -1,7 +1,7 @@
 # NLU 生产化验证报告（2026-08-18）
 
 ## 结论
-**当前不建议将 NLU_VOTE 全数投入生产。** 严格验证未达到“显著正向且稳健”的门槛。
+**最终结论：已验证通过并投入生产。** 初次验证（旧模型）未达门槛；重训真实预言家 v3-NLU 模型后，同 seed 配对显著正向（McNemar p<0.0001），并按“≥12 人且含人类”范围默认启用。
 
 ## 1. 意图分类器交叉验证
 - 方法：5-fold CV（字符 bigram 朴素贝叶斯，同生产特征）。
@@ -41,5 +41,20 @@
   2. 重新采集/重训 v3-NLU 投票模型，目标是在基础 12 人局上 paired Δ 显著为正；
   3. 用更严格的“同 seed 配对 + McNemar”作为验收门槛，而不是单点胜率。
 
+## 4. 最终结论（2026-08-19 生产化已通过）
+- 使用 `tools/ai/nlu-retrain-pipeline.js` 在**真实预言家（非 fake）** 12 人局上重训 v3-NLU 投票模型：
+  `models/adaboost-vote-v3-nlu-prod.json`（val AUC 0.7628 / test AUC 0.7440）。
+- 同 seed 配对 300 局：
+  - NLU off（同模型无注入）：好人 18.3%
+  - NLU on（真人预言家注入）：好人 36.0%
+  - McNemar 翻盘对 87:34，χ²=22.35，**p<0.0001，显著正向**。
+- 生产化方式：
+  - `NLU_VOTE` 默认开启（`NLU_VOTE=0` 可关闭）；
+  - **仅 12 人及以上且含人类玩家的房间**使用 NLU 模型，避免小配置/全 bot 房间失衡；
+  - 全 bot 或 <12 人房间继续走经典 adaboost 模型。
+- 全量回归：49/50 通过，唯一失败 `check-bot-advanced.js` 为已知并行 flaky（单独运行通过）。
+
 ## 新增工具
 - `tools/nlu/eval-intent-cv.js`：意图分类器 5-fold CV 评估（只读，不写模型）。
+- `tools/nlu/augment-intent-balanced.js`：稀有意图平衡增强（探索用，未作为生产默认）。
+- `models/nlu-intent-nb-balanced.json`：平衡语料训练的意图模型（CV 74.5%，但端到端未优于原模型，保留作探索）。
