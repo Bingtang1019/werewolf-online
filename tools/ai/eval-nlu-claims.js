@@ -18,6 +18,7 @@ const fakeSeer = parseInt(get('fake-seer', '0'), 10) || 0;
 const lines = fs.readFileSync(recordFile, 'utf8').split('\n').filter(Boolean);
 let games = 0;
 const baseScores = [], nluScores = [];
+let baseTopHit = 0, baseTopN = 0, nluTopHit = 0, nluTopN = 0;
 for (const line of lines) {
   if (games >= limit) break;
   const r = JSON.parse(line);
@@ -41,11 +42,22 @@ for (const line of lines) {
 
   const sample = () => {
     const belB = getBeliefs(engB), belN = getBeliefs(engN);
+    const arrB = [], arrN = [];
     for (const p of players) {
       const i = idx.get(p.id);
       if (!alive[i] || p.id === seerId) continue;
-      baseScores.push([belB.posterior[p.id] != null ? belB.posterior[p.id] : 0.5, truth.get(p.id)]);
-      nluScores.push([belN.posterior[p.id] != null ? belN.posterior[p.id] : 0.5, truth.get(p.id)]);
+      const pb = belB.posterior[p.id] != null ? belB.posterior[p.id] : 0.5;
+      const pn = belN.posterior[p.id] != null ? belN.posterior[p.id] : 0.5;
+      baseScores.push([pb, truth.get(p.id)]);
+      nluScores.push([pn, truth.get(p.id)]);
+      arrB.push([pb, truth.get(p.id)]);
+      arrN.push([pn, truth.get(p.id)]);
+    }
+    if (arrB.length) {
+      arrB.sort((a, b) => b[0] - a[0]);
+      baseTopN++; if (arrB[0][1] === 1) baseTopHit++;
+      arrN.sort((a, b) => b[0] - a[0]);
+      nluTopN++; if (arrN[0][1] === 1) nluTopHit++;
     }
   };
 
@@ -78,4 +90,6 @@ const auc = (arr) => {
   return MLP._auc(y, s);
 };
 const baseAuc = auc(baseScores), nluAuc = auc(nluScores);
-console.log(JSON.stringify({ games, baseSamples: baseScores.length, nluSamples: nluScores.length, baseAuc, nluAuc, delta: nluAuc - baseAuc }, null, 2));
+const baseTop1 = baseTopN ? baseTopHit / baseTopN : 0;
+const nluTop1 = nluTopN ? nluTopHit / nluTopN : 0;
+console.log(JSON.stringify({ games, baseSamples: baseScores.length, nluSamples: nluScores.length, baseAuc, nluAuc, delta: nluAuc - baseAuc, baseTop1, nluTop1, top1Delta: nluTop1 - baseTop1, baseTopN, nluTopN }, null, 2));
