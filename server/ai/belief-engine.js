@@ -86,8 +86,15 @@ function onDeath(engine, deadId, by, role, night) {
     // 被刀者非狼（确定性，客观 1.0）——后验清零；死亡身份公开（游戏规则）
     n.posterior = isWolfDead ? 0.999 : 0.001;
     // 灭口验证（1.2）：被刀者=狼灭口的威胁 → 其查杀声明高权重（狼灭口 = 查杀可信）
+    const isSeerClaimant = n.claims.some(c => c.type === 'claim_seer');
     for (const c of n.claims) {
-      if (c.type === 'check_wolf') updatePosterior(engine, c.target, W.killMute);
+      if (c.type === 'check_wolf') {
+        if (isSeerClaimant) { c.verified = true; updatePosterior(engine, c.target, 0.8); } // 跳预者被狼刀 = 真预言家被灭口 → 查杀高度可信
+        else updatePosterior(engine, c.target, W.killMute);
+      }
+      if (c.type === 'check_good') {
+        if (isSeerClaimant) { c.verified = true; updatePosterior(engine, c.target, -0.8); }
+      }
     }
     // 被刀者的投票目标权重提升（客观推断 0.7）
     for (const v of n.votesMade) {
