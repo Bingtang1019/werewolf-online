@@ -1,6 +1,6 @@
 'use strict';
 /* test/lab/scenarios/human-chat.js —— NLU 端到端：真人预言家每天报查验（有/无 NLU 解析对比）
- * 用法：node test/lab/lab.js human-chat --games=200 --cap=12 --counts="wolf=3,seer=1,witch=1,villager=7" [--nlu=0|1]
+ * 用法：node test/lab/lab.js human-chat --games=200 --cap=12 --counts="wolf=3,seer=1,witch=1,villager=7" [--nlu=0|1] [--fake-seer=0|1]
  */
 const path = require('path');
 const Game = require('../../../game.js');
@@ -42,14 +42,28 @@ function injectSeerChat(room, host) {
   }
 }
 
+function injectFakeSeerChat(room, host) {
+  // 找一只狼扮演悍跳预言家，每天对一个好人假查杀（用于训练/评估抗干扰）
+  const fake = room.players.find(p => p.id !== host && (p.role === 'wolf' || p.role === 'wolfBeauty'));
+  if (!fake) return;
+  if (!room._nluInjectedFakeClaims) room._nluInjectedFakeClaims = new Set();
+  const reported = room._nluInjectedFakeClaims;
+  const target = room.players.find(p => p.id !== host && p.id !== fake.id && p.role && p.role !== 'wolf' && p.role !== 'wolfBeauty' && !reported.has('f:' + p.id));
+  if (!target) return;
+  const text = `我是预言家，昨晚查了${target.name}：查杀`;
+  if (process.env.LAB_DEBUG_NLU === '1') console.log('[nlu-debug] inject fake seer claim target=' + target.name);
+  try { Game.handleChat(room.id, fake.id, { ch: 'all', text }, 0); reported.add('f:' + target.id); } catch (e) { /* 注入失败不影响 */ }
+}
+
 function planTasks(cfg) {
   const ROOT = path.resolve(__dirname, '..', '..', '..');
   const out = path.isAbsolute(cfg.out || '') ? cfg.out : path.join(ROOT, cfg.out || 'data/lab-human-chat.jsonl');
   const rec = createRecorder(out);
   const nlu = cfg.nlu !== 0; // --nlu=0 关闭 NLU 注入（对照）
+  const fakeSeer = cfg.fakeSeer === 1; // --fake-seer=1 额外注入狼悍跳假预言家
   let i = -1;
   return {
-    total: cfg.games, rec, out, nlu,
+    total: cfg.games, rec, out, nlu, fakeSeer,
     next() {
       if (++i >= cfg.games) return null;
       const gameId = `hc-${i}`;
@@ -61,16 +75,17 @@ function planTasks(cfg) {
 async function run(cfg) {
   const gen = planTasks(cfg);
   const records = [];
-  const nlu = gen.nlu;
+  const nlu = gen.nlu, fakeSeer = gen.fakeSeer;
+  const onDiscuss = nlu ? (room, host) => { injectSeerChat(room, host); if (fakeSeer) injectFakeSeerChat(room, host); } : null;
   await runPool(cfg.games, cfg.parallel, async (i, seed) => {
-    const r = await runOneLabGame(Object.assign({}, cfg, { hostRole: 'seer', onDiscuss: nlu ? injectSeerChat : null, seed, gameId: `hc-${i}` }));
+    const r = await runOneLabGame(Object.assign({}, cfg, { hostRole: 'seer', onDiscuss, seed, gameId: `hc-${i}` }));
     if (!gen.rec.has(r.gameId)) gen.rec.write(r);
     records.push(r);
     return r;
   }, { seedBase: cfg.seed || 'hc', doneSet: gen.rec, onProgress: (f, t, ms) => process.stderr.write(`\r[lab] ${f}/${t}  (${(ms / 1000).toFixed(0)}s)`) });
   gen.rec.close();
   const s = summarize(records);
-  console.log('\n--- 阵营胜率（NLU=' + (nlu ? 'on' : 'off') + '）---');
+  console.log('\n--- 阵营胜率（NLU=' + (nlu ? 'on' : 'off') + (fakeSeer ? ' + fake-seer' : '') + '）---');
   for (const [c, v] of Object.entries(s.camps)) console.log(`${c.padEnd(6)} ${(v.pct * 100).toFixed(1)}% (${v.wins}/${v.n})  [${(v.ci[0] * 100).toFixed(1)}%, ${(v.ci[1] * 100).toFixed(1)}%]`);
   console.log(`超时 ${s.timeouts} | 错误 ${JSON.stringify(s.errors)} | 平均局时 ${(s.avgDurMs / 1000).toFixed(1)}s`);
 }
