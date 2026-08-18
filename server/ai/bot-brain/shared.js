@@ -3,7 +3,7 @@
 'use strict';
 /* v1.6.4（A5-1/A2-5）：统一置信度入口 + 发言语料库（组合式生成）——C1 意图层未来只消费这两处 */
 const { confidenceOf } = require('../confidence.js');
-const { getVoteModel, getVoteModelV2, modelProb } = require('../model-loader.js');
+const { getVoteModel, getVoteModelV1, getVoteModelV2, modelProb } = require('../model-loader.js');
 const { buildRoomVoteState, voteFeatures13 } = require('../vote-state.js'); // 1.8.0（P1）：投票轮级快照——房间级特征构造一次，决策 O(1) 查表（架构革命 ①）
 let _getBeliefsRef = null; // 1.7.18：belief-engine 懒预加载（TDZ 修复——getBeliefs 仅供 beliefFeatures25 运行时使用，模块级缓存避免函数内局部 require 的初始化时序问题）
 const _belMod = require('../belief-engine.js');
@@ -250,7 +250,7 @@ const LEVEL_MAP = { easy: 'smart', smart: 'simulate', simulate: 'simulate_v2' };
 const ctx = {};
 function register(name, fn) { ctx[name] = fn; }
 // 共享状态对象（跨模块变量访问——其他模块通过 S.xxx 读写）
-const S = { _getBeliefsRef, _belMod, LEXICON, CUR_RNG, fs, path, _vModel, _wolfGodModel, wolfKillDecide, loadWolfWinModel, wolfWinDecide, confidenceOf, getVoteModel, getVoteModelV2, modelProb, buildRoomVoteState, voteFeatures13, voteFeatures, rolloutVote, piVote, decideVote, decideNightKill, createRng, TALK_FLAVOR, TALK_PRESSURE, TALK_DEBATE_SEER, TALK_DEBATE_WOLF, TALK_WOLF_NIGHT, TALK_LAST_PLAIN, EVIDENCE, TRANSFER_5, LEVEL_MAP };
+const S = { _getBeliefsRef, _belMod, LEXICON, CUR_RNG, fs, path, _vModel, _wolfGodModel, wolfKillDecide, loadWolfWinModel, wolfWinDecide, confidenceOf, getVoteModel, getVoteModelV1, getVoteModelV2, modelProb, buildRoomVoteState, voteFeatures13, voteFeatures, rolloutVote, piVote, decideVote, decideNightKill, createRng, TALK_FLAVOR, TALK_PRESSURE, TALK_DEBATE_SEER, TALK_DEBATE_WOLF, TALK_WOLF_NIGHT, TALK_LAST_PLAIN, EVIDENCE, TRANSFER_5, LEVEL_MAP };
 module.exports = { ctx, register, S };
 // 导出 shared 区函数（供 index.js 注册到 ctx）
 module.exports.sharedFns = { rng, getValueModelForBot, loadWolfGodModel, loadWolfWinModel, wolfWinDecide, buildWolfKillWorld, byId, effRole, isWolfRole, campOf, factionOf, loverPartner, isCheckedTarget, randInt, pick, pickId, nameById, shuffle, alivePlayers, aliveOthers, getWolfCount, extractTarget };
