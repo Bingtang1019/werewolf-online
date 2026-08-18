@@ -71,11 +71,11 @@ async function night1(room, host, killTarget, isSeerBot) {
 
 /* 推进到白天讨论（morning/lastword 由房主强推） */
 async function toDiscuss(room, host) {
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 20; i++) {
     const v = await st(room, host);
     if (v.phase === 'discuss') return v;
-    if (v.phase === 'morning' || v.phase === 'lastword' || v.phase === 'handover') { try { await advance(room, host); } catch (e) {} await sleep(400); }
-    else await sleep(500);
+    if (v.phase === 'morning' || v.phase === 'lastword' || v.phase === 'handover') { try { await advance(room, host); } catch (e) {} await sleep(300); }
+    else await sleep(400);
   }
   throw new Error('等待超时:到达白天发言');
 }

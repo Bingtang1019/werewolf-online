@@ -53,7 +53,7 @@ function walkJs(dir, base, acc) {
 function collect(scope) {
   const acc = [];
   if (scope === 'core') {
-    for (const f of ['server.js', 'game.js', 'loverCore.js', 'bot-brain.js', 'public/sw.js']) {
+    for (const f of ['server.js', 'game.js', 'loverCore.js', 'bot-brain.js', 'public/sw.js', 'server/ai/belief-engine.js', 'server/ai/nlu-claims.js', 'server/ai/nlu-intent.js']) {
       if (fs.existsSync(path.join(root, f))) acc.push(f);
     }
     for (const dir of ['server/game', 'server/ai/bot-brain']) {
