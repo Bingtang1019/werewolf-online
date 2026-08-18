@@ -4,7 +4,11 @@
   "description": "狼人杀在线版（零依赖 Node.js，无数据库）",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "selfcheck": "node tools/selfcheck.js",
+    "test": "node tools/parallel-tests.js",
+    "nlu:eval": "node tools/ai/eval-nlu-claims.js --records=data/records-selfplay-eps.jsonl",
+    "nlu:eval:fake": "node tools/ai/eval-nlu-claims.js --records=data/records-selfplay-eps.jsonl --fake-seer=1"
   },
   "engines": {
     "node": ">=18"
