@@ -48,6 +48,18 @@ function decideCupidPick(room, bot) {
 
   // 首夜：无信息，保持“不连自己”的随机策略（CUPID_ALLOW_SELF=1 可恢复旧行为）
   if (nightNum === 1) {
+    // 上限实验（CUPID_ORACLE_MIXED=1，仅测理论极限，非生产策略）：直接连一狼一好人
+    if (process.env.CUPID_ORACLE_MIXED === '1') {
+      const wolves = aliveOthers.filter(p => ctx.isWolfRole(p));
+      const goods = aliveOthers.filter(p => !ctx.isWolfRole(p));
+      if (wolves.length && goods.length) {
+        const a = ctx.pick(wolves);
+        const b = ctx.pick(goods);
+        const data = { ids: [a.id, b.id] };
+        if (room.loverMode === 'v2') data.power = 'vengeance';
+        return { action: 'cupid_pick', data };
+      }
+    }
     const allowSelf = process.env.CUPID_ALLOW_SELF === '1';
     const pool = allowSelf ? ctx.alivePlayers(room) : aliveOthers;
     if (pool.length < 2) return null;

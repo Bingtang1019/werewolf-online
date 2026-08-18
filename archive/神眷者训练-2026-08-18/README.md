@@ -54,7 +54,8 @@
 - 标准预设实测：
   - 仅丘比特不连自己：**0%**（1800 局）
   - + 智能重选：**1.3%**（23/1800，CI 约 1%–2%）
-  - 其余实验（THIRD_TRAIN/AGGRESSION、THIRD_NO_ROLLOUT、CUPID_REPICK_SELF、CUPID_SABOTAGE）均未超过该值。
+  - 其余实验（THIRD_TRAIN/AGGRESSION、THIRD_NO_ROLLOUT、CUPID_REPICK_SELF、CUPID_SABOTAGE、loverMode=v2、FAVENS）均未超过该值。
+  - **上限实验（CUPID_ORACLE_MIXED=1，首夜直接连一狼一好人）**：仅 **0.6%**（10/1800）——说明“让神眷者必然出现”并不能提高胜率，反而因狼队少一狼而更早结束；标准规则下 20% 几乎不可能。
 
 ## 当前神眷者阵营强度判断
 - 在 **4 人单狼小配置**（预言家/猎人/平民作第四人）下，当前神眷者策略可达 **~33%**，已超过 20% 目标；若第四人是女巫则约 18.2%（女巫救人/毒药会压低速胜率）。
