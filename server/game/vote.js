@@ -183,6 +183,18 @@ function checkWin(room) {
     ctx.bump(room);
     return room.winner;
   }
+  // 1.8.x 规则扩展（thirdWinMode='majority'）：神眷者存活人数 ≥ 非神眷者存活人数时优先获胜
+  if (room.settings.thirdWinMode === 'majority' && third.length) {
+    const thirdAlive = third.filter(id => { const q = ctx.byId(room, id); return q && q.alive; }).length;
+    const nonThirdAlive = alive.filter(p => !third.includes(p.id)).length;
+    if (thirdAlive > 0 && thirdAlive >= nonThirdAlive) {
+      room.winner = 'third';
+      room.endInfo = { winner: 'third', text: '神眷者阵营获胜（多数存活）', roles: endRoles() };
+      room.phase = 'ended';
+      ctx.bump(room);
+      return room.winner;
+    }
+  }
   const isThird = id => third.includes(id);
   // 狼人阵营 / 好人阵营（均剔除第三方成员；第三方默认输，除非活到最后）
   const goodCamp = alive.filter(p => ctx.campOf(room, p) === 'good' && !isThird(p.id));
