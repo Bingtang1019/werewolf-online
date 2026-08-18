@@ -157,11 +157,17 @@ function buildVoteWorld(room, bot) {
   })();
   if (process.env.LAB_AUDIT_VOTE === '1') global._voteAuditSeq = (global._voteAuditSeq || 0) + 1; // 1.7.15：审计——每次投票决策一个时刻 id
   const useModel = (process.env.VOTE_MODEL_MODE || 'adaboost') !== 'heuristic' && !!model && ctx.factionOf(room, bot) === 'good'; // 默认 adaboost 重训模型（VOTE_MODEL_MODE=v2/v3 可回退）
+  // 1.8.0（NLU 端到端实验）：LAB_USE_BELIEF_ENGINE=1 时把中央信念引擎后验直接混入嫌疑分（默认关）
+  const engBeliefs = process.env.LAB_USE_BELIEF_ENGINE === '1' && room._beliefEngine ? S._getBeliefsRef(room._beliefEngine) : null;
   const scores = {};
   let wbCur = null; // 1.7.18+：候选循环内 wb 的审计快照（LAB_AUDIT_VOTE=1 埋点用）
   for (const p of room.players) {
     if (p.id === bot.id || !p.alive) continue;
     let s = beliefs[p.id] ? beliefs[p.id].wolf : Math.min(1, (suspicion[p.id] || 0) / 100); // smart/simulate 用信念，easy 用关键词嫌疑（归一化到 0..1）
+    if (engBeliefs) {
+      const ep = engBeliefs.posterior[p.id] != null ? engBeliefs.posterior[p.id] : 0.5;
+      s = 0.5 * s + 0.5 * ep; // 实验：中央信念与 botMemory 信念各半
+    }
     // 1.7.0（B1-4）：每轮投票前动态似然——模型 P(wolf) 混合（0.6 信念 + 0.4 模型；不改 beliefs 防累积饱和）
     let f = null, mp = null;
     if (useModel) {

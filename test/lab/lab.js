@@ -25,6 +25,7 @@ const scenarios = {
   matrix: require('./scenarios/matrix'), // v1.7.6 第二部分：配置矩阵扫描
   balance: require('./scenarios/balance'), // v1.7.6：预设+随机比例预测（第三方胜率）
   pool: require('./scenarios/pool'), // v1.7.9：固定 seed 池配对（β 方法论——Δ 与配对 CI，配对分析见 stats/pool-report.js）
+  'human-chat': require('./scenarios/human-chat'), // 1.8.0：NLU 端到端（真人预言家报查验 on/off）
 };
 async function main() {
   const raw = process.argv[2];
