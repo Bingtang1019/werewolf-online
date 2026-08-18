@@ -9,7 +9,7 @@ const path = require('path');
 const { FEATURE_NAMES } = require('./features.js'); // 1.7.3（P1-1）：特征数量/名称联动校验（features.js 无副作用依赖，require 安全）
 const MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v1.json');
 const V2_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v2.json');
-const V3_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v3-v2.json'); // 1.7.18+：vote-v3 干净数据重训版（v3-25d 脏数据退役，见模型卡二十四节）
+const V3_MODEL_PATH = process.env.V3_MODEL_PATH || path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v3-v2.json'); // 1.7.18+：vote-v3 干净数据重训版（v3-25d 脏数据退役，见模型卡二十四节）；V3_MODEL_PATH 可覆盖（NLU 重训实验）
 const V4_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v4.json'); // 1.7.18+：vote-v4 蒸馏版（MLP，25d AdaBoost → 概率输出）
 /* 1.7.18+：回退链（三级）——v3 → v2 → v1+iso过渡 → v1原始 → heuristic（null）
  * VOTE_MODEL_MODE: v3（1.7.18+ 生产默认，干净数据版 v3v2）| v2（env 一键回退）| adaboost（v1+iso过渡）| heuristic（纯信念，最后保底） */
