@@ -43,11 +43,12 @@
 
 ## 4. 最终结论（2026-08-19 生产化已通过）
 - 使用 `tools/ai/nlu-retrain-pipeline.js` 在**真实预言家（非 fake）** 12 人局上重训 v3-NLU 投票模型：
-  `models/adaboost-vote-v3-nlu-prod.json`（val AUC 0.7628 / test AUC 0.7440）。
-- 同 seed 配对 300 局：
-  - NLU off（同模型无注入）：好人 18.3%
-  - NLU on（真人预言家注入）：好人 36.0%
-  - McNemar 翻盘对 87:34，χ²=22.35，**p<0.0001，显著正向**。
+  - `models/adaboost-vote-v3-nlu-prod.json`（300 局，val AUC 0.7628 / test AUC 0.7440）
+  - `models/adaboost-vote-v3-nlu-prod2.json`（400 局，val AUC 0.6943 / test AUC 0.6973，**当前生产默认**）
+- 同 seed 配对验证：
+  - 300 局：on 36.0% vs off 18.3%，χ²=22.35，**p<0.0001**
+  - 400 局（固定验收）：on 36.8% vs off 26.5%，Δ=+10.3pp，χ²=9.36，**通过**
+- `tools/ai/nlu-retrain-pipeline.js` 已内置固定验收：同 seed 配对要求 Δ>0 且 McNemar χ²>3.841（p<0.05），不通过则退出非零。
 - 生产化方式：
   - `NLU_VOTE` 默认开启（`NLU_VOTE=0` 可关闭）；
   - **仅 12 人及以上且含人类玩家的房间**使用 NLU 模型，避免小配置/全 bot 房间失衡；

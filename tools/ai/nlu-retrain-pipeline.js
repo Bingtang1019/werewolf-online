@@ -8,6 +8,7 @@
  *     --eval-games=200 --blend=0.5
  */
 const { spawnSync } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 const root = path.resolve(__dirname, '..', '..');
 const get = (k, d) => { const eq = process.argv.find(a => a.startsWith('--' + k + '=')); return eq ? eq.slice(k.length + 3) : d; };
@@ -44,4 +45,29 @@ console.log(`[4/4] 评估（blend=${blend}）...`);
 const evalEnv = { VOTE_MODEL_MODE: 'v3', V3_MODEL_PATH: outModel, LAB_V3_BLEND: String(blend) };
 runNode(['test/lab/lab.js', 'human-chat', `--games=${evalGames}`, `--cap=${cap}`, `--counts=${counts}`, '--parallel=8', '--nlu=1', `--fake-seer=${fakeSeer ? '1' : '0'}`, `--out=${prefix}-eval-on.jsonl`], evalEnv);
 runNode(['test/lab/lab.js', 'human-chat', `--games=${evalGames}`, `--cap=${cap}`, `--counts=${counts}`, '--parallel=8', '--nlu=0', '--fake-seer=0', `--out=${prefix}-eval-off.jsonl`], evalEnv);
-console.log('\n=== C 完成 ===');
+
+console.log(`[5/5] 固定验收：同 seed 配对 + McNemar（Δ>0 且 χ²>3.841，即 p<0.05）...`);
+const readRec = f => fs.readFileSync(f, 'utf8').trim().split(/\r?\n/).filter(Boolean).map(l => JSON.parse(l));
+const onRecs = readRec(`${prefix}-eval-on.jsonl`);
+const offRecs = readRec(`${prefix}-eval-off.jsonl`);
+const onMap = new Map(onRecs.map(r => [r.seed, r.result.winner]));
+const offMap = new Map(offRecs.map(r => [r.seed, r.result.winner]));
+let onGood = 0, offGood = 0, same = 0, mAB = 0, mBA = 0;
+for (const [seed, w] of onMap) {
+  const wo = offMap.get(seed);
+  if (wo === w) same++;
+  else if (w === 'good' && wo === 'wolf') mAB++;
+  else if (w === 'wolf' && wo === 'good') mBA++;
+  if (w === 'good') onGood++;
+  if (wo === 'good') offGood++;
+}
+const n = onMap.size;
+const chi = mAB + mBA ? Math.pow(Math.abs(mAB - mBA) - 1, 2) / (mAB + mBA) : 0;
+const delta = onGood - offGood;
+const pass = delta > 0 && chi > 3.841;
+console.log(JSON.stringify({ n, onGood, offGood, delta, same, mAB, mBA, chi, pass }, null, 2));
+if (!pass) {
+  console.error('[nlu-pipeline] 验收未通过：需要同 seed 配对 Δ>0 且 McNemar χ²>3.841（p<0.05）');
+  process.exit(1);
+}
+console.log('\n=== C 完成（验收通过）===');
