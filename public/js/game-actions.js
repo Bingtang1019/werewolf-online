@@ -127,6 +127,7 @@ function countChange(key, delta) {
 function onSetting(key, val) { act('settings', { [key]: val }); }
 
 function onWinMode(v) { act('settings', { winMode: v }); }
+function onThirdWinMode(v) { act('settings', { thirdWinMode: v }); }
 
 function onTieRule(v) { act('settings', { tieRule: v }); }
 

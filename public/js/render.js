@@ -354,6 +354,10 @@ function renderLobby() {
         <label><input type="radio" name="tie" value="none" ${view.settings.tieRule === 'none' ? 'checked' : ''} data-tierule="none"> 平票无人出局</label>
       </div>
       <div class="radio-row" style="margin-top:6px">
+        <label><input type="radio" name="thirdwin" value="majority" ${view.settings.thirdWinMode !== 'classic' ? 'checked' : ''} data-thirdwin="majority"> 神眷者多数存活</label>
+        <label><input type="radio" name="thirdwin" value="classic" ${view.settings.thirdWinMode === 'classic' ? 'checked' : ''} data-thirdwin="classic"> 神眷者经典</label>
+      </div>
+      <div class="radio-row" style="margin-top:6px">
         <label><input type="checkbox" ${view.settings.thief ? 'checked' : ''} data-thief="1"> 🃏 盗贼玩法（身份牌总数须比人数多 1）</label>
       </div>
       <div class="tip-text">开启后：随机一名玩家为盗贼，从两张身份牌中择一（有狼必选狼），另一张作废。</div></div>`;

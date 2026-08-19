@@ -72,6 +72,8 @@ document.addEventListener('change', e => {
   }
   const wm = e.target.closest('[data-winmode]');
   if (wm) { onWinMode(wm.dataset.winmode); return; }
+  const tw = e.target.closest('[data-thirdwin]');
+  if (tw) { onThirdWinMode(tw.dataset.thirdwin); return; }
   const tr = e.target.closest('[data-tierule]');
   if (tr) { onTieRule(tr.dataset.tierule); return; }
   const th = e.target.closest('[data-thief]');
