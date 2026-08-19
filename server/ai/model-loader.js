@@ -10,7 +10,7 @@ const { FEATURE_NAMES } = require('./features.js'); // 1.7.3（P1-1）：特征�
 const MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v1.json');
 const V2_MODEL_PATH = path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v2.json');
 const NLU_ENABLED = process.env.NLU_VOTE !== '0'; // 1.8.x：NLU 默认生产开启，NLU_VOTE=0 可关闭
-const V3_NLU_MODEL_PATH = process.env.V3_MODEL_PATH || path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v3-nlu-prod.json'); // 1.8.x：NLU 生产模型（真实预言家重训）
+const V3_NLU_MODEL_PATH = process.env.V3_MODEL_PATH || path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v3-nlu-prod2.json'); // 1.8.x：NLU 生产模型（真实预言家重训，400 局固定验收通过）
 const V3_CLASSIC_MODEL_PATH = process.env.V3_MODEL_PATH || path.join(__dirname, '..', '..', 'models', 'adaboost-vote-v3-v2.json'); // 1.7.18+：vote-v3 干净数据重训版
 /* 1.8.x：NLU 模型只用于有人类玩家的房间（真人聊天可被 NLU 抽取）；全 bot 房间走经典模型，避免 bot-only 失衡 */
 function isNluRoom(room) {
