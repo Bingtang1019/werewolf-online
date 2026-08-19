@@ -207,10 +207,10 @@ function decisionSmart(room, bot) {
     // v1.6.4（A2-4）：低置信波动（smart 信息多通常置信高，波动小；被公开查杀目标不波动；卖狼=明确策略不波动）
     if (target) {
       const conf = S.confidenceOf(room, bot, target); // 1.7.3（F2）：Platt 派生置信度优先
-      if (target !== world.sellTarget && !ctx.isCheckedTarget(room, ctx.byId(room, target)) && conf < 0.55 && ctx.rng().next() < (0.55 - conf)) {
-        // 1.7.3（F5）：波动有界（A5-2 定稿）——只允许偏移到分数 top3
+      if (process.env.LAB_NO_CHAOS !== '1' && target !== world.sellTarget && !ctx.isCheckedTarget(room, ctx.byId(room, target)) && conf < 0.55 && ctx.rng().next() < (0.55 - conf)) {
+        // 1.7.3（F5）：波动有界（A5-2 定稿）——只允许偏移到分数 top3；C1-5② 狼不因上头投狼队友
         const ranked = ctx.aliveOthers(room, bot).map(q => ({ q, s: world.scores[q.id] || 0.5 })).sort((a, b) => b.s - a.s).slice(0, 3);
-        const pool = ranked.map(x => x.q).filter(q => q.id !== target && !(lp && !lp.isWolf && q.id === lp.id));
+        const pool = ranked.map(x => x.q).filter(q => q.id !== target && !(lp && !lp.isWolf && q.id === lp.id) && !(ctx.campOf(bot) === 'wolf' && ctx.campOf(q) === 'wolf'));
         const other = ctx.pick(pool);
         if (other) target = other.id;
       }

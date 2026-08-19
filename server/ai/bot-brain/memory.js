@@ -179,10 +179,10 @@ function decisionEasy(room, bot) {
     // v1.6.4（A2-4）：不确定性表达——置信度低时小概率偏离最优（随机/跟风），高置信才准；被公开查杀/卖狼目标不波动
     if (t) {
       const conf = S.confidenceOf(room, bot, t.id); // 1.7.3（F2）：Platt 派生置信度优先
-      if (t.id !== world.sellTarget && !ctx.isCheckedTarget(room, t) && conf < 0.6 && ctx.rng().next() < (0.6 - conf)) {
-        // 1.7.3（F5）：波动有界（A5-2 定稿）——只允许偏移到分数 top3，避免“上头投 rank 12”
+      if (process.env.LAB_NO_CHAOS !== '1' && t.id !== world.sellTarget && !ctx.isCheckedTarget(room, t) && conf < 0.6 && ctx.rng().next() < (0.6 - conf)) {
+        // 1.7.3（F5）：波动有界（A5-2 定稿）——只允许偏移到分数 top3，避免“上头投 rank 12”；C1-5② 狼不投狼队友
         const ranked = ctx.aliveOthers(room, bot).map(q => ({ q, s: world.scores[q.id] || 0.5 })).sort((a, b) => b.s - a.s).slice(0, 3);
-        const pool = ranked.map(x => x.q).filter(q => q.id !== t.id && !(lp && !lp.isWolf && q.id === lp.id));
+        const pool = ranked.map(x => x.q).filter(q => q.id !== t.id && !(lp && !lp.isWolf && q.id === lp.id) && !(ctx.campOf(bot) === 'wolf' && ctx.campOf(q) === 'wolf'));
         const other = ctx.pick(pool) || t;
         t = other;
       }
