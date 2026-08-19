@@ -204,6 +204,7 @@ function init() {
   if (bOff) bOff.addEventListener('click', openOfflineSetup);
   const offStart = $('off-start'); if (offStart) offStart.addEventListener('click', startOfflineSetup);
   const offCancel = $('off-cancel'); if (offCancel) offCancel.addEventListener('click', closeOfflineSetup);
+  const offCap = $('off-cap'); if (offCap) offCap.addEventListener('change', refreshOfflineCounts);
   $('btn-join-go').addEventListener('click', joinRoom);
   const ccp = $('btn-copy-code');
   if (ccp) ccp.addEventListener('click', copyInvite); // v1.3.0：创建大卡复制邀请链接（原复制房号）

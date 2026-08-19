@@ -330,7 +330,18 @@ document.addEventListener('click', e => {
 
 /* ---------------------------- 首页（v1.2.0） ---------------------------- */
 /* 离线模式（v1.4.1 → C3 增强）：先打开设置弹窗，再按选项建房 + 自动加满人机，单机陪练 */
+function offlineDefaultCounts(cap) {
+  const wolf = cap >= 14 ? 4 : cap >= 9 ? 3 : cap >= 5 ? 2 : 1;
+  const witch = cap >= 5 ? 1 : 0;
+  return { wolf, seer: 1, witch, hunter: 0, guard: 0, dreamer: 0, wolfBeauty: 0, cupid: 0, villager: cap - wolf - 1 - witch };
+}
+function refreshOfflineCounts() {
+  const cap = parseInt(($('off-cap') && $('off-cap').value) || '6', 10) || 6;
+  const c = offlineDefaultCounts(cap);
+  for (const k of Object.keys(c)) { const el = $('off-count-' + k); if (el) el.value = c[k]; }
+}
 function openOfflineSetup() {
+  refreshOfflineCounts();
   const m = $('offline-modal');
   if (m) m.classList.remove('hidden');
 }
@@ -345,10 +356,15 @@ async function startOfflineSetup() {
   const thirdWinMode = ($('off-thirdwin') && $('off-thirdwin').value) || 'majority';
   const sheriff = !!($('off-sheriff') && $('off-sheriff').checked);
   const thief = !!($('off-thief') && $('off-thief').checked);
+  const counts = {};
+  for (const k of ['wolf', 'seer', 'witch', 'hunter', 'guard', 'dreamer', 'wolfBeauty', 'cupid', 'villager']) {
+    const el = $('off-count-' + k);
+    counts[k] = el ? (parseInt(el.value, 10) || 0) : 0;
+  }
   closeOfflineSetup();
-  await launchOffline(cap, level, winMode, sheriff, thief, thirdWinMode);
+  await launchOffline(cap, level, winMode, sheriff, thief, thirdWinMode, counts);
 }
-async function launchOffline(cap, level, winMode, sheriff, thief, thirdWinMode) {
+async function launchOffline(cap, level, winMode, sheriff, thief, thirdWinMode, counts) {
   if (!$('home') || $('home').classList.contains('hidden')) return;
   const name = nickValue();
   const r = await api('api/create', { name, deviceId: deviceId(), offline: true });
@@ -360,6 +376,7 @@ async function launchOffline(cap, level, winMode, sheriff, thief, thirdWinMode) 
     if (br.error) break;
   }
   await api('api/action', { room, token, action: 'setCap', data: { cap } });
+  if (counts) await api('api/action', { room, token, action: 'setCounts', data: { counts } });
   await api('api/action', { room, token, action: 'settings', data: { sheriff, thief, winMode, thirdWinMode } });
   localStorage.lwName = name;
   localStorage.lwRoom = room;

@@ -4,7 +4,8 @@
 - [x] 混沌层强化：`CHAOS_STRENGTH` / `CHAOS_THRESHOLD` 可调，600 局 A/B 影响约 -4.5pp
 - [x] 第三方意图层：丘比特/好恋人/狼恋人白天使用 `third_balance` / `third_protect` / `third_confuse`
 - [x] 神眷者胜利规则 UI：在线房间设置 + 离线模式均可切换 `majority` / `classic`
-- [ ] 离线模式补全：身份增减（roleCounts）与作弊模式开关（部分已有）
+- [x] 离线模式补全：身份增减（roleCounts）已实现；作弊模式开关沿用房主自选身份路径（部分已有）
+- [x] 1000 局平衡回归（12p wolf3/seer1/witch1/villager7）：狼 59.5% / 好 40.5%
 - [ ] 真人局 A2-6 聊天/UI 体验优化（快捷发言、状态展示）
 - [ ] 1000 局平衡回归 + 真人试玩反馈
 

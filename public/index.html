@@ -99,6 +99,21 @@
     </label>
     <label class="off-row"><input type="checkbox" id="off-sheriff" checked> 警长竞选</label>
     <label class="off-row"><input type="checkbox" id="off-thief"> 盗贼玩法</label>
+    <details class="off-row">
+      <summary>职业配置（可选，默认按人数自动生成）</summary>
+      <div class="off-counts">
+        <label>狼人 <input type="number" id="off-count-wolf" min="0" value="2"></label>
+        <label>预言家 <input type="number" id="off-count-seer" min="0" value="1"></label>
+        <label>女巫 <input type="number" id="off-count-witch" min="0" value="1"></label>
+        <label>猎人 <input type="number" id="off-count-hunter" min="0" value="0"></label>
+        <label>守卫 <input type="number" id="off-count-guard" min="0" value="0"></label>
+        <label>摄梦人 <input type="number" id="off-count-dreamer" min="0" value="0"></label>
+        <label>狼美人 <input type="number" id="off-count-wolfBeauty" min="0" value="0"></label>
+        <label>丘比特 <input type="number" id="off-count-cupid" min="0" value="0"></label>
+        <label>平民 <input type="number" id="off-count-villager" min="0" value="3"></label>
+      </div>
+      <div class="tip-text">总和须等于人数；留空/非法时使用默认配置。</div>
+    </details>
     <label class="off-row"><input type="checkbox" id="off-cheat"> 作弊模式（房主自选身份）</label>
     <div class="modal-actions">
       <button id="off-start" class="primary">开始</button>
