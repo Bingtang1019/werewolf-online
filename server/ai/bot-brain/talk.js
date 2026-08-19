@@ -48,6 +48,26 @@ function pressureTarget(room, bot, level, threshold) {
   return top ? ctx.byId(room, top.id) : null;
 }
 
+/* 1.8.x 第三方意图：神眷者（丘比特/好恋人/狼恋人）白天按第三方目标发言——保自己人、搅局平衡、迷惑 */
+function classifyThirdTalk(room, bot, level, mem, lp) {
+  if (ctx.factionOf(room, bot) !== 'third') return null;
+  const protectIds = [];
+  if (lp) protectIds.push(lp.id);
+  const cup = room.players.find(q => q.alive && ctx.effRole(q) === 'cupid');
+  if (cup && cup.id !== bot.id && ctx.factionOf(room, cup) === 'third') protectIds.push(cup.id);
+  for (const pid of protectIds) {
+    const p = ctx.byId(room, pid);
+    if (p && p.alive && (mem.suspicion || {})[pid] > 30) return { intent: 'third_protect', params: { name: p.name }, fallback: '先别怀疑' + p.name + '，我了解' + p.name + '，不是狼' };
+  }
+  const targetId = ctx.smartVoteTarget(room, bot);
+  const target = targetId ? ctx.byId(room, targetId) : null;
+  if (target && target.id !== bot.id && !protectIds.includes(target.id) && ctx.rng().next() < 0.6) {
+    return { intent: 'third_balance', params: { name: target.name }, fallback: '我觉得' + target.name + '今天太跳了，先出他' };
+  }
+  if (ctx.rng().next() < 0.3) return { intent: 'third_confuse', fallback: '信息太乱了，先别急着站边' };
+  return null;
+}
+
 /* C1-2 犹豫：信念越散（suspicion 分布越均匀）越容易说“我再想想/不好说” */
 function beliefEntropy(room, bot, mem) {
   const scores = ctx.aliveOthers(room, bot).map(p => Math.max(0, (mem.suspicion || {})[p.id] || 0));
@@ -78,6 +98,11 @@ function classifyMainTalk(room, bot, level, mem, myRole, isWolf, lp) {
       ]) };
     }
     return null;
+  }
+  // 1.8.x 第三方意图：丘比特/好恋人/狼恋人白天都走第三方发言（保人/搅局/迷惑）
+  if (ctx.factionOf(room, bot) === 'third') {
+    const t3 = classifyThirdTalk(room, bot, level, mem, lp);
+    if (t3) return t3;
   }
   // 狼恋人辩护（主发言首个窗口）
   if (isWolf && lp && !lp.isWolf) {
@@ -196,6 +221,11 @@ function classifyReplyTalk(room, bot, level, mem, myRole, isWolf, lp) {
     if (myRole === 'dreamer') return { text: '我是摄梦人，投我我就带走一个，你们想清楚' };
     const cc = claimers.length ? claimers[0].name : '查杀我的人';
     return { text: '我是平民，投我不亏但浪费轮次，建议先出' + cc };
+  }
+  // 1.8.x 第三方意图：次发言也走第三方搅局/保人
+  if (ctx.factionOf(room, bot) === 'third') {
+    const t3 = classifyThirdTalk(room, bot, level, mem, lp);
+    if (t3) return t3;
   }
   const lv = room.lastVoteResult;
   const wasVoted = lv && lv.totals && lv.totals[bot.id];

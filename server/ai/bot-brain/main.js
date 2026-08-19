@@ -6,6 +6,10 @@ const register = shared.register;
 const S = shared.S;
 const cupidPick = require('./cupid');
 
+/* 1.8.x 混沌强化：CHAOS_STRENGTH 控制触发强度，CHAOS_THRESHOLD 提高可触发置信区间 */
+const CHAOS_STRENGTH = process.env.CHAOS_STRENGTH != null ? parseFloat(process.env.CHAOS_STRENGTH) : 0.6;
+const CHAOS_THRESHOLD = process.env.CHAOS_THRESHOLD != null ? parseFloat(process.env.CHAOS_THRESHOLD) : 0.8;
+
 function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRollout=true → 叠加 rollout 规划层（新 simulate 档）
   ctx.updateSmartMemory(room, bot);
   ctx.initAttitudes5(room, bot);
@@ -99,7 +103,7 @@ function decisionSimulateV2(room, bot, useRollout) { // 1.7.0（B1-5）：useRol
     // v1.6.4（A2-4）：低置信波动（simulate 证据更足通常更稳；被公开查杀目标不波动；卖狼不波动）
     if (vote) {
       const conf = S.confidenceOf(room, bot, vote.id); // 1.7.3（F2）：Platt 派生置信度优先
-      if (process.env.LAB_NO_CHAOS !== '1' && vote.id !== world.sellTarget && !ctx.isCheckedTarget(room, vote) && conf < 0.55 && ctx.rng().next() < (0.55 - conf)) {
+      if (process.env.LAB_NO_CHAOS !== '1' && vote.id !== world.sellTarget && !ctx.isCheckedTarget(room, vote) && conf < CHAOS_THRESHOLD && ctx.rng().next() < ((CHAOS_THRESHOLD - conf) * CHAOS_STRENGTH + 0.02)) {
         // 1.7.3（F5）：波动有界（A5-2 定稿）——只允许偏移到候选分数 top3；C1-5② 狼不因上头投狼队友
         const ranked = state.map(id => ({ q: ctx.byId(room, id), s: world.scores[id] || 0.5 })).filter(x => x.q).sort((a, b) => b.s - a.s).slice(0, 3);
         const pool2 = ranked.map(x => x.q).filter(q => q.id !== vote.id && !(lp && !lp.isWolf && q.id === lp.id) && !(ctx.campOf(bot) === 'wolf' && ctx.campOf(q) === 'wolf'));
