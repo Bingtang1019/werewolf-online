@@ -792,6 +792,8 @@ async function scenario6() {
   assert(!cupidV.myLover, '丘比特不知道情侣身份（无 myLover 信息）');
   // v1.7.6（丘比特规则补足）：丘比特可得知自己当前阵营——人狼恋 = 第三方
   assert(cupidV.my.camp === '神眷者', '丘比特应知自己为神眷者（v1.7.6：丘比特可知当前阵营，人狼恋=神眷者）');
+  // 1.8.x（丘比特削弱）：丘比特不可见情侣频道
+  assert(!cupidV.myChannels.includes('lover'), '丘比特不可见情侣频道（1.8.x 削弱）');
   // 狼人杀 v2，女巫救 → 平安夜；预言家查验
   for (const w of wolves) { await act(room, w, 'wolf_set', { kill: v2 }); await act(room, w, 'wolf_set', { confirm: true }); }
 
@@ -804,6 +806,8 @@ async function scenario6() {
   assert(r1.ok, '夜晚：狼人私聊可用');
   const r2 = await api('/api/chat', { room, me: v1, data: { ch: 'lover', text: '我是你情侣' } });
   assert(r2.ok, '夜晚：情侣私聊可用');
+  const rCupidLover = await api('/api/chat', { room, me: cupid, data: { ch: 'lover', text: '我也看看' } });
+  assert(!!rCupidLover.error, '丘比特不能进情侣频道发言（1.8.x 削弱）');
   const rAll = await api('/api/chat', { room, me: A.playerId, data: { ch: 'all', text: '测试' } });
   assert(!!rAll.error, '夜晚：全体频道关闭');
 

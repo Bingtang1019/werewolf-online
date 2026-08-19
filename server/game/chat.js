@@ -13,24 +13,22 @@ function addMessage(room, p, ch, text, marker, claim) {
   room.messages.push({ id: ctx.uid(), ch, from: p ? p.id : null, name: p ? p.name : '系统', text, marker: marker || null, ts, day: room.dayNum, night: room.nightNum, claim: claim || null }); // V5.1：结构化声明随消息
   if (room.messages.length > 500) room.messages.splice(0, room.messages.length - 500);
 }
-/* v1.7.6（丘比特规则补足）：情侣频道成员 = 情侣两人 + 丘比特（丘比特知情侣，可在情侣频道发言） */
+/* 1.8.x（丘比特削弱）：情侣频道仅情侣两人可见；丘比特知情侣身份但不能看/进情侣频道 */
 function isLoverParty(room, id) {
   if (!id || !room) return false;
-  if (room.lovers && room.lovers.includes(id)) return true;
-  const cupid = ctx.rolePlayer(room, 'cupid');
-  return cupid && cupid.id === id;
+  return !!(room.lovers && room.lovers.includes(id));
 }
 function chatAccess(room, p, ch) {
   if (ch === 'all') return room.phase !== 'night'; // 全体频道夜间关闭
   if (ch === 'wolf') return p && ctx.isWolfRole(p) && room.phase === 'night'; // 狼人频道仅夜晚开放
-  if (ch === 'lover') return p && isLoverParty(room, p.id); // 情侣频道全天开放（含丘比特）
+  if (ch === 'lover') return p && isLoverParty(room, p.id); // 情侣频道全天开放（仅情侣两人）
   return false;
 }
 // 查看历史消息的权限：全体消息始终可见，私密频道仅成员可见；狼人频道仅夜晚开放（白天连历史也不可见）
 function chatView(room, p, ch) {
   if (ch === 'all') return true;
   if (ch === 'wolf') return !!p && ctx.isWolfRole(p) && room.phase === 'night';
-  if (ch === 'lover') return !!p && isLoverParty(room, p.id);
+  if (ch === 'lover') return !!p && isLoverParty(room, p.id); // 仅情侣两人可见
   return false;
 }
 /* 聊天发送间隔（毫秒），防刷屏：同一玩家两条消息至少间隔该时长；可用 CHAT_INTERVAL 覆盖（0=关闭） */
