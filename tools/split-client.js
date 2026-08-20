@@ -2,7 +2,12 @@
 const fs = require('fs');
 const path = require('path');
 const proj = path.resolve(__dirname, '..');
-const src = fs.readFileSync(path.join(proj, 'public', 'client.js'), 'utf8');
+const clientPath = path.join(proj, 'public', 'client.js');
+if (!fs.existsSync(clientPath)) {
+  console.error('[split-client] public/client.js 不存在（前端已拆分），禁止运行，避免覆盖 public/js/*');
+  process.exit(1);
+}
+const src = fs.readFileSync(clientPath, 'utf8');
 
 // 模块归属
 const MOD = {};

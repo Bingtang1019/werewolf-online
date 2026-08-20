@@ -4,10 +4,7 @@ const shared = require('./shared');
 const ctx = shared.ctx;
 const register = shared.register;
 const S = shared.S;
-
-/* 1.8.x 混沌强化：与 main/smart 共用同一套强度参数 */
-const CHAOS_STRENGTH = process.env.CHAOS_STRENGTH != null ? parseFloat(process.env.CHAOS_STRENGTH) : 0.6;
-const CHAOS_THRESHOLD = process.env.CHAOS_THRESHOLD != null ? parseFloat(process.env.CHAOS_THRESHOLD) : 0.8;
+const chaos = require('./chaos');
 
 function ensureMemory(bot) {
   if (!bot.botMemory) bot.botMemory = {};
@@ -180,17 +177,8 @@ function decisionEasy(room, bot) {
     if (t && lp && !lp.isWolf && t.id === lp.id) t = null;
     // v1.7.2（B-1）：第三方（人狼恋狼恋人/丘比特）不投自己阵营（恋人互知，规则内；与 simulate 档统一）
     if (t && world.faction === 'third' && ctx.factionOf(room, t) === 'third') t = null;
-    // v1.6.4（A2-4）：不确定性表达——置信度低时小概率偏离最优（随机/跟风），高置信才准；被公开查杀/卖狼目标不波动
-    if (t) {
-      const conf = S.confidenceOf(room, bot, t.id); // 1.7.3（F2）：Platt 派生置信度优先
-      if (process.env.LAB_NO_CHAOS !== '1' && t.id !== world.sellTarget && !ctx.isCheckedTarget(room, t) && conf < CHAOS_THRESHOLD && ctx.rng().next() < ((CHAOS_THRESHOLD - conf) * CHAOS_STRENGTH + 0.02)) {
-        // 1.7.3（F5）：波动有界（A5-2 定稿）——只允许偏移到分数 top3，避免“上头投 rank 12”；C1-5② 狼不投狼队友
-        const ranked = ctx.aliveOthers(room, bot).map(q => ({ q, s: world.scores[q.id] || 0.5 })).sort((a, b) => b.s - a.s).slice(0, 3);
-        const pool = ranked.map(x => x.q).filter(q => q.id !== t.id && !(lp && !lp.isWolf && q.id === lp.id) && !(ctx.campOf(bot) === 'wolf' && ctx.campOf(q) === 'wolf'));
-        const other = ctx.pick(pool) || t;
-        t = other;
-      }
-    }
+    // v1.6.4（A2-4）/1.8.x：不确定性表达由共享 chaos 模块处理
+    if (t) t = chaos.maybeChaosVote(room, bot, world, ctx.aliveOthers(room, bot).map(p => p.id), t, lp);
     return { action: 'vote', data: { target: t ? t.id : null } };
   }
   if (room.phase === 'pk_vote') {

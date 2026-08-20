@@ -17,6 +17,7 @@ const { createRng } = require('./server/ai/rng.js'); // 1.7.0（B1-8）
 global.rng = createRng(parseInt(process.env.SEED || '0', 10) || (Date.now() >>> 0));
 
 const PORT = process.env.PORT || 3000;
+const MODS_ENABLED = process.env.MODS !== '0'; // 安全开关：MODS=0 可整体禁用 mod 执行与资源
 
 /* ---------- 运行时环境常量（v1.6.2：统一上移，此前声明在使用之后易误判 TDZ） ---------- */
 /* /api/stats 的“活跃”判定窗口：超过该时长无轮询/SSE/操作视为非活动房间，不计入在线统计（默认 30 秒） */
@@ -700,12 +701,12 @@ const server = http.createServer((req, res) => {
   /* v1.7.31（mods）：/mods/<name>/assets/* 静态映射（模组资源——由 mods 加载器扫描 mod.json 注册） */
   const modsDir = path.join(__dirname, 'mods');
   /* 客户端注入汇聚端点：index.html 末尾引用 /mods/_inject.js——返回所有 mod 的 client.js 拼接 */
-  if (pathname === '/mods/_inject.js') {
+  if (MODS_ENABLED && pathname === '/mods/_inject.js') {
     const js = modClientInjections.join('\n;\n');
     res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
     return res.end(js || '/* 无 mod 注入 */');
   }
-  const modMatch = pathname.match(/^\/mods\/([^\/]+)\/assets\/(.+)$/);
+  const modMatch = MODS_ENABLED ? pathname.match(/^\/mods\/([^\/]+)\/assets\/(.+)$/) : null;
   if (modMatch) {
     const modFile = path.join(modsDir, modMatch[1], 'assets', modMatch[2]);
     if (modFile.startsWith(modsDir + path.sep)) return serveStatic(req, res, modFile);
@@ -822,6 +823,7 @@ const modHooks = { onRoomCreate: [] }; // 预留钩子注册表（entry.js 可 r
 const modClientInjections = [];
 function loadMods() {
   let loaded = 0;
+  if (!MODS_ENABLED) { console.log('[mod] MODS=0，已禁用 mod 加载'); return 0; }
   try {
     if (!fs.existsSync(modsDir)) return 0;
     for (const name of fs.readdirSync(modsDir)) {

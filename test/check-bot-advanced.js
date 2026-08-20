@@ -71,7 +71,7 @@ async function night1(room, host, killTarget, isSeerBot) {
 
 /* 推进到白天讨论（morning/lastword 由房主强推） */
 async function toDiscuss(room, host) {
-  for (let i = 0; i < 20; i++) {
+  for (let i = 0; i < 40; i++) {
     const v = await st(room, host);
     if (v.phase === 'discuss') return v;
     if (v.phase === 'morning' || v.phase === 'lastword' || v.phase === 'handover') { try { await advance(room, host); } catch (e) {} await sleep(300); }
@@ -89,7 +89,7 @@ async function main() {
   if (!ready) { console.error('服务器未就绪'); srv.kill(); process.exit(1); }
   try {
     /* ---------- A1 银水：女巫 bot 救人不投银水 ---------- */
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < 6; attempt++) {
       const s = await setup(5, { wolf: 1, witch: 1, villager: 3 }, 'smart', 'idle', 'witch');
       const victim = s.players.find(p => p.alive && p.id !== s.host && p.id !== s.target);
       const v = await night1(s.room, s.host, victim.id, false);
@@ -157,7 +157,7 @@ async function main() {
     }
 
     /* ---------- A4 发言模拟：smart 预言家白天报查验 ---------- */
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < 6; attempt++) {
       const s = await setup(5, { wolf: 1, seer: 1, villager: 3 }, 'smart', 'idle', 'seer');
       const victim = s.players.find(p => p.alive && p.id !== s.host && p.id !== s.target);
       let v = await night1(s.room, s.host, victim.id, true);

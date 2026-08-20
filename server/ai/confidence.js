@@ -37,7 +37,7 @@ function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
  * 两者加权，避免只有方差时“全都怀疑/全都不怀疑”的局置信度失真。 */
 function confidenceOf(room, bot, targetId) {
   if (!bot || !targetId) return MIN_C;
-  const m = getVoteModel();
+  const m = getVoteModel(room); // 1.8.x：与投票决策同一套按房间模型选择（NLU/经典）
   if (m && room) {
     const f = voteFeatures(room, bot.id, targetId);
     if (f) {

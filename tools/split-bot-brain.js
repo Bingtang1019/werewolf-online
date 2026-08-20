@@ -6,6 +6,10 @@ const fs = require('fs');
 const path = require('path');
 const root = path.resolve(__dirname, '..');
 const src = fs.readFileSync(path.join(root, 'bot-brain.js'), 'utf8');
+if (!src.includes('function ') || src.includes('module.exports = require')) {
+  console.error('[split-bot-brain] 检测到 bot-brain.js 已是薄入口（单体源码已不存在），禁止运行，避免覆盖 server/ai/bot-brain/*');
+  process.exit(1);
+}
 const lines = src.split('\n');
 
 // 1. 函数清单（0 缩进）

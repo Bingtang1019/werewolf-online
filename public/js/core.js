@@ -361,6 +361,12 @@ async function startOfflineSetup() {
     const el = $('off-count-' + k);
     counts[k] = el ? (parseInt(el.value, 10) || 0) : 0;
   }
+  const need = cap + (thief ? 1 : 0);
+  const sum = Object.values(counts).reduce((a, b) => a + b, 0);
+  if (sum !== need) {
+    toast(`职业总数 ${sum} 须${thief ? '比人数多 1' : '等于人数'}（${need}）`);
+    return;
+  }
   closeOfflineSetup();
   await launchOffline(cap, level, winMode, sheriff, thief, thirdWinMode, counts);
 }

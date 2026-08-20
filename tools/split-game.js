@@ -5,6 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const proj = path.resolve(__dirname, '..');
 const src = fs.readFileSync(path.join(proj, 'game.js'), 'utf8');
+if (!src.includes('function ') || src.includes('module.exports = require')) {
+  console.error('[split-game] 检测到 game.js 已是薄入口（单体源码已不存在），禁止运行，避免覆盖 server/game/*');
+  process.exit(1);
+}
 const lines = src.split('\n');
 
 // ---------- 模块行区间 ----------
