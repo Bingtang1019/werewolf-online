@@ -72,6 +72,11 @@ async function main() {
     eq(sse.status, 200, 'SSE 连接 200');
     const first = JSON.parse(await sse.next());
     eq(typeof first.v, 'number', '初始推送携带版本号 v=' + first.v);
+    // 1.8.0 CF 快速通道：cf=1 时服务端拒绝 SSE，/api/tunnel 能识别 CF 请求
+    const cfStream = await fetch(`${BASE}/api/stream?room=${room}&me=${A.playerId}&cf=1`);
+    eq(cfStream.status, 404, 'CF 快速通道模式拒绝 SSE（cf=1 → 404）');
+    const tun = await (await fetch(`${BASE}/api/tunnel`, { headers: { 'X-CF-Tunnel': '1' } })).json();
+    eq(tun.active, true, '/api/tunnel 识别 CF 请求');
     // B 发言（全体频道）→ room.version 变化 → 1 秒扫描内推送给 A
     const chatR = await api('/api/chat', { room, me: B.playerId, data: { ch: 'all', text: 'SSE 推送测试' } });
     if (chatR.error) throw new Error('chat失败: ' + chatR.error);

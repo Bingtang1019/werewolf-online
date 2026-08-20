@@ -41,6 +41,45 @@ function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+/* Cloudflare 快速通道模式（独立开关：auto/on/off） */
+function cfTunnelMode() {
+  try { const m = localStorage.lwCfTunnel; if (m === 'on' || m === 'off') return m; } catch (e) {}
+  return 'auto';
+}
+function isCfTunnel() {
+  const mode = cfTunnelMode();
+  if (mode === 'on') return true;
+  if (mode === 'off') return false;
+  const hn = (location.hostname || '').toLowerCase();
+  return hn === 'trycloudflare.com' || hn.endsWith('.trycloudflare.com');
+}
+function setCfTunnelMode(mode) {
+  if (mode !== 'auto' && mode !== 'on' && mode !== 'off') mode = 'auto';
+  try { localStorage.lwCfTunnel = mode; } catch (e) {}
+  renderCfModeButtons();
+  // 切换后立即重置传输状态：SSE 连接按新模式重来，轮询间隔重新计算
+  try { if (window.sse) { window.sse.close(); window.sse = null; } } catch (e) {}
+  window.sseConnected = false;
+  window.sseFails = 0;
+  window.sseDisabled = false;
+  if (window.connectSSE) window.connectSSE();
+  if (window.ensurePollTimer) window.ensurePollTimer();
+  toast('🚇 快速通道模式：' + ({ auto: '自动', on: '开启', off: '关闭' }[mode] || mode));
+}
+function cycleCfTunnelMode() {
+  const order = ['auto', 'on', 'off'];
+  const cur = cfTunnelMode();
+  const next = order[(order.indexOf(cur) + 1) % order.length];
+  setCfTunnelMode(next);
+}
+function renderCfModeButtons() {
+  const mode = cfTunnelMode();
+  const label = { auto: '自动', on: '开启', off: '关闭' }[mode] || mode;
+  document.querySelectorAll('.js-cf-mode-btn').forEach(b => {
+    b.textContent = b.id && b.id.indexOf('room') !== -1 ? ('🚇 ' + label) : ('🚇 隧道:' + label);
+  });
+}
+
 /* 复制文本到剪贴板（A：聊天消息复制等通用入口） */
 function copyText(text, tip) {
   const done = () => toast(tip || '已复制', 'success');
@@ -256,7 +295,8 @@ async function poll() {
   pollBusy = true;
   try {
     const ver = view ? view.v : -1;
-    const res = await fetch(`api/state?room=${encodeURIComponent(roomId)}&token=${encodeURIComponent(token)}&v=${ver}&since=${lastChatTs()}`);
+    const cf = isCfTunnel();
+    const res = await fetch(`api/state?room=${encodeURIComponent(roomId)}&token=${encodeURIComponent(token)}&v=${ver}&since=${lastChatTs()}&cf=${cf ? 1 : 0}`, cf ? { cache: 'no-store' } : undefined);
     const j = await res.json();
     pollFail = 0; hideNetBanner(); // 服务器有响应即视为网络正常（29）
     if (j.error) {

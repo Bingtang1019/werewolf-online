@@ -36,12 +36,16 @@ function resetPollTimer() {
 }
 
 function currentPollMs() {
-  if (!view) return 800;
-  // 连续失败（>=2 次）→ 指数退避，避免断线时轰炸隧道
-  if (pollFail >= 2) return Math.min(15000, 2000 * Math.pow(2, pollFail - 2));
+  if (!view) return isCfTunnel() ? 1000 : 800;
+  // 连续失败（>=2 次）→ 指数退避，避免断线时轰炸隧道；CF 模式退避更缓
+  if (pollFail >= 2) {
+    const base = isCfTunnel() ? 3000 : 2000;
+    return Math.min(isCfTunnel() ? 20000 : 15000, base * Math.pow(2, pollFail - 2));
+  }
   // SSE 正常 → 长心跳即可（状态变化由推送即时触发）
   if (sseConnected) return SSE_HEARTBEAT_MS;
-  // 常规轮询（SSE 不可用时回退原逻辑）
+  // 常规轮询（SSE 不可用时回退原逻辑）；CF 模式降低请求频率，减少隧道压力
+  if (isCfTunnel()) return needsFastPoll() ? 1000 : 2200;
   return needsFastPoll() ? 700 : 1600;
 }
 
@@ -83,9 +87,8 @@ function pollNow() {
 function connectSSE() {
   if (!roomId || !token) return;
   if (sseDisabled) return; // v1.5.4：已降级为纯轮询，不再尝试长连接
-  // v1.6.4（A1-P1-3）：快速隧道（trycloudflare）对 SSE 长连接不友好（http2 边缘取消）→ 直接纯轮询，省掉每次进房的失败风暴
-  const hn = (location.hostname || '').toLowerCase();
-  if (hn === 'trycloudflare.com' || hn.endsWith('.trycloudflare.com')) { sseDisabled = true; return; }
+  // v1.6.4（A1-P1-3）+ 1.8.0 CF 特化：快速隧道（trycloudflare）对 SSE 长连接不友好（http2 边缘取消）→ 直接纯轮询；可通过 CF 模式开关强制/关闭
+  if (isCfTunnel()) { sseDisabled = true; return; }
   try { if (sse) sse.close(); } catch (e) {}
   sseConnected = false;
   try {
@@ -293,6 +296,8 @@ $('btn-leave').addEventListener('click', async () => {
   }
   applyHighContrast();
   document.querySelectorAll('.js-contrast-btn').forEach(b => b.addEventListener('click', toggleHighContrast));
+  renderCfModeButtons();
+  document.querySelectorAll('.js-cf-mode-btn').forEach(b => b.addEventListener('click', cycleCfTunnelMode));
   // 邀请链接直达（v1.3.0）：?room=XXXXXX → 自动填入并高亮加入卡（不自动进入，避免误入他人房间）
   try {
     const qr = new URLSearchParams(location.search).get('room');

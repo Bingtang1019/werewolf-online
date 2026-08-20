@@ -57,6 +57,7 @@ node server.js
 - `STATS_TOKEN` / `DEBUG_TOKEN`：在线统计/调试接口的访问凭证（未配置仅本机可用）；
 - `SNAPSHOT_SECRET`：快照完整性校验密钥（配置后防离线改档——改档将被拒绝恢复）；
 - `MODS=0`：公网生产环境建议设为 `0`，完全关闭模组加载与注入端点（模组非沙箱，见 `mods/README.md`）；
+- `CF_TUNNEL_MODE`：Cloudflare 快速通道特化开关（`auto` 默认自动检测 trycloudflare / `on` 强制开启 / `off` 关闭）；开启后客户端免 SSE、使用隧道调优轮询，服务端拒绝 SSE 并标记响应；
 - **不要裸开 0.0.0.0 端口转发**：请用 Render/cloudflared 等平台域名（会自动带 Host 头）；若必须自建转发，请配置 `PUBLIC_HOST`。
 
 ## 功能清单

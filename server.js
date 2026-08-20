@@ -248,6 +248,15 @@ const LOCAL_IPS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
  * 放行该后缀（cloudflared 专用域，DNS rebinding 攻击者无法伪造；且仅当隧道实际转发时才可达） */
 const PRIVATE_HOST_RE = /^(localhost|127\.0\.0\.1|\[::1\]|::1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/;
 const TUNNEL_HOST_RE = /\.trycloudflare\.com$/;
+/* 1.8.0 CF 快速通道特化：CF_TUNNEL_MODE=auto|on|off，独立开关服务端适配 */
+const CF_TUNNEL_MODE = (process.env.CF_TUNNEL_MODE || 'auto').toLowerCase();
+function isCfTunnelReq(req) {
+  if (CF_TUNNEL_MODE === 'on') return true;
+  if (CF_TUNNEL_MODE === 'off') return false;
+  const host = String(req.headers.host || '').toLowerCase();
+  if (host === 'trycloudflare.com' || TUNNEL_HOST_RE.test(host)) return true;
+  return req.headers['x-cf-tunnel'] === '1' || (req.url || '').includes('cf=1');
+}
 const PUBLIC_HOSTS = new Set((process.env.PUBLIC_HOST || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
 /* 安全加固（H1 辅助）：POST Origin 校验——同源/无 Origin（脚本/curl）/PUBLIC_HOST 白名单放行 */
 function originOk(req) {
@@ -297,7 +306,7 @@ setInterval(() => { const now = Date.now(); for (const [k, b] of ipBuckets) { if
 
 function sendJSON(res, obj) {
   const s = JSON.stringify(obj);
-  const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Vary': 'Accept-Encoding' };
+  const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Vary': 'Accept-Encoding', 'X-Tunnel-Mode': isCfTunnelReq(res.req) ? 'cf' : 'normal' };
   if (acceptsGzip(res.req) && s.length > 256) {
     headers['Content-Encoding'] = 'gzip';
     res.writeHead(200, headers);
@@ -491,6 +500,10 @@ const server = http.createServer((req, res) => {
   if (pathname.startsWith('/api/')) {
     /* v1.7.30（全局播放同步）：轻量 ping——客户端测 RTT 估算单向延迟（跟随端时间戳对齐用） */
     if (pathname === '/api/ping' && req.method === 'GET') { sendJSON(res, { t: Date.now() }); return; }
+    /* 1.8.0 CF 快速通道：状态诊断接口（公开只读，不泄露房间/玩家数据） */
+    if (pathname === '/api/tunnel' && req.method === 'GET') {
+      return sendJSON(res, { ok: true, mode: CF_TUNNEL_MODE, active: isCfTunnelReq(req), host: req.headers.host || '', ts: Date.now() });
+    }
     /* 在线统计：当前“活跃”房间数/玩家数（首页“🔥 正在开黑”）。
      * 活跃判定与 TTL 共用 lastActive：超过 STATS_ACTIVE_MS 无轮询/SSE/操作视为非活动房间，不计入。
      * 阈值可用 STATS_ACTIVE_SEC 环境变量调整（默认 30 秒，测试可调小）。 */
@@ -559,6 +572,7 @@ const server = http.createServer((req, res) => {
       // 聊天增量：客户端带上最后一条消息的 ts（since），服务端只发新消息，避免全量重发
       const chatSince = parseInt(url.searchParams.get('since') || '0', 10) || 0;
       const view = Game.viewFor(room, p.id, chatSince);
+      if (view) view.tunnel = isCfTunnelReq(req) ? 'cf' : 'normal'; // 1.8.0：客户端可感知当前响应是否走 CF 特化
       // v1.7.25（房间全局播放）：进度随轮询刷新（播放端每次 state 拉取都带当前秒数——跟随端据此校准）
       if (view && view.music && view.music.playing && view.music.ts) {
         view.music.prog = view.music.prog + (Date.now() - view.music.ts) / 1000;
@@ -566,6 +580,8 @@ const server = http.createServer((req, res) => {
       return sendJSON(res, view);
     }
     if (pathname === '/api/stream' && req.method === 'GET') {
+      // 1.8.0 CF 特化：快速通道模式下服务端也直接拒绝 SSE，避免边缘取消风暴
+      if (isCfTunnelReq(req)) { res.writeHead(404); res.end(); return; }
       const url = new URL(req.url, 'http://x');
       const roomId = (url.searchParams.get('room') || '').toUpperCase();
       const token = url.searchParams.get('token') || '';

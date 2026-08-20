@@ -6,6 +6,10 @@ set CF=%~dp0cloudflared.exe
 set NODE=%~dp0node.exe
 if not exist "%NODE%" set "NODE=C:\Program Files\nodejs\node.exe"
 
+rem ---- Cloudflare 快速通道特化（1.8.0）----
+rem auto=自动检测 trycloudflare；on=强制开启 CF 特化；off=关闭
+set CF_TUNNEL_MODE=auto
+
 if not exist "%CF%" (
   echo [ERROR] cloudflared.exe not found in this folder.
   pause
@@ -31,8 +35,8 @@ echo.
 echo   Waiting for URL... (Ctrl+C to stop)
 echo.
 
-rem ---- Run cloudflared in foreground (URL appears in output) ----
-"%CF%" tunnel --url http://localhost:3000 --protocol http2 --no-autoupdate
+rem ---- Run cloudflared in foreground (URL appears in output; metrics/logfile for tunnel-url.js) ----
+"%CF%" tunnel --url http://localhost:3000 --protocol http2 --no-autoupdate --metrics localhost:39571 --logfile tunnel.log
 
 echo.
 echo   Tunnel closed.
