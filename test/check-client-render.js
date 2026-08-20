@@ -28,6 +28,18 @@ function tabsHtml() { return (h.getEl('chat-tabs') || {}).innerHTML || ''; }
 async function main() {
   const r = Game.createRoom('房主');
   const room = r.roomId, host = r.playerId;
+  // 大厅渲染回归：添加人机按钮的 data-ck 必须是合法 JSON（曾因 {level:botLevelChoice} 导致点击无响应）
+  const lobbyView = Game.viewFor(Game.rooms.get(room), host, 0);
+  h.applyView(lobbyView);
+  h.renderPanel();
+  const lobbyHtml = (h.getEl('panel') || {}).innerHTML || '';
+  const addBotMatch = lobbyHtml.match(/data-ck="actData\|add_bot\|([^"]*)"/);
+  let addBotOk = false;
+  if (addBotMatch) {
+    const raw = addBotMatch[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+    try { const obj = JSON.parse(raw); addBotOk = !!(obj && obj.level); } catch (e) { addBotOk = false; }
+  }
+  assert(addBotOk, '添加人机按钮 data-ck 为合法 JSON（level 可解析）');
   Game.handleAction(room, host, 'setCap', { cap: 10 });
   const ids = [host];
   for (let i = 1; i < 10; i++) ids.push(Game.joinRoom(room, '玩家' + (i + 1)).playerId);

@@ -377,7 +377,7 @@ function renderLobby() {
  <button class="mini bot-level${botLevelChoice === 'simulate' ? ' active' : ''}" data-ck="botLevel|simulate">模拟</button>
       </div>
       <div class="btn-row">
-        <button data-ck="actData|add_bot|{level:botLevelChoice}">＋ 添加人机</button>
+        <button data-ck="actData|add_bot|${escapeHtml(JSON.stringify({ level: botLevelChoice }))}">＋ 添加人机</button>
         <button data-ck="actData|remove_bot|{}">－ 移除最后一个人机</button>
       </div>
       <div class="tip-text">人机自动执行本职业行动（夜晚决策/白天投票），用于缺人陪练与调试；「智能」会分析发言（跳预言家/查杀/金水）与投票记录做贝叶斯推理，狼人视角还会优先刀跳预言家的玩家。botMode 作为默认级别，单个 bot 级别在添加时固化。</div></div>`;
@@ -485,7 +485,7 @@ function renderNight() {
           html += `<div class="panel-desc">上一对情侣已殉情，你可以重新指定两名玩家为情侣（阵营将随新情侣变化），也可以选择不再指定：</div>`;
           html += pickTip;
           html += `<div class="btn-row"><button class="primary" data-pd="doCupidPick|" ${draft.target && draft.target2 ? '' : 'disabled'}>重新指定情侣</button></div>`;
-          html += `<div class="btn-row"><button data-pd="actData|cupid_pick|{ids:null}">本轮不指定（放弃重选）</button></div>`;
+          html += `<div class="btn-row"><button data-pd="actData|cupid_pick|${escapeHtml(JSON.stringify({ ids: null }))}">本轮不指定（放弃重选）</button></div>`;
           if (!draft.target || !draft.target2) html += `<div class="tip-text">在左侧玩家列表中点选两名玩家</div>`;
         }
       } else html += `<div class="waiting">等待丘比特处理情侣…</div>`;
@@ -571,7 +571,7 @@ function renderNight() {
         html += `<div class="set-group"><div class="sg-title">毒药 ${w.poisonUsed ? '（已使用）' : '（未使用）'}</div>
           <div class="tip-text">已选：${draft.poison ? escapeHtml(nameOf(draft.poison)) : '—'}</div>
           <div class="btn-row">${alivePlayers().filter(p => p.id !== view.my.id).map(p => `<button class="mini" data-pd="draftPoison|${p.id}">${escapeHtml(p.name)}</button>`).join('')}</div></div>`;
-        html += `<div class="btn-row"><button class="primary" data-pd="witchPoison|" ${draft.poison && !w.poisonUsed ? '' : 'disabled'}>毒杀他</button><button data-pd="actData|witch_act|{save:false}">跳过（本晚不用药）</button></div>`;
+        html += `<div class="btn-row"><button class="primary" data-pd="witchPoison|" ${draft.poison && !w.poisonUsed ? '' : 'disabled'}>毒杀他</button><button data-pd="actData|witch_act|${escapeHtml(JSON.stringify({ save: false }))}">跳过（本晚不用药）</button></div>`;
       } else html += `<div class="waiting">等待女巫行动…</div>`;
       break;
     }
@@ -634,7 +634,7 @@ function renderHandover() {
     html += `<div class="btn-row">` + alivePlayers().filter(p => p.id !== view.my.id).map(p =>
       `<button class="mini ${draft.target === p.id ? 'chosen' : ''}" data-pd="draftTarget|${p.id}">${escapeHtml(p.name)}</button>`
     ).join('') + `</div>`;
-    html += `<div class="btn-row"><button class="primary" data-pd="handoverPick|" ${draft.target ? '' : 'disabled'}>移交警徽</button><button data-pd="actData|handover|{target:null}">撕毁警徽</button></div>`;
+    html += `<div class="btn-row"><button class="primary" data-pd="handoverPick|" ${draft.target ? '' : 'disabled'}>移交警徽</button><button data-pd="actData|handover|${escapeHtml(JSON.stringify({ target: null }))}">撕毁警徽</button></div>`;
   } else {
     html += `<div class="waiting">${escapeHtml(h.fromName || '')} 正在处理警徽…</div>`;
   }
@@ -647,7 +647,7 @@ function renderCampaign() {
   let html = `<div class="panel-title">🗳️ 警长竞选 · 报名</div>`;
   html += `<div class="panel-desc">是否竞选警长？竞选者稍后接受全体投票（警长白天最后发言，投票计 1.5 票）。</div>`;
   if (!c.myDecided) {
-    html += `<div class="btn-row"><button class="primary" data-pd="actData|campaign|{run:true}">我要竞选</button><button data-pd="actData|campaign|{run:false}">放弃</button></div>`;
+    html += `<div class="btn-row"><button class="primary" data-pd="actData|campaign|${escapeHtml(JSON.stringify({ run: true }))}">我要竞选</button><button data-pd="actData|campaign|${escapeHtml(JSON.stringify({ run: false }))}">放弃</button></div>`;
   } else {
     html += `<div class="tip-text">✅ 你已做出选择</div>`;
   }
