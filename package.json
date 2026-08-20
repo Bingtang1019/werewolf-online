@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "selfcheck": "node tools/selfcheck.js",
+    "version": "node tools/bump-version.js",
     "test": "node tools/parallel-tests.js",
     "nlu:eval": "node tools/ai/eval-nlu-claims.js --records=data/records-selfplay-eps.jsonl",
     "nlu:eval:fake": "node tools/ai/eval-nlu-claims.js --records=data/records-selfplay-eps.jsonl --fake-seer=1",
