@@ -8,6 +8,18 @@ function toggleLessMotion(on) {
   try { localStorage.ww_less_motion = on ? '1' : '0'; } catch (e) {}
 }
 
+function applyHighContrast() {
+  const on = localStorage.lwContrast === '1';
+  document.body.classList.toggle('high-contrast', on);
+}
+
+function toggleHighContrast() {
+  const on = !document.body.classList.contains('high-contrast');
+  document.body.classList.toggle('high-contrast', on);
+  try { localStorage.lwContrast = on ? '1' : '0'; } catch (e) {}
+  toast(on ? '🔆 高对比度已开启' : '🔆 高对比度已关闭');
+}
+
 function pickIconFor() {
   const v = view; if (!v || !v.my || !v.my.alive) return '';
   if (v.phase === 'vote' || v.phase === 'pk_vote' || v.phase === 'sheriff_vote') {

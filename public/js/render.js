@@ -185,7 +185,10 @@ function renderPlayers() {
     const role = p.role ? `<div class="prole ${ROLE_CAMP_TEXT[p.role] || ''}">${ROLE_EMOJI_TEXT[p.role] || ''} ${escapeHtml(p.role)}</div>` : '';
     const deadTxt = p.alive ? '' : `<div class="pdead">💀 ${DEATH_TEXT[p.deadBy] || p.deadBy}${p.deadNote ? '（' + escapeHtml(p.deadNote) + '）' : ''}</div>`;
     const dmark = p.alive ? '' : `<span class="dmark dm-${p.deadBy || 'left'}"></span>`; // v1.7.18 死亡标记（死因 SVG 图形）
-    return `<div class="player ${p.isMe ? 'me' : ''} ${p.alive ? '' : 'dead'}${flashCls} ${draft.target === p.id || draft.target2 === p.id ? 'selected' : ''}" data-id="${p.id}">
+    const pStatus = p.alive ? '存活' : ('已出局' + (p.deadBy ? '（' + (DEATH_TEXT[p.deadBy] || p.deadBy) + '）' : ''));
+    const pExtra = [p.isBot ? '人机' : '真人', p.isMe ? '我' : '', p.sheriff ? '警长' : '', (p.isMe && view.myLover) ? '情侣' : '', p.role ? p.role : ''].filter(Boolean).join(' · ');
+    const pTitle = '#' + p.seat + ' ' + p.name + ' · ' + pStatus + (pExtra ? ' · ' + pExtra : '');
+    return `<div class="player ${p.isMe ? 'me' : ''} ${p.alive ? '' : 'dead'}${flashCls} ${draft.target === p.id || draft.target2 === p.id ? 'selected' : ''}" data-id="${p.id}" title="${escapeHtml(pTitle)}" aria-label="${escapeHtml(pTitle)}">
       <div class="phead"><div class="avatar ${p.alive ? '' : 'dead'}">${avatarOf(p)}</div>
       <div class="pmeta"><div class="pname">${name}${moodHtml}<span class="pseat">#${p.seat}</span></div>${role}${deadTxt}</div></div>
       ${pickIc ? `<span class="pick-ic">${pickIc}</span>` : ''}

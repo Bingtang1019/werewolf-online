@@ -258,6 +258,7 @@ $('btn-leave').addEventListener('click', async () => {
   $('btn-force').addEventListener('click', () => { if (view && view.my && view.my.isHost) doAdvance(); });
   $('btn-chat').addEventListener('click', sendChat);
   $('chat-text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) sendChat(); });
+  $('chat-text').addEventListener('blur', () => setTimeout(hideChatMentionPop, 150));
   // 聊天 UI 增强：点击消息里的玩家名 → 在输入框插入 @名字（A2-6）
   const cmsgs = $('chat-msgs');
   if (cmsgs) cmsgs.addEventListener('click', e => {
@@ -283,6 +284,15 @@ $('btn-leave').addEventListener('click', async () => {
 
   // 字号（v1.3.0）：恢复上次选择
   try { const fk = parseInt(localStorage.ww_font, 10); if (!isNaN(fk)) setFontScale(fk); } catch (e) {}
+  // 减少动效 + 高对比度（F）：恢复上次选择并绑定开关
+  try { if (localStorage.ww_less_motion === '1') toggleLessMotion(true); } catch (e) {}
+  const lmEl = $('in-less-motion');
+  if (lmEl) {
+    lmEl.checked = localStorage.ww_less_motion === '1';
+    lmEl.addEventListener('change', () => toggleLessMotion(lmEl.checked));
+  }
+  applyHighContrast();
+  document.querySelectorAll('.js-contrast-btn').forEach(b => b.addEventListener('click', toggleHighContrast));
   // 邀请链接直达（v1.3.0）：?room=XXXXXX → 自动填入并高亮加入卡（不自动进入，避免误入他人房间）
   try {
     const qr = new URLSearchParams(location.search).get('room');
@@ -379,6 +389,7 @@ function sendChat() {
   const text = $('chat-text').value.trim();
   if (!text) return;
   $('chat-text').value = '';
+  hideChatMentionPop();
   chatSend(chatTab, text);
 }
 

@@ -56,10 +56,21 @@ document.addEventListener('click', e => {
   if (tab) { chatTab = tab.dataset.tab; renderChat(); return; }
   const qp = e.target.closest('[data-qp]');
   if (qp) { quickPhrase(JSON.parse(qp.dataset.qp)); return; }
+  const mi = e.target.closest('[data-mention-item]');
+  if (mi) { insertChatMention(mi.dataset.mentionItem); return; }
+  const ca = e.target.closest('[data-chatact]');
+  if (ca) {
+    const kind = ca.dataset.chatact;
+    if (kind === 'copy') copyText(ca.dataset.copy || '', '📋 消息已复制');
+    else if (kind === 'reply') chatMention(ca.dataset.name || '');
+    return;
+  }
 });
 document.addEventListener('input', e => {
   const el = e.target.closest('[data-cap]');
   if (el) onCapInput(el.value);
+  const ci = e.target.closest('#chat-text');
+  if (ci) updateChatMentionPop();
 });
 document.addEventListener('change', e => {
   const el = e.target.closest('[data-cap]');

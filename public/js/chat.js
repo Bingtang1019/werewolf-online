@@ -18,6 +18,15 @@ function chatMention(name) {
   ci.focus();
 }
 
+function highlightChatMentions(html) {
+  const names = (view.players || []).map(p => p.name).filter(Boolean);
+  for (const name of names) {
+    const token = '@' + escapeHtml(name);
+    html = html.split(token).join('<span class="mention">' + token + '</span>');
+  }
+  return html;
+}
+
 function chatVh() { // 动态视口高（移动端浏览器工具栏存在时 innerHeight/vh 偏大——输入框被盖"打不了字"的根因）
   const vv = window.visualViewport;
   return vv && vv.height ? vv.height : (window.innerHeight || document.documentElement.clientHeight || 600);
@@ -48,6 +57,7 @@ function chatSetOpen(open, full) {
   document.body.classList.toggle('chat-full', !!(open && full));
   applyChatY(open ? (full ? 0 : chatHalfY()) : chatHideY(), true);
   if (open) { chatUnread = 0; updateChatHandle(); }
+  hideChatMentionPop();
 }
 
 function chatToggle() {
@@ -148,11 +158,21 @@ function renderChat() {
       const chCls = m.ch === 'wolf' ? 'ch-wolf' : m.ch === 'lover' ? 'ch-lover' : '';
       const lwCls = m.marker === '遗言' ? 'marker-lastword' : '';
       const sender = view.players.find(p => p.id === m.from);
+      const deadCls = sender && !sender.alive ? ' dead' : '';
       const av = sender ? avatarOf(sender) : '👤';
-      html.push(`<div class="chat-msg ${chCls} ${mine ? 'mine' : ''} ${lwCls}" title="${escapeHtml(chatShortTime(t))}">
+      const seatHtml = sender && sender.seat ? ` <span class="cm-seat">#${sender.seat}</span>` : '';
+      const deadMark = sender && !sender.alive ? ' 💀' : '';
+      const textHtml = highlightChatMentions(escapeHtml(m.text));
+      const mentioned = !!(m.text && view.my && view.my.name && m.text.indexOf('@' + view.my.name) !== -1);
+      const mentionCls = mentioned ? ' mentioned' : '';
+      html.push(`<div class="chat-msg ${chCls} ${mine ? 'mine' : ''} ${lwCls}${deadCls}${mentionCls}" title="${escapeHtml(chatShortTime(t))}">
         ${mine ? '' : `<span class="cm-avatar">${av}</span>`}
         ${m.marker && m.marker !== '遗言' ? `<span class="cm-marker">${escapeHtml(m.marker)}</span>` : ''}
-        <span class="cm-name" data-mention="${escapeHtml(m.name)}">${escapeHtml(m.name)}</span><span class="cm-text">${escapeHtml(m.text)}</span></div>`);
+        <span class="cm-name" data-mention="${escapeHtml(m.name)}">${escapeHtml(m.name)}${seatHtml}${deadMark}</span><span class="cm-text">${textHtml}</span>
+        <span class="cm-actions">
+          <button class="cm-act" data-chatact="copy" data-copy="${escapeHtml(m.text)}" title="复制消息" aria-label="复制消息">📋</button>
+          <button class="cm-act" data-chatact="reply" data-name="${escapeHtml(m.name)}" title="回复 ${escapeHtml(m.name)}" aria-label="回复 ${escapeHtml(m.name)}">💬</button>
+        </span></div>`);
     }
     $('chat-msgs').innerHTML = html.join('');
     // 隐藏时新消息未读计数（悬浮窗把手提示；打开即清零）
@@ -179,7 +199,18 @@ function renderChat() {
     if (canSend) {
       qp.classList.remove('hidden');
       const tgt = draft.target ? nameOf(draft.target) : '';
-      const phrases = ['我跳预言家', '过', tgt ? '踩 ' + tgt : '踩', tgt ? '保 ' + tgt : '保', '哈哈哈', '晚上见'];
+      const inVote = view.phase === 'vote' || view.phase === 'pk_vote';
+      const phrases = [];
+      if (inVote) phrases.push(tgt ? '投 ' + tgt : '投', '弃票');
+      if (view.phase === 'night') phrases.push('过', '晚上见');
+      else phrases.push('我跳预言家', '过');
+      if (tgt) phrases.push('踩 ' + tgt, '保 ' + tgt);
+      const myRole = view.my && view.my.role;
+      if (myRole === '预言家') phrases.unshift(tgt ? '查杀 ' + tgt : '查杀');
+      else if (myRole === '女巫') phrases.unshift(tgt ? '我救了他' : '昨晚平安夜');
+      else if (myRole === '猎人') phrases.unshift('我是猎人');
+      else if (myRole === '狼人' || myRole === '狼美人') phrases.unshift('我是平民');
+      phrases.push('哈哈哈');
       // B3：不拼 onclick 字符串——JSON.stringify 产出合法 JS 字符串字面量 + escapeHtml 防属性逃逸，玩家名/发言含恶意字符也安全
       qp.innerHTML = phrases.map(p => `<button data-qp="${escapeHtml(JSON.stringify(p))}">${escapeHtml(p)}</button>`).join('');
     } else qp.classList.add('hidden');
@@ -191,4 +222,45 @@ function quickPhrase(txt) {
   if (!ci || ci.disabled) return;
   ci.value = (ci.value ? ci.value + ' ' : '') + txt;
   ci.focus();
+}
+
+/* A2-6 增强：输入 @ 时弹出存活玩家名自动补全 */
+function updateChatMentionPop() {
+  const ci = $('chat-text');
+  const pop = $('chat-mention-pop');
+  if (!ci || !pop) return;
+  const val = ci.value;
+  const pos = ci.selectionStart || val.length;
+  const before = val.slice(0, pos);
+  const at = before.lastIndexOf('@');
+  if (at < 0 || before.slice(at + 1).indexOf(' ') !== -1) { pop.classList.add('hidden'); return; }
+  const q = before.slice(at + 1).toLowerCase();
+  const names = (view.players || [])
+    .filter(p => p.alive && p.id !== view.my.id)
+    .map(p => p.name).filter(Boolean)
+    .filter(n => n.toLowerCase().indexOf(q) !== -1)
+    .slice(0, 8);
+  if (!names.length) { pop.classList.add('hidden'); return; }
+  pop.innerHTML = names.map(n => `<button class="cm-mention-item" data-mention-item="${escapeHtml(n)}">${escapeHtml(n)}</button>`).join('');
+  pop.classList.remove('hidden');
+}
+
+function insertChatMention(name) {
+  const ci = $('chat-text');
+  const pop = $('chat-mention-pop');
+  if (!ci || !pop) return;
+  const val = ci.value;
+  const pos = ci.selectionStart || val.length;
+  const before = val.slice(0, pos);
+  const at = before.lastIndexOf('@');
+  ci.value = val.slice(0, at) + '@' + name + ' ' + val.slice(pos);
+  ci.focus();
+  const np = at + name.length + 2;
+  ci.setSelectionRange(np, np);
+  pop.classList.add('hidden');
+}
+
+function hideChatMentionPop() {
+  const pop = $('chat-mention-pop');
+  if (pop) pop.classList.add('hidden');
 }

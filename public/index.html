@@ -52,6 +52,7 @@
     <div class="lm-toggle-row">
       <label class="lm-toggle"><input type="checkbox" id="in-less-motion"> ✨ 减少动效</label>
       <button id="btn-sound-home" class="mini js-sound-btn" title="声音设置（总开关 + 分项）">🔊</button>
+      <button id="btn-contrast" class="mini js-contrast-btn" title="高对比度模式" aria-label="高对比度模式">🔆</button>
       <span class="font-scale" title="界面字号">
         <button class="mini" onclick="setFontScale(0)">A-</button>
         <button class="mini" onclick="setFontScale(1)">A</button>
@@ -139,6 +140,7 @@
       <span id="my-role-chip"></span>
       <button id="btn-sound" class="mini js-sound-btn" title="声音设置（总开关 + 分项，点击展开）">🔊</button>
       <button id="btn-music" class="mini js-music-btn" title="房间歌单（BGM 氛围音 + 成员点歌）">🎵</button>
+      <button id="btn-contrast-room" class="mini js-contrast-btn" title="高对比度模式" aria-label="高对比度模式">🔆</button>
       <button id="btn-force" class="mini hidden" title="房主强制继续：未操作者视为弃权/跳过">强制继续</button>
       <button id="btn-leave" class="mini">离开</button>
     </div>
@@ -157,6 +159,7 @@
       <div id="chat-tabs"></div>
       <div id="chat-msgs"></div>
       <div id="quick-phrases" class="hidden"></div>
+      <div id="chat-mention-pop" class="hidden"></div>
       <div id="chat-input-row">
         <input id="chat-text" maxlength="200" placeholder="说点什么…" autocomplete="off">
         <button id="btn-chat">发送</button>
