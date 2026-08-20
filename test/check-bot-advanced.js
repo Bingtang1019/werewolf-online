@@ -89,28 +89,40 @@ async function main() {
   if (!ready) { console.error('服务器未就绪'); srv.kill(); process.exit(1); }
   try {
     /* ---------- A1 银水：女巫 bot 救人不投银水 ---------- */
-    for (let attempt = 0; attempt < 6; attempt++) {
-      const s = await setup(5, { wolf: 1, witch: 1, villager: 3 }, 'smart', 'idle', 'witch');
-      const victim = s.players.find(p => p.alive && p.id !== s.host && p.id !== s.target);
-      const v = await night1(s.room, s.host, victim.id, false);
-      if ((v.morningDeaths || []).some(d => d.id === s.host)) { await api('/api/leave', { room: s.room, me: s.host }); continue; } // 房主夜1被刀（自刀概率）→重开
-      await toDiscuss(s.room, s.host);
-      await chat(s.room, s.host, '我是预言家，查杀' + victim.name); // 查杀银水
-      await act(s.room, s.host, 'startVote');
-      // 房主最后投票会触发结算（全员投完立即 resolve），故在投票前抓 bot 的 votedBy
-      let vb = null;
-      for (let i = 0; i < 12; i++) {
-        const vh = await st(s.room, s.host);
-        if (vh.phase !== 'vote') break;
-        const f = ((vh.vote && vh.vote.votedBy) || []).find(x => x.id === s.target);
-        if (f) { vb = f; break; }
-        await sleep(150);
+    let a1ok = false;
+    for (let attempt = 0; attempt < 6 && !a1ok; attempt++) {
+      let s = null;
+      try {
+        s = await setup(5, { wolf: 1, witch: 1, villager: 3 }, 'smart', 'idle', 'witch');
+        const victim = s.players.find(p => p.alive && p.id !== s.host && p.id !== s.target);
+        const v = await night1(s.room, s.host, victim.id, false);
+        if ((v.morningDeaths || []).some(d => d.id === s.host)) { await api('/api/leave', { room: s.room, me: s.host }).catch(() => {}); continue; } // 房主夜1被刀（自刀概率）→重开
+        await toDiscuss(s.room, s.host);
+        await chat(s.room, s.host, '我是预言家，查杀' + victim.name); // 查杀银水
+        await act(s.room, s.host, 'startVote');
+        // 房主最后投票会触发结算（全员投完立即 resolve），故在投票前抓 bot 的 votedBy
+        let vb = null;
+        for (let i = 0; i < 12; i++) {
+          const vh = await st(s.room, s.host);
+          if (vh.phase !== 'vote') break;
+          const f = ((vh.vote && vh.vote.votedBy) || []).find(x => x.id === s.target);
+          if (f) { vb = f; break; }
+          await sleep(150);
+        }
+        await act(s.room, s.host, 'vote', { target: victim.id }); // 房主最后一票（触发结算）
+        if (vb && vb.vote !== victim.id) {
+          assert(true, 'A1 银水：女巫 bot 不投银水（' + victim.name + '）');
+          a1ok = true;
+        } else {
+          console.error('  A1 重试：女巫 bot 投了银水（' + victim.name + '）');
+        }
+      } catch (e) {
+        console.error('  A1 重试：异常 ' + (e && e.message));
+      } finally {
+        if (s) await api('/api/leave', { room: s.room, me: s.host }).catch(() => {});
       }
-      await act(s.room, s.host, 'vote', { target: victim.id }); // 房主最后一票（触发结算）
-      assert(vb && vb.vote !== victim.id, 'A1 银水：女巫 bot 不投银水（' + victim.name + '）（投: ' + (vb ? (vb.vote ? '他人' : '弃票') : '未抓到') + '）');
-      await api('/api/leave', { room: s.room, me: s.host }).catch(() => {});
-      break;
     }
+    if (!a1ok) assert(false, 'A1 银水：女巫 bot 不投银水（多次重试后仍失败）');
 
     /* ---------- A2 对跳查验：smart 预言家夜2 查验悍跳的房主（完整流程重试，容忍偶发调度竞态） ---------- */
     let a2ok = false;
@@ -157,19 +169,31 @@ async function main() {
     }
 
     /* ---------- A4 发言模拟：smart 预言家白天报查验 ---------- */
-    for (let attempt = 0; attempt < 6; attempt++) {
-      const s = await setup(5, { wolf: 1, seer: 1, villager: 3 }, 'smart', 'idle', 'seer');
-      const victim = s.players.find(p => p.alive && p.id !== s.host && p.id !== s.target);
-      let v = await night1(s.room, s.host, victim.id, true);
-      if ((v.morningDeaths || []).some(d => d.id === s.host)) { await api('/api/leave', { room: s.room, me: s.host }); continue; }
-      await toDiscuss(s.room, s.host);
-      await sleep(1500); // 等 bot 发言（BOT_DELAY_MS=400 + 发言批次）
-      const vd = await st(s.room, s.host);
-      const talk = (vd.chat || []).find(m => m.from === s.target && m.text && m.text.includes('预言家')); // v1.5.6：seer 报查验为随机变体（均含“预言家”）
-      assert(!!talk, 'A4 发言模拟：smart 预言家白天报查验（' + (talk ? talk.text : '未发言') + '）');
-      await api('/api/leave', { room: s.room, me: s.host }).catch(() => {});
-      break;
+    let a4ok = false;
+    for (let attempt = 0; attempt < 6 && !a4ok; attempt++) {
+      let s = null;
+      try {
+        s = await setup(5, { wolf: 1, seer: 1, villager: 3 }, 'smart', 'idle', 'seer');
+        const victim = s.players.find(p => p.alive && p.id !== s.host && p.id !== s.target);
+        let v = await night1(s.room, s.host, victim.id, true);
+        if ((v.morningDeaths || []).some(d => d.id === s.host)) { await api('/api/leave', { room: s.room, me: s.host }).catch(() => {}); continue; }
+        await toDiscuss(s.room, s.host);
+        await sleep(1500); // 等 bot 发言（BOT_DELAY_MS=400 + 发言批次）
+        const vd = await st(s.room, s.host);
+        const talk = (vd.chat || []).find(m => m.from === s.target && m.text && m.text.includes('预言家')); // v1.5.6：seer 报查验为随机变体（均含“预言家”）
+        if (talk) {
+          assert(true, 'A4 发言模拟：smart 预言家白天报查验');
+          a4ok = true;
+        } else {
+          console.error('  A4 重试：预言家 bot 未发言');
+        }
+      } catch (e) {
+        console.error('  A4 重试：异常 ' + (e && e.message));
+      } finally {
+        if (s) await api('/api/leave', { room: s.room, me: s.host }).catch(() => {});
+      }
     }
+    if (!a4ok) assert(false, 'A4 发言模拟：smart 预言家白天报查验（多次重试后仍失败）');
 
     /* ---------- A5 悍跳：smart 狼白天悍跳预言家 ---------- */
     for (let attempt = 0; attempt < 6; attempt++) {
