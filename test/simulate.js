@@ -420,8 +420,7 @@ async function scenario2() {
         await act(room, A.playerId, 'startVote');
         v = await state(room, A.playerId);
         const alive = v.players.filter(p => p.alive);
-        const wolfIds = [];
-        for (const id of ids) { const wv2 = await state(room, id); if (wv2.night && wv2.night.wolf && wv2.my.alive) wolfIds.push(id); }
+        const wolfIds = ids.filter(id => { const p = v.players.find(x => x.id === id); return p && p.alive && (roles[id].role === '狼人' || roles[id].role === '狼美人'); });
         const target = alive.find(x => wolfIds.includes(x.id)) || alive[0];
         for (const q of alive) { const qv = await state(room, q.id); if (qv.phase === 'vote') await act(room, q.id, 'vote', { target: target ? target.id : null }); }
         v = await state(room, A.playerId);
