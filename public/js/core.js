@@ -458,6 +458,7 @@ async function createRoom() {
   const r = await api('api/create', { name, deviceId: deviceId() });
   card.classList.remove('busy');
   if (r.error || !r.roomId || !r.playerId) { $('home-err').textContent = r.error || '创建失败，请重试'; return; }
+  token = r.token; // 安全加固：token 只从 create/join 响应获取，不进视图
   localStorage.lwName = name;
   localStorage.lwRoom = r.roomId;
   try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(r.roomId); } catch (e) {}
@@ -476,6 +477,7 @@ async function joinRoom() {
   const r = await api('api/join', { roomId: code, name, deviceId: deviceId() });
   joinBusy = false;
   if (r.error || !r.playerId) { markCodeInvalid(r.error || '加入失败，请检查房间号'); $('home-err').textContent = r.error || '加入失败，请检查房间号'; return; }
+  token = r.token; // 安全加固：token 只从 create/join 响应获取，不进视图
   localStorage.lwName = name;
   localStorage.lwRoom = code;
   enterRoom(code, r.playerId, r.view);

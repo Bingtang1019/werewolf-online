@@ -133,6 +133,7 @@ function init() {
     const s = loadSession();
     const r = await api('api/join', { roomId: code, name, token: (s && s.token) || '', deviceId: deviceId() }); // v1.7.24：带 deviceId——token 失效时按设备认领旧位（防满员/分身）
     if (r.error || !r.playerId) { toast('无法进入上次房间：' + (r.error || '房间可能已解散'), 'err'); return; }
+    token = r.token; // 安全加固：token 只从 create/join 响应获取，不进视图
     localStorage.lwName = name;
     localStorage.lwRoom = code;
     enterRoom(code, r.playerId, r.view);
@@ -147,6 +148,7 @@ function init() {
       const r = await api('api/join', { roomId: lastCode, name: nickValue(), token: sess.token, deviceId: deviceId() });
       if (r.error || !r.playerId) { /* 房间已解散/满员——保留“上次房间”按钮由用户手动处理 */ }
       else {
+        token = r.token; // 安全加固：token 只从 create/join 响应获取，不进视图
         localStorage.lwName = nickValue();
         enterRoom(lastCode, r.playerId, r.view);
       }
