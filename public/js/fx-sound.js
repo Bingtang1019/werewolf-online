@@ -71,6 +71,9 @@ function fxTarget(id, icon, klass) {
   spawnFx(icon, klass, { left: r.left + r.width / 2 - 20, top: r.top + r.height / 2 - 20 });
 }
 
+const timeline = [];
+let lastTimelineVoteKey = '';
+
 function collectStats(v) {
   if (!v) return;
   // 夜晚死亡（morning 阶段下发）
@@ -79,6 +82,7 @@ function collectStats(v) {
     if (!statSeen[key]) {
       statSeen[key] = true;
       stat.deaths.push({ night: v.nightNum, names: v.morningDeaths.map(d => d.name) });
+      timeline.push({ type: 'death', night: '第' + v.nightNum + '夜', text: v.morningDeaths.map(d => d.name).join('、') });
       if (v.nightNum === 1 && !stat.firstNight) stat.firstNight = v.morningDeaths[0].name;
     }
   }
@@ -90,6 +94,17 @@ function collectStats(v) {
       const last = stat.deaths[stat.deaths.length - 1];
       if (last && last.night === v.nightNum) last.names = last.names.concat(v.dayDeaths.map(d => d.name));
       else stat.deaths.push({ night: v.nightNum, names: v.dayDeaths.map(d => d.name) });
+      timeline.push({ type: 'exile', night: '第' + v.dayNum + '天', text: v.dayDeaths.map(d => d.name).join('、') + ' 出局' });
+    }
+  }
+  // 投票结果时间线
+  if (v.lastVoteResult && v.lastVoteResult.result) {
+    const lv = v.lastVoteResult;
+    const key = JSON.stringify({ r: lv.result, e: lv.exiled, t: lv.tied, k: lv.kind });
+    if (key !== lastTimelineVoteKey) {
+      lastTimelineVoteKey = key;
+      const txt = lv.result === 'exile' ? (lv.exiled ? nameOf(lv.exiled) + ' 被放逐' : '有人被放逐') : lv.result === 'elected' ? (lv.exiled ? nameOf(lv.exiled) + ' 当选警长' : '警长当选') : lv.result === 'tie' ? '平票' : '无人出局';
+      timeline.push({ type: 'vote', night: '第' + v.dayNum + '天', text: txt });
     }
   }
   // 发言数：只统计全体频道真人消息（私聊不算“话痨”）
@@ -104,6 +119,7 @@ function collectStats(v) {
 
 function resetStats() {
   stat.deaths.length = 0; stat.chat = {}; stat.firstNight = null;
+  timeline.length = 0; lastTimelineVoteKey = '';
   for (const k in statSeen) delete statSeen[k];
   statMsgIds.clear();
 }

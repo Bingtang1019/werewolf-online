@@ -309,6 +309,17 @@ button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 .chat-msg:hover { background: rgba(255,255,255,.03); }
 .chat-msg .cm-name { font-weight: 700; margin-right: 6px; cursor: pointer; }
 .chat-msg .cm-seat { font-size: 10px; color: var(--muted); font-weight: 400; margin-left: 2px; }
+/* B. 玩家卡状态仪表盘 */
+.player.selected .avatar { box-shadow: 0 0 0 2px var(--accent), 0 0 18px rgba(232,182,76,.35); animation: selectedPulse 1.1s ease-in-out infinite; }
+@keyframes selectedPulse {
+  0%, 100% { box-shadow: 0 0 0 2px var(--accent), 0 0 12px rgba(232,182,76,.2); }
+  50% { box-shadow: 0 0 0 3px var(--accent), 0 0 24px rgba(232,182,76,.45); }
+}
+.player .p-badge, .player .bot-badge, .player .sheriff-mark { animation: badgeIn .35s ease both; }
+@keyframes badgeIn { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.player.dead .dmark { animation: tombstoneDrop .4s ease both; }
+@keyframes tombstoneDrop { from { transform: translateY(-6px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
 .chat-msg .cm-actions { display: inline-flex; gap: 2px; margin-left: 6px; opacity: 0; transition: opacity .15s; vertical-align: middle; }
 .chat-msg:hover .cm-actions { opacity: 1; }
 .chat-msg .cm-act { background: none; border: none; cursor: pointer; font-size: 12px; padding: 0 2px; opacity: .7; }
@@ -1570,3 +1581,22 @@ body.less-motion button { transition: none !important; }
 .death-timeline { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 12px; }
 .death-timeline .dt-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 10px; }
 .death-timeline .dt-night { flex: none; font-size: 11px; color: var(--accent); }
+.game-timeline { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 12px; }
+.game-timeline .tl-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
+.game-timeline .tl-night { flex: none; font-size: 11px; color: var(--muted); }
+.game-timeline .tl-vote { border-color: rgba(232,182,76,.35); }
+.game-timeline .tl-exile { border-color: rgba(224,96,96,.3); }
+
+/* E. 场景动效：胜利火花 */
+.winner-banner { position: relative; overflow: visible; }
+.winner-banner::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 12px var(--accent), 0 0 24px rgba(232,182,76,.5);
+  animation: winSpark 1.5s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes winSpark {
+  0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -160%) scale(0); opacity: 0; }
+}
+body.less-motion .winner-banner::after { animation: none !important; display: none; }

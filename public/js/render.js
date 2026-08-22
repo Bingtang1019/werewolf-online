@@ -253,6 +253,12 @@ function renderInfo() {
     }
     html += `<div class="panel-title">${kind}</div><div>${resTxt}</div>${totals}`;
   }
+  // 实时事件时间轴（A）：死亡/放逐/投票结果流水
+  if (timeline && timeline.length) {
+    html += `<div class="panel-title">📜 事件时间轴</div><div class="game-timeline">` +
+      timeline.slice(-8).map(e => `<div class="tl-item tl-${escapeHtml(e.type || '')}"><span class="tl-night">${escapeHtml(e.night || '')}</span><span>${escapeHtml(e.text || '')}</span></div>`).join('') +
+      `</div>`;
+  }
   // 重绘守卫 + 内容缓存：内容未变化不重建 DOM（避免数字动画/弹入动画反复触发）
   if (html) {
     if (info.innerHTML !== html && lastInfoHtml !== html) { info.innerHTML = html; info.classList.add('show'); }
