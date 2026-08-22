@@ -205,6 +205,11 @@ function init() {
     if (e.target.closest('input') || e.target.closest('button')) return;
     $('in-code').focus();
   });
+  const offCard = $('card-offline');
+  if (offCard) {
+    offCard.addEventListener('click', openOfflineSetup);
+    offCard.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openOfflineSetup(); } });
+  }
   const bOff = $('btn-offline');
   if (bOff) bOff.addEventListener('click', openOfflineSetup);
   const offStart = $('off-start'); if (offStart) offStart.addEventListener('click', startOfflineSetup);

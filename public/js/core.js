@@ -103,7 +103,7 @@ function currentTheme() {
 }
 function applyTheme(id) {
   if (!THEME_LIST.some(x => x.id === id)) id = 'moon';
-  document.body.classList.remove('theme-moon', 'theme-ember', 'theme-forest', 'theme-dawn');
+  document.body.classList.remove('theme-moon', 'theme-ember', 'theme-forest', 'theme-dawn', 'theme-rose', 'theme-gold');
   document.body.classList.add('theme-' + id);
   try { localStorage.lwTheme = id; } catch (e) {}
   renderThemeButtons();
