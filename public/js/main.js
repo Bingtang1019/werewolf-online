@@ -307,11 +307,8 @@ $('btn-leave').addEventListener('click', async () => {
     lmEl.addEventListener('change', () => toggleLessMotion(lmEl.checked));
   }
   applyHighContrast();
-  document.querySelectorAll('.js-contrast-btn').forEach(b => b.addEventListener('click', toggleHighContrast));
   renderCfModeButtons();
-  document.querySelectorAll('.js-cf-mode-btn').forEach(b => b.addEventListener('click', cycleCfTunnelMode));
   applyTheme();
-  document.querySelectorAll('.js-theme-btn').forEach(b => b.addEventListener('click', cycleTheme));
   applyCustomAccent();
   const accentEl = $('in-accent');
   if (accentEl) {

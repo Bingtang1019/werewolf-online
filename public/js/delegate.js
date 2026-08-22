@@ -67,6 +67,14 @@ document.addEventListener('click', e => {
     else if (kind === 'reply') chatMention(ca.dataset.name || '');
     return;
   }
+  const fs = e.target.closest('[data-font]');
+  if (fs) { setFontScale(parseInt(fs.dataset.font, 10)); return; }
+  const tm = e.target.closest('.js-theme-btn');
+  if (tm) { cycleTheme(); return; }
+  const hc = e.target.closest('.js-contrast-btn');
+  if (hc) { toggleHighContrast(); return; }
+  const cfb = e.target.closest('.js-cf-mode-btn');
+  if (cfb) { cycleCfTunnelMode(); return; }
 });
 document.addEventListener('input', e => {
   const el = e.target.closest('[data-cap]');
