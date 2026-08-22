@@ -736,6 +736,11 @@ function renderEnded() {
     if (fun.worst) html += `<div class="fs-row">🌙 最惨烈之夜：<b>第 ${fun.worst.night} 夜</b>（${fun.worst.names.length} 人阵亡）</div>`;
     html += `</div>`;
   }
+  if (stat.deaths && stat.deaths.length) {
+    html += `<div class="panel-title">📜 死亡时间线</div><div class="death-timeline">` +
+      stat.deaths.map(d => `<div class="dt-item"><span class="dt-night">第${d.night}夜</span><span>${escapeHtml(d.names.join('、'))}</span></div>`).join('') +
+      `</div>`;
+  }
   html += `<div class="panel-desc">本局身份公开：</div>`;
   html += `<div class="end-roles">` + (e.roles || []).map(r =>
     `<div class="player ${r.alive ? '' : 'dead'}"><div class="phead"><div class="avatar ${r.alive ? '' : 'dead'}">${avatarOf(r)}</div><div class="pmeta"><div class="pname">${escapeHtml(r.name)}${r.alive ? '' : ' 💀'}</div><div class="prole ${campClass(r.camp)}-role">${roleIconHtml(r.role)} ${escapeHtml(r.role)}</div><div class="pdead"><span class="camp-tag ${campClass(r.camp)}">${escapeHtml(r.camp)}</span></div></div></div></div>`

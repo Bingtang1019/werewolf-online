@@ -56,6 +56,8 @@ document.addEventListener('click', e => {
   if (tab) { chatTab = tab.dataset.tab; renderChat(); return; }
   const qp = e.target.closest('[data-qp]');
   if (qp) { quickPhrase(JSON.parse(qp.dataset.qp)); return; }
+  const em = e.target.closest('[data-emoji]');
+  if (em) { chatSend(chatTab, em.dataset.emoji); return; }
   const mi = e.target.closest('[data-mention-item]');
   if (mi) { insertChatMention(mi.dataset.mentionItem); return; }
   const ca = e.target.closest('[data-chatact]');

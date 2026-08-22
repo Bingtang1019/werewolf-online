@@ -108,6 +108,8 @@ function scrollChatIfNeeded(force) {
   }
 }
 
+let lastMentionAlert = 0;
+
 function renderChat() {
   // 夜晚自动切私聊频道（48）：全体频道夜晚关闭时，直接切到狼/情侣
   if (view.phase === 'night' && chatTab === 'all') {
@@ -166,6 +168,11 @@ function renderChat() {
       const textHtml = highlightChatMentions(escapeHtml(m.text));
       const mentioned = !!(m.text && view.my && view.my.name && m.text.indexOf('@' + view.my.name) !== -1);
       const mentionCls = mentioned ? ' mentioned' : '';
+      if (mentioned && !mine && !document.body.classList.contains('chat-open') && Date.now() - lastMentionAlert > 5000) {
+        lastMentionAlert = Date.now();
+        if (typeof vibrate === 'function') vibrate(80);
+        toast('💬 ' + (m.name || '有人') + ' 提到了你');
+      }
       html.push(`<div class="chat-msg ${chCls} ${mine ? 'mine' : ''} ${lwCls}${deadCls}${mentionCls}" title="${escapeHtml(chatShortTime(t))}">
         ${mine ? '' : `<span class="cm-avatar">${av}</span>`}
         ${m.marker && m.marker !== '遗言' ? `<span class="cm-marker">${escapeHtml(m.marker)}</span>` : ''}
@@ -213,7 +220,9 @@ function renderChat() {
       else if (myRole === '狼人' || myRole === '狼美人') phrases.unshift('我是平民');
       phrases.push('哈哈哈');
       // B3：不拼 onclick 字符串——JSON.stringify 产出合法 JS 字符串字面量 + escapeHtml 防属性逃逸，玩家名/发言含恶意字符也安全
-      qp.innerHTML = phrases.map(p => `<button data-qp="${escapeHtml(JSON.stringify(p))}">${escapeHtml(p)}</button>`).join('');
+      const emojis = ['👍', '😂', '🔥', '🌙', '🐺', '💀'];
+      qp.innerHTML = phrases.map(p => `<button data-qp="${escapeHtml(JSON.stringify(p))}">${escapeHtml(p)}</button>`).join('') +
+        emojis.map(e => `<button class="cm-emoji" data-emoji="${e}" title="发送表情">${e}</button>`).join('');
     } else qp.classList.add('hidden');
   }
 }

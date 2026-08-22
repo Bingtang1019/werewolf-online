@@ -676,6 +676,7 @@ body.theme-day {
 /* 快捷短语 */
 #quick-phrases { display: flex; gap: 6px; overflow-x: auto; padding: 6px 2px; flex: none; }
 #quick-phrases button { padding: 4px 12px; font-size: 12px; border-radius: 14px; flex: none; }
+#quick-phrases .cm-emoji { font-size: 16px; padding: 2px 7px; }
 /* 私聊红点 */
 .chat-tab { position: relative; }
 .chat-tab.dot::after { content: ''; position: absolute; top: 4px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: #ff5d5d; box-shadow: 0 0 6px rgba(255,93,93,.8); }
@@ -947,6 +948,7 @@ button.mini.bot-level.active { border-color: var(--accent); color: var(--accent)
 .lm-toggle-row .font-scale, .lm-toggle-row .js-cf-mode-btn, .lm-toggle-row .js-contrast-btn { flex: none; }
 .font-scale { display: inline-flex; gap: 4px; }
 .font-scale button { min-width: 30px; }
+.accent-picker { width: 30px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
 
 /* 行动区固定底部（#22 轻量版）：面板最后一排按钮吸在视口底部，零重构、不动滚动容器 */
 #panel .btn-row:last-child { position: sticky; bottom: 8px; z-index: 2; }
@@ -1563,3 +1565,8 @@ body.less-motion button { transition: none !important; }
   width: 1.4em; height: 1.4em; color: var(--rc, currentColor);
 }
 .rc-emoji .role-ico svg, .di-emoji .role-ico svg, .ir-emoji .role-ico svg, .fc-emoji .role-ico svg, .rp-emoji .role-ico svg { width: 1.4em; height: 1.4em; }
+
+/* ---------- B. 死亡时间线 ---------- */
+.death-timeline { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 12px; }
+.death-timeline .dt-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 10px; }
+.death-timeline .dt-night { flex: none; font-size: 11px; color: var(--accent); }

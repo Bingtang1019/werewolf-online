@@ -123,6 +123,17 @@ function renderThemeButtons() {
     else b.textContent = icon + ' ' + name;
   });
 }
+function applyCustomAccent() {
+  try {
+    const v = localStorage.lwAccent;
+    if (v && /^#[0-9a-fA-F]{6}$/.test(v)) document.body.style.setProperty('--accent', v);
+  } catch (e) {}
+}
+function setCustomAccent(v) {
+  if (!v || !/^#[0-9a-fA-F]{6}$/.test(v)) return;
+  document.body.style.setProperty('--accent', v);
+  try { localStorage.lwAccent = v; } catch (e) {}
+}
 
 /* 复制文本到剪贴板（A：聊天消息复制等通用入口） */
 function copyText(text, tip) {
@@ -440,6 +451,16 @@ document.addEventListener('click', e => {
   if (!card) return;
   const id = card.dataset.id;
   if (pickPlayerHotkey(id)) card.scrollIntoView({ block: 'nearest', inline: 'nearest' }); // 移动端横向滚动卡片也能滚入视口（34）
+});
+// 双击玩家卡：投票阶段直接投给他（快捷操作）
+document.addEventListener('dblclick', e => {
+  const card = e.target.closest('.player');
+  if (!card || !view || !view.my || !view.my.alive) return;
+  if (view.phase !== 'vote' && view.phase !== 'pk_vote' && view.phase !== 'sheriff_vote') return;
+  const voteInfo = view.vote || view.sheriffVote || {};
+  if (voteInfo.myVoted) return;
+  draft.target = card.dataset.id;
+  castVote();
 });
 /* 选人逻辑统一入口（卡片点击与快捷键 1~9 共用）：返回是否成功选中 */
 
