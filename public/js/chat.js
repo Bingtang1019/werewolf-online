@@ -119,17 +119,18 @@ function renderChat() {
   if (view.myChannels && view.myChannels.includes('wolf')) tabs.push(['wolf', '🐺 狼人(仅夜晚)']);
   if (view.myChannels && view.myChannels.includes('lover')) tabs.push(['lover', '💞 情侣']);
   if (!tabs.some(t => t[0] === chatTab)) chatTab = 'all';
-  // 私聊红点（25）：非当前 tab 有新消息
+  // 私聊未读数字（C）：非当前 tab 有新消息时显示数量徽章
   const dots = {};
   for (const t of tabs) {
     const key = t[0];
     if (key !== chatTab) {
       const last = lastTabTs[key] || 0;
-      if (view.chat.some(m => m.ch === key && m.ts > last)) dots[key] = true;
+      const n = view.chat.filter(m => m.ch === key && m.ts > last).length;
+      if (n > 0) dots[key] = n;
     }
   }
   $('chat-tabs').innerHTML = tabs.map(t =>
-    `<div class="chat-tab ${chatTab === t[0] ? 'active' : ''}${dots[t[0]] ? ' dot' : ''}" data-tab="${t[0]}">${t[1]}</div>`).join('');
+    `<div class="chat-tab ${chatTab === t[0] ? 'active' : ''}${dots[t[0]] ? ' dot' : ''}" data-tab="${t[0]}">${t[1]}${dots[t[0]] ? `<span class="tab-badge">${Math.min(99, dots[t[0]])}</span>` : ''}</div>`).join('');
   // 消息
   const msgs = view.chat.filter(m => m.ch === chatTab);
   // 消息数变化或频道切换时才重绘（两个频道消息数恰好相同时，仅靠数量无法区分）

@@ -1367,3 +1367,128 @@ body.high-contrast {
 body.high-contrast .chat-msg { border-color: #5a6a8a; }
 body.high-contrast .player { border-color: #4c5b7a; }
 body.high-contrast .home-box, body.high-contrast .modal-box { border-color: #5a6a8a; }
+
+/* ===================== 深度美化（A-G） ===================== */
+
+/* ---------- F. 多主题系统 ---------- */
+body.theme-ember {
+  --bg: #160d0d;
+  --bg2: #221313;
+  --bg3: #2e1a1a;
+  --line: #4a2a2a;
+  --txt: #ffe9e3;
+  --muted: #c9a9a0;
+  --accent: #ff8a5c;
+  --good: #6fd6a0;
+  --wolf: #ff5a5a;
+  --third: #e08aff;
+  --dead: #7a5a52;
+}
+body.theme-forest {
+  --bg: #0b1712;
+  --bg2: #12231b;
+  --bg3: #1a3025;
+  --line: #2f5342;
+  --txt: #e7f5ec;
+  --muted: #9fbfae;
+  --accent: #6fd6a0;
+  --good: #5fe0a0;
+  --wolf: #ff7a7a;
+  --third: #c39bff;
+  --dead: #5e7a6a;
+}
+body.theme-dawn {
+  --bg: #1c1420;
+  --bg2: #2a1c2e;
+  --bg3: #3a2533;
+  --line: #5c3a55;
+  --txt: #fff0e8;
+  --muted: #d0aeb4;
+  --accent: #ffb36b;
+  --good: #7cd8a6;
+  --wolf: #ff6b6b;
+  --third: #e6a0ff;
+  --dead: #83626d;
+}
+
+/* ---------- A. 首页沉浸式 ---------- */
+.home-hero h1 {
+  background: linear-gradient(135deg, #f9d976 0%, #e8b64c 45%, #b9862e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: heroGlow 4s ease-in-out infinite;
+}
+@keyframes heroGlow {
+  0%, 100% { filter: drop-shadow(0 0 18px rgba(232, 182, 76, .25)); }
+  50% { filter: drop-shadow(0 0 34px rgba(232, 182, 76, .5)); }
+}
+.home-box { box-shadow: 0 24px 80px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06); }
+.moon { animation: moonFloat 8s ease-in-out infinite; }
+@keyframes moonFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.action-card { transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+.action-card:hover { transform: translateY(-4px); box-shadow: 0 14px 34px rgba(232,182,76,.12); border-color: rgba(232,182,76,.45); }
+.lm-toggle-row {
+  background: linear-gradient(180deg, rgba(20,26,38,.55), rgba(13,17,26,.35));
+  border: 1px solid rgba(60,74,110,.35);
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+
+/* ---------- B. 对局界面视觉 ---------- */
+.player { border: 1px solid rgba(60,74,110,.55); box-shadow: 0 4px 14px rgba(0,0,0,.25); transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
+.player:hover { box-shadow: 0 10px 28px rgba(0,0,0,.4), 0 0 0 1px rgba(232,182,76,.18); }
+.player .avatar { box-shadow: 0 0 0 2px var(--line), 0 0 12px rgba(0,0,0,.35); }
+.player .sheriff-mark { animation: sheriffPulse 2s ease-in-out infinite; }
+@keyframes sheriffPulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(232,182,76,.4)); }
+  50% { transform: scale(1.12); filter: drop-shadow(0 0 8px rgba(232,182,76,.8)); }
+}
+.player.dead { filter: grayscale(.55) brightness(.85); }
+#panel { border-radius: 14px; }
+#panel .panel-title { letter-spacing: .5px; }
+
+/* ---------- C. 聊天社交氛围 ---------- */
+.chat-msg {
+  background: linear-gradient(135deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
+  border: 1px solid rgba(60,74,110,.45);
+  backdrop-filter: blur(4px);
+  transition: background .15s ease, transform .15s ease, border-color .15s ease;
+}
+.chat-msg:hover { transform: translateX(2px); border-color: rgba(232,182,76,.35); }
+.chat-msg.mine { background: linear-gradient(135deg, rgba(232,182,76,.16), rgba(232,182,76,.06)); }
+.chat-msg .cm-avatar { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 50%; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); margin-right: 6px; }
+.chat-tab { position: relative; }
+.chat-tab .tab-badge { position: absolute; top: -2px; right: -2px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 9px; background: var(--wolf); color: #fff; font-size: 10px; line-height: 16px; text-align: center; }
+
+/* ---------- D. 统一微交互 ---------- */
+button { transition: transform .12s ease, box-shadow .12s ease, background .12s ease; }
+button:active { transform: scale(.97); }
+.mini:active, .primary:active { transform: scale(.96); }
+
+/* ---------- E. 移动端补充 ---------- */
+@media (max-width: 600px) {
+  .lm-toggle-row { justify-content: flex-start; }
+  .home-hero h1 { font-size: clamp(32px, 10vw, 48px); }
+  .action-card { min-height: 108px; }
+  #topbar .tb-right { gap: 4px; }
+  #topbar .tb-right .mini { padding: 4px 7px; font-size: 12px; }
+}
+
+/* ---------- G. 品牌装饰 ---------- */
+.home-hero .hh-emoji {
+  position: relative;
+  filter: drop-shadow(0 8px 24px rgba(0,0,0,.45));
+}
+#home .moon { box-shadow: 0 0 60px 18px rgba(255,244,200,.12); }
+
+/* 减少动效时禁用新增动画 */
+body.less-motion .home-hero h1,
+body.less-motion .moon,
+body.less-motion .player .sheriff-mark {
+  animation: none !important;
+}
+body.less-motion button { transition: none !important; }

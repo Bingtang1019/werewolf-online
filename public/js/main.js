@@ -300,6 +300,8 @@ $('btn-leave').addEventListener('click', async () => {
   document.querySelectorAll('.js-contrast-btn').forEach(b => b.addEventListener('click', toggleHighContrast));
   renderCfModeButtons();
   document.querySelectorAll('.js-cf-mode-btn').forEach(b => b.addEventListener('click', cycleCfTunnelMode));
+  applyTheme();
+  document.querySelectorAll('.js-theme-btn').forEach(b => b.addEventListener('click', cycleTheme));
   // 邀请链接直达（v1.3.0）：?room=XXXXXX → 自动填入并高亮加入卡（不自动进入，避免误入他人房间）
   try {
     const qr = new URLSearchParams(location.search).get('room');

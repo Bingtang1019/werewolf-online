@@ -80,6 +80,48 @@ function renderCfModeButtons() {
   });
 }
 
+/* 主题与个性化（F）：月夜 / 暗红 / 森林 / 晨曦，本地持久化 */
+const THEME_LIST = [
+  { id: 'moon', name: '月夜', icon: '🌙' },
+  { id: 'ember', name: '暗红', icon: '🔥' },
+  { id: 'forest', name: '森林', icon: '🌲' },
+  { id: 'dawn', name: '晨曦', icon: '🌅' },
+];
+function themeName(id) {
+  const t = THEME_LIST.find(x => x.id === id);
+  return t ? t.name : '月夜';
+}
+function themeIcon(id) {
+  const t = THEME_LIST.find(x => x.id === id);
+  return t ? t.icon : '🌙';
+}
+function currentTheme() {
+  try { const t = localStorage.lwTheme; if (THEME_LIST.some(x => x.id === t)) return t; } catch (e) {}
+  return 'moon';
+}
+function applyTheme(id) {
+  if (!THEME_LIST.some(x => x.id === id)) id = 'moon';
+  document.body.classList.remove('theme-moon', 'theme-ember', 'theme-forest', 'theme-dawn');
+  document.body.classList.add('theme-' + id);
+  try { localStorage.lwTheme = id; } catch (e) {}
+  renderThemeButtons();
+}
+function cycleTheme() {
+  const order = THEME_LIST.map(t => t.id);
+  const cur = currentTheme();
+  const next = order[(order.indexOf(cur) + 1) % order.length];
+  applyTheme(next);
+  toast('🎨 主题：' + themeName(next));
+}
+function renderThemeButtons() {
+  const id = currentTheme();
+  const name = themeName(id), icon = themeIcon(id);
+  document.querySelectorAll('.js-theme-btn').forEach(b => {
+    if (b.id && b.id.indexOf('room') !== -1) b.textContent = icon;
+    else b.textContent = icon + ' ' + name;
+  });
+}
+
 /* 复制文本到剪贴板（A：聊天消息复制等通用入口） */
 function copyText(text, tip) {
   const done = () => toast(tip || '已复制', 'success');
