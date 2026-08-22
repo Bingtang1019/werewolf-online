@@ -86,6 +86,8 @@ const THEME_LIST = [
   { id: 'ember', name: '暗红', icon: '🔥' },
   { id: 'forest', name: '森林', icon: '🌲' },
   { id: 'dawn', name: '晨曦', icon: '🌅' },
+  { id: 'rose', name: '玫瑰', icon: '🌹' },
+  { id: 'gold', name: '黄金', icon: '⭐' },
 ];
 function themeName(id) {
   const t = THEME_LIST.find(x => x.id === id);
@@ -225,11 +227,27 @@ const ROLE_NAMES = {
 // 职业→阵营配色（good/wolf/third），用于职业配置列表/身份展示卡/玩家角色标签
 const ROLE_CAMP = { villager: 'good', seer: 'good', witch: 'good', hunter: 'good', dreamer: 'good', guard: 'good', wolf: 'wolf', wolfBeauty: 'wolf', cupid: 'third' };
 const ROLE_CAMP_TEXT = { '平民': 'good', '预言家': 'good', '女巫': 'good', '猎人': 'good', '摄梦人': 'good', '守卫': 'good', '狼人': 'wolf', '狼美人': 'wolf', '丘比特': 'third' };
-// 职业图标（key→emoji / 中文名→emoji）
-const ROLE_EMOJI = { villager: '🏡', seer: '🔮', witch: '🧪', hunter: '🔫', dreamer: '😴', guard: '🛡️', wolf: '🐺', wolfBeauty: '🌹', cupid: '💘', thief: '🃏' };
-const ROLE_EMOJI_TEXT = { '平民': '🏡', '预言家': '🔮', '女巫': '🧪', '猎人': '🔫', '摄梦人': '😴', '守卫': '🛡️', '狼人': '🐺', '狼美人': '🌹', '丘比特': '💘', '盗贼': '🃏' };
-// 职业专属光晕色（中文名→色值，与 ROLE_EMOJI_TEXT 对齐；--rc 用于身份卡/死亡卡/睁眼提示）
+// 职业专属光晕色（中文名→色值；--rc 用于身份卡/死亡卡/睁眼提示）
 const ROLE_GLOW_TEXT = { '平民': '#7fd4a8', '预言家': '#5aa2ff', '女巫': '#b06af0', '猎人': '#ff8c5a', '摄梦人': '#6ad8d0', '守卫': '#ffd166', '狼人': '#ff6b6b', '狼美人': '#ff7bac', '丘比特': '#ff8fd8', '盗贼': '#ffd76a' };
+/* 1.8.1 SVG 职业图标体系（G）：线性风格，随主题 currentColor 着色 */
+const ROLE_SVG = {
+  villager: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9h14v-9"/><path d="M10 19v-5h4v5"/></svg>',
+  seer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="2"/></svg>',
+  witch: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3h4M11 3v5l-4 9a3 3 0 0 0 2.7 4h4.6a3 3 0 0 0 2.7-4l-4-9V3"/><path d="M8 14h8"/></svg>',
+  hunter: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>',
+  dreamer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14A8 8 0 0 1 10 4a8 8 0 1 0 10 10z"/><path d="M13 12h3l-2 3h3"/></svg>',
+  guard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>',
+  wolf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l3 3c1-1.5 3-2 5-2s4 .5 5 2l3-3"/><path d="M5 10c0 5 3 8 7 8s7-3 7-8c0-2-1-3-2-4"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="10" r="1"/><path d="M12 13v3"/></svg>',
+  wolfBeauty: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-6-4-8-8a4 4 0 0 1 7-3 4 4 0 0 1 7 3c-2 4-6 8-6 8z"/><path d="M12 9v5"/></svg>',
+  cupid: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-6-4-8-8a4 4 0 0 1 7-3 4 4 0 0 1 7 3c-2 4-6 8-6 8z"/><path d="M4 4l8 8M10 4h4v4"/></svg>',
+  thief: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>',
+};
+const ROLE_SVG_TEXT = {};
+for (const k of Object.keys(ROLE_NAMES)) ROLE_SVG_TEXT[ROLE_NAMES[k]] = ROLE_SVG[k];
+function roleIconHtml(role) {
+  const svg = ROLE_SVG_TEXT[role] || ROLE_SVG[role] || '';
+  return svg ? `<span class="role-ico">${svg}</span>` : '';
+}
 // 盗贼“窃走”文案：各职业的被窃之物
 const THIEF_ITEM = { villager: '身份', seer: '水晶球', witch: '魔药', hunter: '猎枪', dreamer: '幻境', guard: '护盾', wolf: '爪牙', wolfBeauty: '魅力', cupid: '弓箭' };
 // 按座位号固定的动物头像

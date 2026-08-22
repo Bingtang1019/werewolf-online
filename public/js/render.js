@@ -11,7 +11,7 @@ function showOverlay(title, sub, card, deaths, emoji, waitPulse) {
   // deaths 为 HTML（死亡翻牌卡/平安夜金光）时原样注入，纯文本时包成 od-item（6）
   if (dd) dd.innerHTML = (deaths && deaths.indexOf('<') >= 0) ? deaths : (deaths ? `<div class="od-item">${deaths}</div>` : '');
   const oe = $('on-card-emoji');
-  if (oe) oe.textContent = emoji || '';
+  if (oe) oe.innerHTML = emoji || '';
   if (card) { cardEl.classList.remove('hidden'); $('on-card-title').textContent = card; }
   else cardEl.classList.add('hidden');
   ov.classList.toggle('night-wait', !!waitPulse); // 非行动者：柔和呼吸光（6）
@@ -34,7 +34,7 @@ function onStateChange(prev, next) {
     // 仅存活玩家展示“第 N 夜”遮罩（已出局玩家不阻塞观战）；6 秒防呆自动关闭，也可点“开始行动”提前关闭
     if (view && view.my.alive) {
       const acting = !!(view.night && view.night.actors || []).some(a => a.id === view.my.id); // 轮到我行动才给身份卡
-      showOverlay(`🌙 第 ${view.nightNum || 1} 夜`, '天黑请闭眼，请等待各位行动…', acting ? `你是：${view.my.role || '？'}` : null, null, ROLE_EMOJI_TEXT[view.my.role] || '🎭', !acting);
+      showOverlay(`🌙 第 ${view.nightNum || 1} 夜`, '天黑请闭眼，请等待各位行动…', acting ? `你是：${view.my.role || '？'}` : null, null, roleIconHtml(view.my.role) || '🎭', !acting);
       const oe = $('on-card-emoji');
       if (oe && ROLE_GLOW_TEXT[view.my.role]) oe.style.setProperty('--rc', ROLE_GLOW_TEXT[view.my.role]); // 角色专属光晕（3）
       overlayTimer = setTimeout(hideOverlay, 6000);
@@ -48,7 +48,7 @@ function onStateChange(prev, next) {
         const glow = ROLE_GLOW_TEXT[d.role] || '';
         return `<div class="flip-card" style="animation-delay:${i * 240}ms"><div class="fc-inner">` +
           `<div class="fc-face fc-back"></div>` +
-          `<div class="fc-face fc-front" ${glow ? `style="--rc:${glow}"` : ''}><div class="fc-name">${escapeHtml(d.name)}</div><div class="fc-emoji">${ROLE_EMOJI_TEXT[d.role] || '💀'}</div>` +
+          `<div class="fc-face fc-front" ${glow ? `style="--rc:${glow}"` : ''}><div class="fc-name">${escapeHtml(d.name)}</div><div class="fc-emoji">${roleIconHtml(d.role) || '💀'}</div>` +
           `<div class="fc-role">${escapeHtml(d.role || '？')}</div><div class="fc-cause">${DEATH_TEXT[d.deadBy] || d.deadBy}</div></div>` +
           `</div></div>`;
       }).join('') + `</div>`;
@@ -123,7 +123,7 @@ function render() {
   $('day-text').textContent = view.phase === 'night' ? `第 ${view.nightNum} 夜` : (view.dayNum ? `第 ${view.dayNum} 天` : '');
   const chip = $('my-role-chip');
   if (view.my.role) {
-    chip.textContent = `${ROLE_EMOJI_TEXT[view.my.role] || ''} ${view.my.role}${view.my.camp ? ' · ' + view.my.camp : ''}${view.my.alive ? '' : '（已出局）'}`;
+    chip.innerHTML = `${roleIconHtml(view.my.role) || ''} ${escapeHtml(view.my.role)}${view.my.camp ? ' · ' + escapeHtml(view.my.camp) : ''}${view.my.alive ? '' : '（已出局）'}`;
     chip.style.display = '';
     chip.style.cursor = 'pointer';
     chip.title = '点击查看技能详情';
@@ -182,7 +182,7 @@ function renderPlayers() {
     const moodHtml = p.isMe
       ? `<button class="mood-btn ${p.mood ? 'has' : ''}" data-ck="mood|" title="心情表情，点击切换">${p.mood || '🎭'}</button>`
       : (p.mood ? `<span class="mood-tag">${escapeHtml(p.mood)}</span>` : '');
-    const role = p.role ? `<div class="prole ${ROLE_CAMP_TEXT[p.role] || ''}">${ROLE_EMOJI_TEXT[p.role] || ''} ${escapeHtml(p.role)}</div>` : '';
+    const role = p.role ? `<div class="prole ${ROLE_CAMP_TEXT[p.role] || ''}">${roleIconHtml(p.role)} ${escapeHtml(p.role)}</div>` : '';
     const deadTxt = p.alive ? '' : `<div class="pdead">💀 ${DEATH_TEXT[p.deadBy] || p.deadBy}${p.deadNote ? '（' + escapeHtml(p.deadNote) + '）' : ''}</div>`;
     const dmark = p.alive ? '' : `<span class="dmark dm-${p.deadBy || 'left'}"></span>`; // v1.7.18 死亡标记（死因 SVG 图形）
     const pStatus = p.alive ? '存活' : ('已出局' + (p.deadBy ? '（' + (DEATH_TEXT[p.deadBy] || p.deadBy) + '）' : ''));
@@ -279,7 +279,7 @@ function animateTotals() {
 
 function deathListHtml(list, title) {
   return `<div class="panel-title">💀 ${title}</div><div class="death-list">` + list.map(d =>
-    `<div class="death-item"><div class="di-emoji">${ROLE_EMOJI_TEXT[d.role] || '💀'}</div><div class="di-name">${escapeHtml(d.name)}</div><div class="di-role">${ROLE_EMOJI_TEXT[d.role] || ''} ${escapeHtml(d.role || '?')}</div><div class="di-cause">${DEATH_TEXT[d.deadBy] || d.deadBy}${d.deadNote ? '（' + escapeHtml(d.deadNote) + '）' : ''}</div></div>`
+    `<div class="death-item"><div class="di-emoji">${roleIconHtml(d.role) || '💀'}</div><div class="di-name">${escapeHtml(d.name)}</div><div class="di-role">${roleIconHtml(d.role)} ${escapeHtml(d.role || '?')}</div><div class="di-cause">${DEATH_TEXT[d.deadBy] || d.deadBy}${d.deadNote ? '（' + escapeHtml(d.deadNote) + '）' : ''}</div></div>`
   ).join('') + `</div>`;
 }
 
@@ -417,7 +417,7 @@ function renderReveal() {
   if (rv.canPick) {
     html += `<div class="panel-desc">由你决定本局职业（可选一种身份牌，或随机分配；之后随机指定盗贼——若开启）。</div>`;
     html += `<div class="role-cards">` + (rv.available || []).map((r, i) =>
-      `<div class="role-card ${ROLE_CAMP[r.key] || ''}" style="--rc:${ROLE_GLOW_TEXT[r.name] || ''};animation-delay:${i * 60}ms" data-ck="host|${r.key}"><div class="rc-emoji">${ROLE_EMOJI[r.key] || ''}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
+      `<div class="role-card ${ROLE_CAMP[r.key] || ''}" style="--rc:${ROLE_GLOW_TEXT[r.name] || ''};animation-delay:${i * 60}ms" data-ck="host|${r.key}"><div class="rc-emoji">${roleIconHtml(r.key)}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
     ).join('') + `</div>`;
     html += `<div class="btn-row"><button data-ck="host|random">🎲 随机分配</button></div>`;
   } else if (rv.isThief && rv.thiefCards) {
@@ -427,7 +427,7 @@ function renderReveal() {
     const thiefHasWolf = (rv.thiefCards || []).some(r => r.key === 'wolf' || r.key === 'wolfBeauty');
     if (thiefHasWolf) html += `<div class="tip-text thief-warn">⚠️ <b>两张牌中有狼人牌，你必须选择狼人！</b></div>`;
     html += `<div class="role-cards">` + (rv.thiefCards || []).map((r, i) =>
-      `<div class="role-card ${ROLE_CAMP[r.key] || ''} ${thiefHasWolf && (r.key === 'wolf' || r.key === 'wolfBeauty') ? 'thief-wolf' : ''} ${draft.thiefIdx === i ? 'chosen' : ''}" style="--rc:${ROLE_GLOW_TEXT[r.name] || ''};animation-delay:${i * 80}ms" data-pd="draftThiefIdx|${i}"><div class="rc-emoji">${ROLE_EMOJI[r.key] || ''}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
+      `<div class="role-card ${ROLE_CAMP[r.key] || ''} ${thiefHasWolf && (r.key === 'wolf' || r.key === 'wolfBeauty') ? 'thief-wolf' : ''} ${draft.thiefIdx === i ? 'chosen' : ''}" style="--rc:${ROLE_GLOW_TEXT[r.name] || ''};animation-delay:${i * 80}ms" data-pd="draftThiefIdx|${i}"><div class="rc-emoji">${roleIconHtml(r.key)}</div><div class="rc-name">${r.name}</div><div class="rc-desc">${escapeHtml(r.desc)}</div></div>`
     ).join('') + `</div>`;
     html += `<div class="btn-row"><button class="primary" data-pd="doThiefPick|" ${draft.thiefIdx === undefined ? 'disabled' : ''}>确认选择</button></div>`;
   } else if (rv.thiefPicking) {
@@ -440,7 +440,7 @@ function renderReveal() {
       html += `<div class="tip-text" style="margin-bottom:8px">🃏 盗贼窃走了「${ROLE_NAMES[rv.thiefTook] || '神秘身份'}的${item}」</div>`;
     }
     const glow = ROLE_GLOW_TEXT[rv.myRole] || '';
-    html += `<div class="identity-reveal ${ROLE_CAMP_TEXT[rv.myRole] || ''}" ${glow ? `style="--rc:${glow}"` : ''}><span class="ir-emoji">${ROLE_EMOJI_TEXT[rv.myRole] || '🎭'}</span><div class="ir-name">${escapeHtml(rv.myRole)}</div></div>`;
+    html += `<div class="identity-reveal ${ROLE_CAMP_TEXT[rv.myRole] || ''}" ${glow ? `style="--rc:${glow}"` : ''}><span class="ir-emoji">${roleIconHtml(rv.myRole) || '🎭'}</span><div class="ir-name">${escapeHtml(rv.myRole)}</div></div>`;
     html += `<div class="panel-desc" style="margin-top:10px">${escapeHtml(rv.myDesc || '')}</div>`;
     const meP = view.players.find(p => p.isMe);
     html += meP && meP.confirmed
@@ -738,7 +738,7 @@ function renderEnded() {
   }
   html += `<div class="panel-desc">本局身份公开：</div>`;
   html += `<div class="end-roles">` + (e.roles || []).map(r =>
-    `<div class="player ${r.alive ? '' : 'dead'}"><div class="phead"><div class="avatar ${r.alive ? '' : 'dead'}">${avatarOf(r)}</div><div class="pmeta"><div class="pname">${escapeHtml(r.name)}${r.alive ? '' : ' 💀'}</div><div class="prole ${campClass(r.camp)}-role">${ROLE_EMOJI_TEXT[r.role] || ''} ${escapeHtml(r.role)}</div><div class="pdead"><span class="camp-tag ${campClass(r.camp)}">${escapeHtml(r.camp)}</span></div></div></div></div>`
+    `<div class="player ${r.alive ? '' : 'dead'}"><div class="phead"><div class="avatar ${r.alive ? '' : 'dead'}">${avatarOf(r)}</div><div class="pmeta"><div class="pname">${escapeHtml(r.name)}${r.alive ? '' : ' 💀'}</div><div class="prole ${campClass(r.camp)}-role">${roleIconHtml(r.role)} ${escapeHtml(r.role)}</div><div class="pdead"><span class="camp-tag ${campClass(r.camp)}">${escapeHtml(r.camp)}</span></div></div></div></div>`
   ).join('') + `</div>`;
   if (view.canRematch) html += `<div class="btn-row"><button id="btn-rematch" class="primary" data-pd="act|rematch">再来一局</button></div>`; // 脉冲（27）
   return html;

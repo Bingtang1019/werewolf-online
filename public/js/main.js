@@ -272,6 +272,11 @@ $('btn-leave').addEventListener('click', async () => {
     const name = el.getAttribute('data-mention') || '';
     if (name) chatMention(name);
   });
+  // 移动端底部快捷导航（E）
+  const mnChat = $('mn-chat'); if (mnChat) mnChat.addEventListener('click', chatToggle);
+  const mnTheme = $('mn-theme'); if (mnTheme) mnTheme.addEventListener('click', cycleTheme);
+  const mnSound = $('mn-sound'); if (mnSound) mnSound.addEventListener('click', e => { e.stopPropagation(); toggleSoundPop(); });
+  const mnLeave = $('mn-leave'); if (mnLeave) mnLeave.addEventListener('click', () => { const b = $('btn-leave'); if (b) b.click(); });
   const oc = $('on-close');
   if (oc) oc.addEventListener('click', hideOverlay); // 空值守卫：缺元素不导致 init 崩溃（C1）
   // 房间号实时校验（v1.2.0）：输入即转大写；6 位合法金色高亮并自动进入；含非法字符红框反馈

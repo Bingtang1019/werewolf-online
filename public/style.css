@@ -1410,6 +1410,32 @@ body.theme-dawn {
   --third: #e6a0ff;
   --dead: #83626d;
 }
+body.theme-rose {
+  --bg: #1d121c;
+  --bg2: #2a1a26;
+  --bg3: #382233;
+  --line: #5c3a52;
+  --txt: #ffeaf4;
+  --muted: #d3a8bd;
+  --accent: #ff7bb1;
+  --good: #7cd8a6;
+  --wolf: #ff6b6b;
+  --third: #d9a6ff;
+  --dead: #7a5a6a;
+}
+body.theme-gold {
+  --bg: #171410;
+  --bg2: #221d15;
+  --bg3: #2e2618;
+  --line: #574931;
+  --txt: #fff6e0;
+  --muted: #cdb890;
+  --accent: #ffd166;
+  --good: #7cd8a6;
+  --wolf: #ff7a5a;
+  --third: #d9a6ff;
+  --dead: #7a6a50;
+}
 
 /* ---------- A. 首页沉浸式 ---------- */
 .home-hero h1 {
@@ -1492,3 +1518,45 @@ body.less-motion .player .sheriff-mark {
   animation: none !important;
 }
 body.less-motion button { transition: none !important; }
+
+/* ---------- E2. 移动端底部快捷导航 ---------- */
+#mobile-nav { display: none; }
+@media (max-width: 900px) {
+  #mobile-nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 100;
+    display: flex; justify-content: space-around;
+    background: rgba(14, 19, 30, .92);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--line);
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  }
+  .mn-btn {
+    background: none; border: none; color: var(--txt);
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    font-size: 18px; padding: 4px 12px; cursor: pointer;
+    transition: transform .12s ease, color .12s ease;
+  }
+  .mn-btn span { font-size: 10px; color: var(--muted); }
+  .mn-btn:active { transform: scale(.94); }
+  #main { padding-bottom: 74px; }
+  #right { transition: transform .3s ease, opacity .3s ease; }
+}
+
+/* 移动端聊天抽屉全屏动效（C/E） */
+@media (max-width: 900px) {
+  #right { will-change: transform; }
+  body.chat-open #right { opacity: 1; }
+  body.chat-full #right { animation: chatDrawerIn .28s ease; }
+}
+@keyframes chatDrawerIn {
+  from { transform: translateY(40px); opacity: .82; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* ---------- G. SVG 职业图标 ---------- */
+.role-ico { display: inline-flex; width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 2px; }
+.role-ico svg { width: 1em; height: 1em; display: block; }
+.rc-emoji .role-ico, .di-emoji .role-ico, .ir-emoji .role-ico, .fc-emoji .role-ico, .rp-emoji .role-ico {
+  width: 1.4em; height: 1.4em; color: var(--rc, currentColor);
+}
+.rc-emoji .role-ico svg, .di-emoji .role-ico svg, .ir-emoji .role-ico svg, .fc-emoji .role-ico svg, .rp-emoji .role-ico svg { width: 1.4em; height: 1.4em; }

@@ -410,7 +410,7 @@ function lobbyAction(room, p, action, data) {
     const c = data.counts;
     if (!c || typeof c !== 'object') return { error: '参数错误' };
     const nc = {};
-    for (const k of Object.keys(ROLE_INFO)) nc[k] = Math.max(0, Math.min(Infinity, Math.floor(c[k] || 0)));
+    for (const k of Object.keys(ROLE_INFO)) nc[k] = Math.max(0, Math.floor(c[k] || 0));
     nc.thief = 0; // 盗贼是设置开关（settings.thief），不占用身份牌
     nc.wolf = Math.max(1, nc.wolf);
     nc.villager = Math.max(1, nc.villager);

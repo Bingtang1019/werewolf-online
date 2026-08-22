@@ -195,7 +195,7 @@ function diffPlayers() {
 function openRolePop() {
   const pop = $('role-pop');
   if (!pop || !view.my.role) return;
-  $('rp-emoji').textContent = ROLE_EMOJI_TEXT[view.my.role] || '🎭';
+  $('rp-emoji').innerHTML = roleIconHtml(view.my.role) || '🎭';
   $('rp-name').textContent = view.my.role;
   $('rp-desc').textContent = SKILL_TEXT[view.my.roleKey] || '（暂无技能说明）'; // B1：my 无 desc 字段，改用全局技能文案
   const card = pop.querySelector('.rp-card');
@@ -208,7 +208,7 @@ function closeRolePop() { const pop = $('role-pop'); if (pop) pop.classList.add(
 function buildRulesList() {
   const el = $('rules-list'); if (!el) return;
   el.innerHTML = Object.keys(ROLE_NAMES).map(k =>
-    `<div class="rules-item ${ROLE_CAMP[k] || ''}"><span class="ri-camp"></span><span>${ROLE_EMOJI[k] || ''} ${ROLE_NAMES[k]}：${SKILL_TEXT[k] || ''}</span></div>`
+    `<div class="rules-item ${ROLE_CAMP[k] || ''}"><span class="ri-camp"></span><span>${roleIconHtml(k)} ${ROLE_NAMES[k]}：${SKILL_TEXT[k] || ''}</span></div>`
   ).join('');
   const rv = $('rules-view'); if (rv) rv.classList.remove('hidden');
 }

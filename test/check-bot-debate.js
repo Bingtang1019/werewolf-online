@@ -51,7 +51,7 @@ async function toDiscuss(room, host) {
 
 async function main() {
   const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, SNAPSHOT_SEC: '0', PORT: String(PORT), PHASE_TIMEOUT: '60', NIGHT_TIMEOUT: '45', BOT_DELAY_MS: '400', CHAT_INTERVAL: '0', BOT_DEBUG: '1' },
+    env: { ...process.env, LAB_NO_CHAOS: '1', SNAPSHOT_SEC: '0', PORT: String(PORT), PHASE_TIMEOUT: '60', NIGHT_TIMEOUT: '45', BOT_DELAY_MS: '400', CHAT_INTERVAL: '0', BOT_DEBUG: '1' },
   });
   let srvOut = '';
   srv.stdout.on('data', d => srvOut += d);

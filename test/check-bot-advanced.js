@@ -82,7 +82,7 @@ async function toDiscuss(room, host) {
 
 async function main() {
   const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, SEED: '8152', SNAPSHOT_SEC: '0', PORT: String(PORT), PHASE_TIMEOUT: '60', NIGHT_TIMEOUT: '45', BOT_DELAY_MS: '400', CHAT_INTERVAL: '0' }, // v1.7.2（3）：SEED 固定房间 rng——投票平局/波动随机序列确定，根治 A1 类 flaky
+    env: { ...process.env, SEED: '8152', LAB_NO_CHAOS: '1', SNAPSHOT_SEC: '0', PORT: String(PORT), PHASE_TIMEOUT: '60', NIGHT_TIMEOUT: '45', BOT_DELAY_MS: '400', CHAT_INTERVAL: '0' }, // v1.7.2（3）：SEED 固定房间 rng + 关闭混沌层——A1 类 bot 单元能力测试隔离
   });
   let ready = false;
   for (let i = 0; i < 50; i++) { try { const r = await fetch(`${BASE}/healthz`); if (r.status === 200) { ready = true; break; } } catch (e) {} await sleep(200); }
