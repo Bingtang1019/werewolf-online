@@ -315,6 +315,12 @@ $('btn-leave').addEventListener('click', async () => {
     try { accentEl.value = localStorage.lwAccent || '#e8b64c'; } catch (e) {}
     accentEl.addEventListener('input', () => setCustomAccent(accentEl.value));
   }
+  // 起始页设置抽屉（C）
+  const hsOpen = $('btn-home-settings');
+  const hsClose = $('btn-home-settings-close');
+  const hsDrawer = $('home-settings-drawer');
+  if (hsOpen) hsOpen.addEventListener('click', () => { if (hsDrawer) { hsDrawer.classList.remove('hidden'); renderThemeChips(); } });
+  if (hsClose) hsClose.addEventListener('click', () => { if (hsDrawer) hsDrawer.classList.add('hidden'); });
   // 邀请链接直达（v1.3.0）：?room=XXXXXX → 自动填入并高亮加入卡（不自动进入，避免误入他人房间）
   try {
     const qr = new URLSearchParams(location.search).get('room');

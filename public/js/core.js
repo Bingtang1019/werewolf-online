@@ -107,6 +107,7 @@ function applyUserTheme(id) {
   document.body.classList.add('theme-' + id);
   try { localStorage.lwTheme = id; } catch (e) {}
   renderUserThemeButtons();
+  renderThemeChips();
 }
 function cycleUserTheme() {
   const order = THEME_LIST.map(t => t.id);
@@ -122,6 +123,14 @@ function renderUserThemeButtons() {
     if (b.id && b.id.indexOf('room') !== -1) b.textContent = icon;
     else b.textContent = icon + ' ' + name;
   });
+}
+function renderThemeChips() {
+  const el = $('theme-chips');
+  if (!el) return;
+  const cur = currentTheme();
+  el.innerHTML = THEME_LIST.map(t =>
+    `<button class="theme-chip ${cur === t.id ? 'active' : ''}" data-theme="${t.id}" title="${t.name}">${t.icon} ${t.name}</button>`
+  ).join('');
 }
 function applyCustomAccent() {
   try {

@@ -1535,6 +1535,23 @@ body.less-motion .player .sheriff-mark {
 }
 body.less-motion button { transition: none !important; }
 
+/* ---------- C. 起始页设置抽屉 ---------- */
+.home-settings-row { margin-top: 12px; display: flex; }
+.home-settings-btn { width: 100%; padding: 8px 12px; border-style: dashed; }
+#home-settings-drawer {
+  position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 60;
+  background: rgba(16, 22, 34, .92);
+  border: 1px solid var(--line); border-radius: 16px; padding: 12px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.5); backdrop-filter: blur(12px);
+}
+.hsd-header { display: flex; align-items: center; justify-content: space-between; font-weight: 700; margin-bottom: 8px; }
+.hsd-body { display: flex; flex-direction: column; gap: 10px; }
+.hsd-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.hsd-title { font-size: 12px; color: var(--muted); }
+.theme-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.theme-chip { padding: 5px 10px; font-size: 12px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.04); cursor: pointer; }
+.theme-chip.active { border-color: var(--accent); color: var(--accent); background: rgba(232,182,76,.12); }
+
 /* ---------- E2. 移动端底部快捷导航 ---------- */
 #mobile-nav { display: none; }
 @media (max-width: 900px) {

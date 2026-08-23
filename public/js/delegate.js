@@ -71,6 +71,8 @@ document.addEventListener('click', e => {
   if (fs) { setFontScale(parseInt(fs.dataset.font, 10)); return; }
   const tm = e.target.closest('.js-theme-btn');
   if (tm) { cycleUserTheme(); return; }
+  const tchip = e.target.closest('[data-theme]');
+  if (tchip) { applyUserTheme(tchip.dataset.theme); renderThemeChips(); return; }
   const hc = e.target.closest('.js-contrast-btn');
   if (hc) { toggleHighContrast(); return; }
   const cfb = e.target.closest('.js-cf-mode-btn');

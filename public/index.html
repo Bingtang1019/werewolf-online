@@ -55,18 +55,28 @@
     </div>
   <div id="home-err" class="err"></div>
     <div id="stats-line" class="stats-line hidden" role="status">🔥 当前 <b id="stats-rooms">0</b> 个房间正在开黑</div>
-    <div class="lm-toggle-row">
-      <label class="lm-toggle"><input type="checkbox" id="in-less-motion"> ✨ 减少动效</label>
-      <button id="btn-sound-home" class="mini js-sound-btn" title="声音设置（总开关 + 分项）">🔊</button>
-      <button id="btn-contrast" class="mini js-contrast-btn" title="高对比度模式" aria-label="高对比度模式">🔆</button>
-      <button id="btn-cf-mode" class="mini js-cf-mode-btn" title="Cloudflare 快速通道模式（自动/开启/关闭）" aria-label="Cloudflare 快速通道模式">🚇 隧道:自动</button>
-      <button id="btn-theme" class="mini js-theme-btn" title="切换主题（月夜/暗红/森林/晨曦）" aria-label="切换主题">🌙 月夜</button>
-      <input type="color" id="in-accent" class="accent-picker" value="#e8b64c" title="自定义强调色" aria-label="自定义强调色">
-      <span class="font-scale" title="界面字号">
-        <button class="mini font-scale-btn" data-font="0">A-</button>
-        <button class="mini font-scale-btn" data-font="1">A</button>
-        <button class="mini font-scale-btn" data-font="2">A+</button>
-      </span>
+    <div class="home-settings-row"><button id="btn-home-settings" class="mini home-settings-btn">⚙️ 设置</button></div>
+    <div id="home-settings-drawer" class="hidden">
+      <div class="hsd-header"><span>⚙️ 个性化设置</span><button id="btn-home-settings-close" class="mini">✕</button></div>
+      <div class="hsd-body">
+        <label class="lm-toggle"><input type="checkbox" id="in-less-motion"> ✨ 减少动效</label>
+        <div class="hsd-row">
+          <button id="btn-sound-home" class="mini js-sound-btn" title="声音设置（总开关 + 分项）">🔊</button>
+          <button id="btn-contrast" class="mini js-contrast-btn" title="高对比度模式" aria-label="高对比度模式">🔆</button>
+          <button id="btn-cf-mode" class="mini js-cf-mode-btn" title="Cloudflare 快速通道模式（自动/开启/关闭）" aria-label="Cloudflare 快速通道模式">🚇 隧道:自动</button>
+        </div>
+        <div class="hsd-row">
+          <button id="btn-theme" class="mini js-theme-btn" title="切换主题" aria-label="切换主题">🌙 月夜</button>
+          <input type="color" id="in-accent" class="accent-picker" value="#e8b64c" title="自定义强调色" aria-label="自定义强调色">
+          <span class="font-scale" title="界面字号">
+            <button class="mini font-scale-btn" data-font="0">A-</button>
+            <button class="mini font-scale-btn" data-font="1">A</button>
+            <button class="mini font-scale-btn" data-font="2">A+</button>
+          </span>
+        </div>
+        <div class="hsd-title">快速切换主题</div>
+        <div class="theme-chips" id="theme-chips"></div>
+      </div>
     </div>
     <details id="rules-view" class="hidden"><summary>📖 规则速览</summary><div id="rules-list"></div></details>
     <div class="home-foot">
