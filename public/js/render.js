@@ -132,7 +132,7 @@ function render() {
   renderInfo();
   renderPanel();
   renderChat();
-  applyTheme(); // 昼夜主题：夜晚全局压暗变冷，白天回暖
+  applyPhaseTheme(); // 昼夜主题：夜晚全局压暗变冷，白天回暖
   // 移动端自动滚动到玩家列表（7）：每个选择阶段仅一次，不打扰用户上翻
   if (pIcon && prevFocusPhase !== lastPhaseKey && playersEl) {
     prevFocusPhase = lastPhaseKey;
@@ -149,7 +149,7 @@ function render() {
   restoreEditing();
 }
 
-function applyTheme() {
+function applyPhaseTheme() {
   const body = document.body;
   if (!view) { body.classList.remove('theme-night', 'theme-day'); return; }
   const night = view.phase === 'night';

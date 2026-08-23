@@ -279,7 +279,7 @@ $('btn-leave').addEventListener('click', async () => {
   });
   // 移动端底部快捷导航（E）
   const mnChat = $('mn-chat'); if (mnChat) mnChat.addEventListener('click', chatToggle);
-  const mnTheme = $('mn-theme'); if (mnTheme) mnTheme.addEventListener('click', cycleTheme);
+  const mnTheme = $('mn-theme'); if (mnTheme) mnTheme.addEventListener('click', cycleUserTheme);
   const mnSound = $('mn-sound'); if (mnSound) mnSound.addEventListener('click', e => { e.stopPropagation(); toggleSoundPop(); });
   const mnLeave = $('mn-leave'); if (mnLeave) mnLeave.addEventListener('click', () => { const b = $('btn-leave'); if (b) b.click(); });
   const oc = $('on-close');
@@ -308,7 +308,7 @@ $('btn-leave').addEventListener('click', async () => {
   }
   applyHighContrast();
   renderCfModeButtons();
-  applyTheme();
+  applyUserTheme();
   applyCustomAccent();
   const accentEl = $('in-accent');
   if (accentEl) {

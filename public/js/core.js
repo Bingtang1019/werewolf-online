@@ -101,21 +101,21 @@ function currentTheme() {
   try { const t = localStorage.lwTheme; if (THEME_LIST.some(x => x.id === t)) return t; } catch (e) {}
   return 'moon';
 }
-function applyTheme(id) {
+function applyUserTheme(id) {
   if (!THEME_LIST.some(x => x.id === id)) id = 'moon';
   document.body.classList.remove('theme-moon', 'theme-ember', 'theme-forest', 'theme-dawn', 'theme-rose', 'theme-gold');
   document.body.classList.add('theme-' + id);
   try { localStorage.lwTheme = id; } catch (e) {}
-  renderThemeButtons();
+  renderUserThemeButtons();
 }
-function cycleTheme() {
+function cycleUserTheme() {
   const order = THEME_LIST.map(t => t.id);
   const cur = currentTheme();
   const next = order[(order.indexOf(cur) + 1) % order.length];
-  applyTheme(next);
+  applyUserTheme(next);
   toast('🎨 主题：' + themeName(next));
 }
-function renderThemeButtons() {
+function renderUserThemeButtons() {
   const id = currentTheme();
   const name = themeName(id), icon = themeIcon(id);
   document.querySelectorAll('.js-theme-btn').forEach(b => {

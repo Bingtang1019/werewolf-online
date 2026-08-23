@@ -70,7 +70,7 @@ document.addEventListener('click', e => {
   const fs = e.target.closest('[data-font]');
   if (fs) { setFontScale(parseInt(fs.dataset.font, 10)); return; }
   const tm = e.target.closest('.js-theme-btn');
-  if (tm) { cycleTheme(); return; }
+  if (tm) { cycleUserTheme(); return; }
   const hc = e.target.closest('.js-contrast-btn');
   if (hc) { toggleHighContrast(); return; }
   const cfb = e.target.closest('.js-cf-mode-btn');
