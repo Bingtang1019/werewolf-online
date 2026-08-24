@@ -3,6 +3,13 @@
 
 function alivePlayers() { return view.players.filter(p => p.alive); }
 
+function focusPrimaryAction() {
+  setTimeout(() => {
+    const btn = document.querySelector('#panel .btn-row .primary:not([disabled])');
+    if (btn) btn.focus({ preventScroll: false });
+  }, 30);
+}
+
 function playerOf(id) { return view.players.find(p => p.id === id); }
 
 function pickPlayerHotkey(id) {

@@ -82,7 +82,10 @@ document.addEventListener('input', e => {
   const el = e.target.closest('[data-cap]');
   if (el) onCapInput(el.value);
   const ci = e.target.closest('#chat-text');
-  if (ci) updateChatMentionPop();
+  if (ci) {
+    updateChatMentionPop();
+    try { localStorage.lwChatDraft = ci.value; } catch (e) {}
+  }
 });
 document.addEventListener('change', e => {
   const el = e.target.closest('[data-cap]');

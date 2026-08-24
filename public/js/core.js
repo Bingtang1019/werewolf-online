@@ -378,6 +378,7 @@ async function poll() {
     const cf = isCfTunnel();
     const res = await fetch(`api/state?room=${encodeURIComponent(roomId)}&token=${encodeURIComponent(token)}&v=${ver}&since=${lastChatTs()}&cf=${cf ? 1 : 0}`, cf ? { cache: 'no-store' } : undefined);
     const j = await res.json();
+    if (pollFail >= 2) toast('📶 连接已恢复'); // 弱网恢复提示（H）
     pollFail = 0; hideNetBanner(); // 服务器有响应即视为网络正常（29）
     if (j.error) {
       if (j.error === 'room-not-found') { toast('房间已解散'); clearSession(); setTimeout(() => location.reload(), 1200); return; }
@@ -459,7 +460,7 @@ document.addEventListener('click', e => {
   const card = e.target.closest('.player');
   if (!card) return;
   const id = card.dataset.id;
-  if (pickPlayerHotkey(id)) card.scrollIntoView({ block: 'nearest', inline: 'nearest' }); // 移动端横向滚动卡片也能滚入视口（34）
+  if (pickPlayerHotkey(id)) { card.scrollIntoView({ block: 'nearest', inline: 'nearest' }); focusPrimaryAction(); } // 移动端横向滚动卡片也能滚入视口（34）
 });
 // 双击玩家卡：投票阶段直接投给他（快捷操作）
 document.addEventListener('dblclick', e => {
@@ -687,6 +688,7 @@ document.addEventListener('keydown', e => {
     const p = view.players.find(x => x.seat === n && x.alive);
     if (p) {
       pickPlayerHotkey(p.id);
+      focusPrimaryAction();
       const card = document.querySelector(`.player[data-id="${p.id}"]`);
       if (card) card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }

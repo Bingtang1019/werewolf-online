@@ -1507,7 +1507,7 @@ body.theme-gold {
 .chat-tab .tab-badge { position: absolute; top: -2px; right: -2px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 9px; background: var(--wolf); color: #fff; font-size: 10px; line-height: 16px; text-align: center; }
 
 /* ---------- D. 统一微交互 ---------- */
-button { transition: transform .12s ease, box-shadow .12s ease, background .12s ease; }
+button { transition: transform .12s ease, box-shadow .12s ease, background .12s ease; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
 button:active { transform: scale(.97); }
 .mini:active, .primary:active { transform: scale(.96); }
 
@@ -1551,6 +1551,9 @@ body.less-motion button { transition: none !important; }
 .theme-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .theme-chip { padding: 5px 10px; font-size: 12px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.04); cursor: pointer; }
 .theme-chip.active { border-color: var(--accent); color: var(--accent); background: rgba(232,182,76,.12); }
+
+/* ---------- C. 顶栏行动状态 ---------- */
+.action-status { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: rgba(232,182,76,.12); color: var(--accent); border: 1px solid rgba(232,182,76,.25); white-space: nowrap; }
 
 /* ---------- E2. 移动端底部快捷导航 ---------- */
 #mobile-nav { display: none; }

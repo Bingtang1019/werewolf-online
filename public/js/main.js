@@ -417,6 +417,7 @@ function sendChat() {
   const text = $('chat-text').value.trim();
   if (!text) return;
   $('chat-text').value = '';
+  try { localStorage.removeItem('lwChatDraft'); } catch (e) {}
   hideChatMentionPop();
   chatSend(chatTab, text);
 }
@@ -438,6 +439,15 @@ function enterRoom(room, playerId, v) {
   $('home').classList.add('hidden');
   $('room').classList.remove('hidden');
   render();
+  // 聊天草稿恢复（D）
+  try { const draft = localStorage.lwChatDraft; const ci = $('chat-text'); if (draft && ci) ci.value = draft; } catch (e) {}
+  // 新手引导（B）
+  try {
+    if (!localStorage.lwSeenGuide) {
+      localStorage.lwSeenGuide = '1';
+      setTimeout(() => toast('💡 点击玩家卡选择目标，数字键可快速选人；投票可双击直接投'), 700);
+    }
+  } catch (e) {}
   resetPollTimer();
   poll();
   sseFails = 0; sseDisabled = false; // v1.5.4：进房重置 SSE 降级状态

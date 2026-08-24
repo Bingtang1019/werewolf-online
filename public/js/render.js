@@ -128,6 +128,25 @@ function render() {
     chip.style.cursor = 'pointer';
     chip.title = '点击查看技能详情';
   } else chip.style.display = 'none';
+  // 状态可见性（C）：顶栏“等待/已投/确认”提示
+  const actionStatus = $('action-status');
+  if (actionStatus) {
+    let statusTxt = '';
+    if (view.phase === 'night' && view.night && view.night.actors && view.night.step) {
+      const waiting = view.night.actors.filter(a => !a.acted).length;
+      if (waiting > 0) statusTxt = '⏳ 等待 ' + waiting + ' 人';
+    } else if ((view.phase === 'vote' || view.phase === 'pk_vote' || view.phase === 'sheriff_vote') && (view.vote || view.sheriffVote)) {
+      const v = view.vote || view.sheriffVote;
+      const left = Math.max(0, (v.need || 0) - (v.voted || 0));
+      if (left > 0) statusTxt = '⏳ 已投 ' + (v.voted || 0) + '/' + (v.need || 0);
+    } else if (view.phase === 'reveal' && view.reveal) {
+      const confirmed = (view.players || []).filter(p => p.confirmed).length;
+      const need = (view.players || []).length;
+      if (confirmed < need) statusTxt = '⏳ 确认 ' + confirmed + '/' + need;
+    }
+    if (statusTxt) { actionStatus.textContent = statusTxt; actionStatus.classList.remove('hidden'); }
+    else actionStatus.classList.add('hidden');
+  }
   renderPlayers();
   renderInfo();
   renderPanel();
