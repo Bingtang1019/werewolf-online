@@ -25,6 +25,7 @@
 - `tools/nlu/generate-intent-corpus-v5.js`：V5 A1 规则生成语料（姓名替换+意图模板 + 前后缀扩展），当前生成约 **4474 条**；5-fold 宏平均 AUC **0.7506**，**已过 0.75 门槛**（生成语料口径）。
 - `models/nlu-intent-nb-v5.json`：基于生成语料训练的候选意图模型（**暂未替换生产**，建议后续用真实语料/端到端确认后再升级生产）。
 - `server/game/actions.js`：vote 样本采集钩子支持 `V5_SAMPLES=1`，用 `voteFeaturesV5`（21 维）落盘，标记 `v5:true`（V5 A2 数据采集通路已就绪）。
+- `tools/ai/v5-synth-train.js`：合成数据端到端训练冒烟（3000 样本、21 维、MLP），测试 AUC 0.9934（仅验证链路，非生产）。
 
 ## 待办（需要外部数据/算力/继续推进）
 
