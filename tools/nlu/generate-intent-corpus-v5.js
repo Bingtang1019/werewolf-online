@@ -8,7 +8,8 @@ const root = path.resolve(__dirname, '..', '..');
 const input = path.join(root, 'data/nlu/corpus-clean.annotated.jsonl');
 const outFile = path.join(root, 'data/nlu/corpus-v5-5000.jsonl');
 const TARGET = 5000;
-const NAMES = ['阿青', '阿紫', '阿黄', '阿蓝', '冰糖', '花园', '小江', '跳跳虎', '小熊维尼', '嘉豪', '小平', '月圆之夜', '凯撒', '霍梅尼'];
+const NAMES = ['阿青', '阿紫', '阿黄', '阿蓝', '冰糖', '花园', '小江', '跳跳虎', '小熊维尼', '嘉豪', '小平', '月圆之夜', '凯撒', '霍梅尼', '小鹿', '阿泽', '小北', '雪梨', '阿福', '糖糖', '茶茶', '星野', '青柠', '沐沐', '一诺', '橙子', '柚子', '芒果', '桃子', '栗子'];
+const SUFFIX = ['吧', '啊', '呀', '呢', '哈', '哦', '~', '！', '。'];
 
 const TEMPLATES = {
   attack: ['我觉得{name}是狼', '我怀疑{name}', '{name}像狼', '别信{name}', '{name}很可疑', '投{name}没毛病', '{name}是狼人', '大家都别信{name}'],
@@ -57,14 +58,14 @@ for (const r of rows) {
 // 意图模板生成
 const INTENT_ORDER = Object.keys(TEMPLATES);
 let gi = 0, guard = 0;
-while (out.length < TARGET && guard++ < 6000) {
+while (out.length < TARGET && guard++ < 20000) {
   const it = INTENT_ORDER[gi++ % INTENT_ORDER.length];
   for (const tpl of TEMPLATES[it]) {
     for (const name of NAMES) {
       if (out.length >= TARGET) break;
       let text = tpl.split('{name}').join(name);
       if (guard % 3 === 0) text = PREFIX[guard % PREFIX.length] + text;
-      if (guard % 5 === 0) text = text + '吧';
+      if (guard % 5 === 0) text = text + SUFFIX[guard % SUFFIX.length];
       add(text, it, 'template');
     }
   }
