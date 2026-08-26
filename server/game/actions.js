@@ -124,11 +124,13 @@ function applyAction(room, p, action, data) {
     // v1.7.2（B-4）：仅 phase==='vote' 采集，排除竞选/平票投票（day1 无信息时刻的噪声样本）；
     // label 用真实身份（训练侧）；特征只含公开信息（features.js）；批量落盘防单条 append 开销；采集失败绝不影响对局
     if (action === 'vote' && room.phase === 'vote' && room.labSampleFile && p.isBot && !ctx.isWolfRole(p) && data && data.target) {
-      const f = voteFeatures(room, p.id, data.target);
+      const useV5 = process.env.V5_SAMPLES === '1'; // V5 A2：意图特征采集开关
+      const featFn = useV5 ? require('../ai/intent-features.js').voteFeaturesV5 : voteFeatures;
+      const f = featFn(room, p.id, data.target);
       if (f) {
         const by = ctx.byId(room, data.target);
         room.labSampleBuf = room.labSampleBuf || [];
-        room.labSampleBuf.push(JSON.stringify({ gameId: room.labGameId || 'x', day: room.dayNum || 0, botId: p.id, candId: data.target, features: f, label: by ? (ctx.isWolfRole(by) ? 1 : 0) : 0 }));
+        room.labSampleBuf.push(JSON.stringify({ gameId: room.labGameId || 'x', day: room.dayNum || 0, botId: p.id, candId: data.target, features: f, label: by ? (ctx.isWolfRole(by) ? 1 : 0) : 0, v5: useV5 ? true : false }));
         if (room.labSampleBuf.length >= 500) flushLabSamples(room);
       }
     }
