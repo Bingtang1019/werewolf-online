@@ -27,6 +27,7 @@
 - `server/game/actions.js`：vote 样本采集钩子支持 `V5_SAMPLES=1`，用 `voteFeaturesV5`（21 维）落盘，标记 `v5:true`（V5 A2 数据采集通路已就绪）。
 - `tools/ai/v5-synth-train.js`：合成数据端到端训练冒烟（3000 样本、21 维、MLP），测试 AUC 0.9934（仅验证链路，非生产）。
 - `tools/ai/train-v5-lab.js`：用 lab 采集的 V5 真实样本（v5:true，21 维）训练 π 意图版；4 局 sample 采到 122 条 vote 样本，训练后测试 AUC **0.8247**，输出 `models/v5-pi-lab.json`（小样本 lab 模型，非生产）。
+- `tools/ai/train-v5-vote-ada.js`：V5 A2 v3v3 AdaBoost 训练；同一批 122 条样本训练后测试 AUC **0.8542**，输出 `models/adaboost-vote-v3-v5.json`（adaboost-vote@3 格式，小样本 lab 模型，非生产）。
 
 ## 待办（需要外部数据/算力/继续推进）
 
