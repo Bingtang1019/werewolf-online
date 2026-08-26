@@ -29,6 +29,9 @@
 - `tools/ai/train-v5-lab.js`：用 lab 采集的 V5 真实样本（v5:true，21 维）训练 π 意图版；4 局 sample 采到 122 条 vote 样本，训练后测试 AUC **0.8247**，输出 `models/v5-pi-lab.json`（小样本 lab 模型，非生产）。
 - `tools/ai/train-v5-vote-ada.js`：V5 A2 v3v3 AdaBoost 训练；同一批 122 条样本训练后测试 AUC **0.8542**，输出 `models/adaboost-vote-v3-v5.json`（adaboost-vote@3 格式，小样本 lab 模型，非生产）。
 - `tools/ai/v5-restart-monitor.js`：V5 B 系列重启信号监控（A1/A2/A3/A5 产物检查 + B2/B3 状态输出）。
+- `tools/ai/train-v5-value-intent.js` + `models/value-hicvn-v4-intent.json`：V5 A3 合成意图价值模型（`v4-info-intent`，通道路验证）。
+- `tools/ai/v5-pipeline.js`：V5 一键流水线（lab 采集 → A5 π → A2 v3v3 → A3 合成价值模型 → B 监控）。
+- 规模更新：lab 样本已扩到 **1056 条** V5 vote 样本；A5 π lab 模型测试 AUC **0.9445**，A2 v3v3 模型测试 AUC **0.8608**。
 
 ## 待办（需要外部数据/算力/继续推进）
 

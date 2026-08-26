@@ -14,7 +14,7 @@ function readMeta(p) {
 const checks = [
   { id: 'A1', name: '意图分类器生产模型', file: 'models/nlu-intent-nb.json', ok: exists('models/nlu-intent-nb.json'), note: '已替换生产' },
   { id: 'A2', name: 'v3v3 投票模型', file: 'models/adaboost-vote-v3-v5.json', ok: exists('models/adaboost-vote-v3-v5.json'), note: 'lab 小样本模型' },
-  { id: 'A3', name: '意图价值模型', file: 'models/value-hicvn-v4-intent.json', ok: exists('models/value-hicvn-v4-intent.json'), note: '尚未训练' },
+  { id: 'A3', name: '意图价值模型', file: 'models/value-hicvn-v4-intent.json', ok: exists('models/value-hicvn-v4-intent.json'), note: '合成意图价值模型（通路验证）' },
   { id: 'A5', name: 'π 意图版模型', file: 'models/v5-pi-lab.json', ok: exists('models/v5-pi-lab.json'), note: 'lab 小样本模型' },
 ];
 
