@@ -28,6 +28,7 @@
 - `tools/ai/v5-synth-train.js`：合成数据端到端训练冒烟（3000 样本、21 维、MLP），测试 AUC 0.9934（仅验证链路，非生产）。
 - `tools/ai/train-v5-lab.js`：用 lab 采集的 V5 真实样本（v5:true，21 维）训练 π 意图版；4 局 sample 采到 122 条 vote 样本，训练后测试 AUC **0.8247**，输出 `models/v5-pi-lab.json`（小样本 lab 模型，非生产）。
 - `tools/ai/train-v5-vote-ada.js`：V5 A2 v3v3 AdaBoost 训练；同一批 122 条样本训练后测试 AUC **0.8542**，输出 `models/adaboost-vote-v3-v5.json`（adaboost-vote@3 格式，小样本 lab 模型，非生产）。
+- `tools/ai/v5-restart-monitor.js`：V5 B 系列重启信号监控（A1/A2/A3/A5 产物检查 + B2/B3 状态输出）。
 
 ## 待办（需要外部数据/算力/继续推进）
 
