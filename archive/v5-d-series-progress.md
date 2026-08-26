@@ -22,6 +22,7 @@
 - `server/ai/value-model-v4.js`：支持 `-intent` featureSet 追加意图状态特征（V5 A3 推理端已就绪）。
 - `tools/ai/train-vote-pi.js`：新增 `--v5` 入口，用 `voteFeaturesV5`（13+8=21 维）训练 π 意图版（V5 A5 训练端已就绪）。
 - `server/ai/bot-brain/talk.js`：新增 `V5_INTENT_TALK=1` 意图感知回应（V5 A4 第一版：根据最近发言意图选择 defend/debate/pressure 等回应）。
+- `tools/nlu/generate-intent-corpus-v5.js`：V5 A1 规则生成语料（姓名替换+意图模板），当前生成约 3000 条；实测宏平均 AUC **0.7232**，最弱类 claim_seer 0.564、meta 0.457，仍需 LLM/更多真实锚点才能过 0.75。
 
 ## 待办（需要外部数据/算力/继续推进）
 
