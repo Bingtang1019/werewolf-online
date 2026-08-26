@@ -69,6 +69,10 @@ function buildX(s, m, config) {
     const inf = s.info || {};
     x.push(inf.checkedWolves || 0, inf.checkedCount || 0, inf.seerAlive || 0, inf.lastExileWasWolf || 0);
   }
+  if (m.featureSet.endsWith('-intent')) { // V5 A3：意图状态特征（新模型可选；旧模型无此后缀 → 不消费）
+    const it = s.intent || {};
+    x.push(it.attackDensity || 0, it.claimSeerDensity || 0, it.defendDensity || 0, it.votePressure || 0, it.smalltalkRatio || 0);
+  }
   return x;
 }
 

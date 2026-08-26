@@ -12,6 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const { voteFeatures } = require('../../server/ai/features.js');
+const { voteFeaturesV5, INTENT_FEATURE_NAMES, V5_FEATURE_NAMES } = require('../../server/ai/intent-features.js');
 const { MLP } = require('../../server/ai/mlp.js');
 const { createBeliefEngine, applyEvent, getBeliefs } = require('../../server/ai/belief-engine.js'); // V5.1b：信念引擎
 
@@ -24,6 +25,7 @@ function parseArgs() {
     records: get('--records', path.join(root, 'data', 'records-v5-bc')),
     quick: a.includes('--quick'),
     belief: a.includes('--belief'), // V5.1b：信念特征扩展（后验/可信度/票数）
+    v5: a.includes('--v5'), // V5 A2/A5：意图特征扩展（+8 维）
     hidden: parseInt(get('--hidden', '64'), 10),
     epochs: parseInt(get('--epochs', '30'), 10),
     seed: parseInt(get('--seed', '42'), 10),
@@ -32,7 +34,7 @@ function parseArgs() {
 }
 
 /** 重放单局：产出 [样本, 真相回填]——真相 = 每局结束时 players 的 roleKey */
-function replayGame(rec, useBelief) {
+function replayGame(rec, useBelief, useV5) {
   const players = rec.players || [];
   const idx = new Map(players.map((p, i) => [p.id, i]));
   const alive = players.map(() => true);
@@ -94,7 +96,7 @@ function replayGame(rec, useBelief) {
         }
         for (const cand of players) {
           if (cand.id === voter || !alive[idx.get(cand.id)]) continue;
-          const feats = voteFeatures(room, voter, cand.id);
+          const feats = useV5 ? voteFeaturesV5(room, voter, cand.id) : voteFeatures(room, voter, cand.id);
           if (!feats) continue;
           let fe = feats;
           if (belSnap) {
@@ -141,11 +143,11 @@ function main() {
   const samples = [];
   const truths = new Map(); // botId → 该 bot 是狼?
   for (const rec of games) {
-    const r = replayGame(rec, opt.belief);
+    const r = replayGame(rec, opt.belief, opt.v5);
     samples.push(...r.samples);
     for (const [id, w] of r.truth) if (!truths.has(id)) truths.set(id, w);
   }
-  console.log(`[pi] 样本（voter×cand, label=dv）=${samples.length}` + (opt.belief ? '（信念特征版）' : ''));
+  console.log(`[pi] 样本（voter×cand, label=dv）=${samples.length}` + (opt.belief ? '（信念特征版）' : '') + (opt.v5 ? '（意图特征版）' : ''));
 
   /* ---- 划分（按 botId 80/20） ---- */
   const bots = [...new Set(samples.map(s => s.botId))];
@@ -194,12 +196,14 @@ function main() {
   console.log(`[pi] 真相命中（好人侧）: π=${(100 * piHit / Math.max(1, piTotal)).toFixed(1)}%（${piHit}/${piTotal}） vs dv=${(100 * dvHit / Math.max(1, dvTotal)).toFixed(1)}%（${dvHit}/${dvTotal}）`);
 
   /* ---- 保存模型 ---- */
+  const BASE13 = ['seat_norm', 'ring_dist', 'talk_count', 'checked_wolf', 'checked_good', 'votes_against', 'prev_votes', 'claims_seer', 'claims_god', 'accused_count', 'counter_seer', 'vote_lead', 'bot_prev_same'];
+  const BELIEF4 = ['bel_posterior', 'bel_cred_cand', 'bel_cred_voter', 'bel_vote_share'];
+  const features = (opt.v5 ? V5_FEATURE_NAMES.slice() : BASE13.slice()).concat(opt.belief ? BELIEF4.slice() : []);
   const out = {
     schema: 'vote-pi@1',
-    features: opt.belief
-      ? ['seat_norm', 'ring_dist', 'talk_count', 'checked_wolf', 'checked_good', 'votes_against', 'prev_votes', 'claims_seer', 'claims_god', 'accused_count', 'counter_seer', 'vote_lead', 'bot_prev_same', 'bel_posterior', 'bel_cred_cand', 'bel_cred_voter', 'bel_vote_share']
-      : ['seat_norm', 'ring_dist', 'talk_count', 'checked_wolf', 'checked_good', 'votes_against', 'prev_votes', 'claims_seer', 'claims_god', 'accused_count', 'counter_seer', 'vote_lead', 'bot_prev_same'],
+    features,
     belief: opt.belief ? true : false,
+    intent: opt.v5 ? true : false,
     hidden: opt.hidden,
     epochs: opt.quick ? 5 : opt.epochs,
     trainedAt: new Date().toISOString(),
@@ -210,9 +214,11 @@ function main() {
     truthHitPi: +(100 * piHit / Math.max(1, piTotal)).toFixed(3),
     truthHitDv: +(100 * dvHit / Math.max(1, dvTotal)).toFixed(3),
     seed: opt.seed,
-    note: opt.belief
-      ? 'V5.1b π（信念特征版）：13 维快照 + 4 维信念（后验/可信度/票占）；BC from decideVote；配对验收锚点 62.6%+3pp'
-      : 'V5.0 π：BC from decideVote（label=audit dv，无 rollout 污染）；推理=逐候选打分 argmax；口径：输出保真（行为）≠ 真相命中（决策质量）',
+    note: opt.v5
+      ? 'V5 A2/A5 π（意图特征版）：13 快照 + 8 意图 + 可选 4 信念；BC from decideVote'
+      : (opt.belief
+        ? 'V5.1b π（信念特征版）：13 维快照 + 4 维信念（后验/可信度/票占）；BC from decideVote；配对验收锚点 62.6%+3pp'
+        : 'V5.0 π：BC from decideVote（label=audit dv，无 rollout 污染）；推理=逐候选打分 argmax；口径：输出保真（行为）≠ 真相命中（决策质量）'),
     mlp: m.toJSON(),
   };
   fs.writeFileSync(opt.out, JSON.stringify(out));

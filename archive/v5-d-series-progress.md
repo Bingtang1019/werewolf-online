@@ -19,6 +19,8 @@
 
 - `server/ai/intent-features.js`：V5 A2 规则/分类器意图特征（attack/defend/claim_seer/claim_god/cand_attack/vote_pressure/check_mention/smalltalk），供 v3v3 / π 意图版训练推理使用。
 - `tools/nlu/eval-intent-macro-auc.js`：V5 A1 宏平均 AUC 验收工具（5-fold one-vs-rest AUC）。
+- `server/ai/value-model-v4.js`：支持 `-intent` featureSet 追加意图状态特征（V5 A3 推理端已就绪）。
+- `tools/ai/train-vote-pi.js`：新增 `--v5` 入口，用 `voteFeaturesV5`（13+8=21 维）训练 π 意图版（V5 A5 训练端已就绪）。
 
 ## 待办（需要外部数据/算力/继续推进）
 
