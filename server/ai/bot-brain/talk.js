@@ -4,6 +4,7 @@ const shared = require('./shared');
 const ctx = shared.ctx;
 const register = shared.register;
 const S = shared.S;
+const { classify } = require('../nlu-intent.js'); // V5 A4：意图感知发言（仅 V5_INTENT_TALK=1 时消费）
 
 function genPhrase(intent, params) {
   const tpl = S.LEXICON.intents[intent];
@@ -226,6 +227,19 @@ function classifyReplyTalk(room, bot, level, mem, myRole, isWolf, lp) {
   if (ctx.factionOf(room, bot) === 'third') {
     const t3 = classifyThirdTalk(room, bot, level, mem, lp);
     if (t3) return t3;
+  }
+  // V5 A4：意图感知回应（实验开关 V5_INTENT_TALK=1）
+  if (process.env.V5_INTENT_TALK === '1') {
+    const lastMsg = (room.messages || []).filter(m => m.ch === 'all' && m.from && m.from !== bot.id).slice(-1)[0];
+    if (lastMsg && lastMsg.text) {
+      const it = classify(lastMsg.text);
+      const lastSpeaker = lastMsg.from ? ctx.byId(room, lastMsg.from) : null;
+      const spName = lastSpeaker ? ctx.nameById(room, lastSpeaker.id) : '对方';
+      if (it === 'attack') return { intent: 'defend_self', params: { name: ctx.nameById(room, bot.id) }, fallback: '别急着踩我，我有自己的判断' };
+      if (it === 'check') return { intent: it === 'check' && myRole === 'seer' ? 'debate_seer' : 'defend_self', params: it === 'check' && myRole === 'seer' ? { name: spName } : { name: ctx.nameById(room, bot.id) }, fallback: '你查我？我等着听你理由' };
+      if (it === 'claim_seer') return { intent: 'debate_seer', params: { name: spName }, fallback: '你跳预言家？那我也得认真听了' };
+      if (it === 'vote') return { intent: 'pressure', params: { name: spName }, fallback: '你带票？先把你的逻辑说清楚' };
+    }
   }
   const lv = room.lastVoteResult;
   const wasVoted = lv && lv.totals && lv.totals[bot.id];

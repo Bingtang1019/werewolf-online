@@ -21,6 +21,7 @@
 - `tools/nlu/eval-intent-macro-auc.js`：V5 A1 宏平均 AUC 验收工具（5-fold one-vs-rest AUC）。
 - `server/ai/value-model-v4.js`：支持 `-intent` featureSet 追加意图状态特征（V5 A3 推理端已就绪）。
 - `tools/ai/train-vote-pi.js`：新增 `--v5` 入口，用 `voteFeaturesV5`（13+8=21 维）训练 π 意图版（V5 A5 训练端已就绪）。
+- `server/ai/bot-brain/talk.js`：新增 `V5_INTENT_TALK=1` 意图感知回应（V5 A4 第一版：根据最近发言意图选择 defend/debate/pressure 等回应）。
 
 ## 待办（需要外部数据/算力/继续推进）
 
