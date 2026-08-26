@@ -23,7 +23,7 @@
 - `tools/ai/train-vote-pi.js`：新增 `--v5` 入口，用 `voteFeaturesV5`（13+8=21 维）训练 π 意图版（V5 A5 训练端已就绪）。
 - `server/ai/bot-brain/talk.js`：新增 `V5_INTENT_TALK=1` 意图感知回应（V5 A4 第一版：根据最近发言意图选择 defend/debate/pressure 等回应）。
 - `tools/nlu/generate-intent-corpus-v5.js`：V5 A1 规则生成语料（姓名替换+意图模板 + 前后缀扩展），当前生成约 **4474 条**；5-fold 宏平均 AUC **0.7506**，**已过 0.75 门槛**（生成语料口径）。
-- `models/nlu-intent-nb-v5.json`：基于生成语料训练的候选意图模型（**暂未替换生产**，建议后续用真实语料/端到端确认后再升级生产）。
+- `models/nlu-intent-nb-v5.json`：基于生成语料训练的候选意图模型；宏平均 AUC 0.7506 通过门槛后已复制为生产 `models/nlu-intent-nb.json`（冒烟测试通过）。
 - `server/game/actions.js`：vote 样本采集钩子支持 `V5_SAMPLES=1`，用 `voteFeaturesV5`（21 维）落盘，标记 `v5:true`（V5 A2 数据采集通路已就绪）。
 - `tools/ai/v5-synth-train.js`：合成数据端到端训练冒烟（3000 样本、21 维、MLP），测试 AUC 0.9934（仅验证链路，非生产）。
 
