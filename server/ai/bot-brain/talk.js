@@ -314,7 +314,7 @@ function botLastWord(room, bot, level) {
 /* 狼人夜晚狼频道发言：每狼每晚至多一条（配合出刀，营造狼队互动）
  * v1.6.3：狼恋人在狼频道引导——不刀恋人（狼队已选恋人时劝阻改刀） */
 function botWolfChat(room, bot) {
-  const level = bot.botLevel || (room.settings.botMode === 'passive' ? 'idle' : 'easy');
+  const level = bot.hostAutoplay ? (bot.autoplayLevel || 'smart') : (bot.botLevel || (room.settings.botMode === 'passive' ? 'idle' : 'easy'));
   if (level === 'idle') return null;
   const mem = ctx.ensureMemory(bot);
   if (mem.wolfChatNight === room.nightNum) return null;

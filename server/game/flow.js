@@ -27,7 +27,7 @@ function startGame(room) {
   room.handoverFrom = null; room.shooter = null; room.shotContext = null;
   room.messages = [];
   room.actionLog = []; // 1.7.0（B1-8）：新局清空动作日志
-  room.players.forEach(p => { p.role = null; p.alive = true; p.deadBy = null; p.deadNote = null; p.leftGame = false; p.confirmed = false; p.lastWordUsed = false; if (p.isBot) resetBotPerGame(p); }); // v1.5.6：新局重置 bot 本局事实记忆（保留 suspicion）
+  room.players.forEach(p => { p.role = null; p.alive = true; p.deadBy = null; p.deadNote = null; p.leftGame = false; p.confirmed = false; p.lastWordUsed = false; if (p.isBot || p.hostAutoplay) resetBotPerGame(p); }); // v1.5.6：新局重置 bot/托管房主本局事实记忆（保留 suspicion）
   room.wolfPackMemory = undefined; room.botTalked = undefined; // v1.5.6：跨局共享战术/发言标记重置
   // 身份牌堆（盗贼玩法开启时总数 = 玩家人数 + 1）；center 两张在房主确定身份后再抽取
   const deck = ctx.shuffle(room, ctx.expandCounts(room.roleCounts));

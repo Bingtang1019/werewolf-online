@@ -47,7 +47,7 @@ function chatAction(room, p, data) {
   }
   if (!room.speechToday) room.speechToday = {};
   room.speechToday[p.id] = (room.speechToday[p.id] || 0) + 1; // v4.2：发言量信息特征（speech 摘要事件数据源）
-  if (!p.isBot) chatRecorder.record(room, p, ch, text); // 1.8.0：真人聊天收集（NLU 语料冷启动；失败静默不阻塞）
+  if (!p.isBot && !p.hostAutoplay) chatRecorder.record(room, p, ch, text); // 1.8.0：真人聊天收集（NLU 语料冷启动；房主托管产生的 AI 发言不混入真人语料）
   addMessage(room, p, ch, text, null, data.claim || null); // D1：结构化声明透传（bot 声明：查杀/金水）
   if (data.claim) ctx.pushEvent(room, 'claim', { from: p.id, type: data.claim.type, target: data.claim.target || null, night: data.claim.night != null ? data.claim.night : room.nightNum }); // V5.1：声明事件（belief-engine 证据源）
   // 1.8.0：真人聊天 NLU 声明抽取——把“查杀/金水/攻击/自辩/跳身份”变成 belief-engine 可消费的结构化声明
@@ -57,6 +57,7 @@ function chatAction(room, p, data) {
       ctx.pushEvent(room, 'claim', { from: p.id, type: c.type, target: c.target, night: room.nightNum });
     }
   }
+  if (p.hostAutoplay && p.id === room.host) ctx.appendHostAutoplayLog(room, p, { type: 'chat', action: 'chat', data: { ch, text } });
   ctx.bump(room);
   return { ok: true };
 }
@@ -215,10 +216,10 @@ function rematch(room) {
   room.actionLog = []; // 1.7.0（B1-8）：新局清空动作日志
   room.reveal = null;
   if (room._nightTimer) { clock.clearTimeout(room._nightTimer); room._nightTimer = null; }
-  room.players.forEach(p => { p.role = null; p.alive = true; p.deadBy = null; p.deadNote = null; p.leftGame = false; p.confirmed = false; p.lastWordUsed = false; p.mood = null; if (p.isBot) resetBotPerGame(p); }); // v1.5.6：同 ctx.startGame（reset 保留 suspicion）
+  room.players.forEach(p => { p.role = null; p.alive = true; p.deadBy = null; p.deadNote = null; p.leftGame = false; p.confirmed = false; p.lastWordUsed = false; p.mood = null; if (p.isBot || p.hostAutoplay) resetBotPerGame(p); }); // v1.5.6：同 ctx.startGame（reset 保留 suspicion）
   room.wolfPackMemory = undefined; room.botTalked = undefined; // v1.5.6
   // v1.5.6：先 reset 再注入——上一局狼名单写成轻量"恩怨"（跨局印象，显式建模而非概率泄漏）
-  if (grudgeWolfIds.length) for (const p of room.players) { if (p.isBot) injectGrudge(p, grudgeWolfIds); }
+  if (grudgeWolfIds.length) for (const p of room.players) { if (p.isBot || p.hostAutoplay) injectGrudge(p, grudgeWolfIds); }
   ctx.bump(room);
 }
 

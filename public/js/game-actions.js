@@ -10,6 +10,48 @@ function focusPrimaryAction() {
   }, 30);
 }
 
+/* ---------------- 房主 V5 托管（F） ---------------- */
+let hostAutoplayArmed = false;
+function hostAutoplayLevel() {
+  const el = document.querySelector('input[name="ha-level"]:checked');
+  return el && el.value ? el.value : 'smart';
+}
+function openHostAutoplayModal() {
+  hostAutoplayArmed = false;
+  const m = $('host-autoplay-modal');
+  if (m) m.classList.remove('hidden');
+}
+function closeHostAutoplayModal() {
+  const m = $('host-autoplay-modal');
+  if (m) m.classList.add('hidden');
+}
+function toggleHostAutoplay() {
+  if (!view || !view.my || !view.my.isHost) return;
+  if (view.my.hostAutoplay) {
+    if (!hostAutoplayArmed) {
+      hostAutoplayArmed = true;
+      const b = $('btn-host-autoplay');
+      if (b) { b.textContent = '确认关闭？'; b.classList.add('confirming'); }
+      setTimeout(() => {
+        hostAutoplayArmed = false;
+        const b2 = $('btn-host-autoplay');
+        if (b2 && view && view.my && view.my.hostAutoplay) { b2.textContent = '🔒 关闭托管'; b2.classList.remove('confirming'); }
+      }, 3000);
+      return;
+    }
+    hostAutoplayArmed = false;
+    const b = $('btn-host-autoplay'); if (b) b.classList.remove('confirming');
+    act('host_autoplay', { enable: false });
+  } else {
+    openHostAutoplayModal();
+  }
+}
+function startHostAutoplay() {
+  const level = hostAutoplayLevel();
+  closeHostAutoplayModal();
+  act('host_autoplay', { enable: true, level });
+}
+
 function playerOf(id) { return view.players.find(p => p.id === id); }
 
 function pickPlayerHotkey(id) {

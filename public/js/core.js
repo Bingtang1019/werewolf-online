@@ -305,7 +305,7 @@ const sfxFlags = { wolf: true, morning: true, tick: true, heavy: true, flip: tru
 /* ---------------------------- API ---------------------------- */
 /* v1.6.4（A1-P1-1）：幂等/可重复操作清单——网络失败自动重试（沿用同一 opId，服务端去重防双执行）；
  * 非幂等（createRoom/joinRoom/kick/leave）不重试。 */
-const IDEMPOTENT_ACTIONS = ['vote', 'wolf_set', 'guard_pick', 'dreamer_pick', 'seer_pick', 'witch_act', 'cupid_pick', 'confirm', 'handover', 'post', 'mood'];
+const IDEMPOTENT_ACTIONS = ['vote', 'wolf_set', 'guard_pick', 'dreamer_pick', 'seer_pick', 'witch_act', 'cupid_pick', 'confirm', 'handover', 'post', 'mood', 'host_autoplay'];
 
 function genOpId() {
   try { if (crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}

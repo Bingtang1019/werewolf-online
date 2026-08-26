@@ -349,6 +349,39 @@ button.mini { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 .off-counts input { width: 56px; }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
+/* ---------- 房主 V5 托管（F） ---------- */
+.ha-levels { display: flex; gap: 12px; flex-wrap: wrap; }
+.ha-levels label { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); }
+.ha-levels label:hover { color: var(--txt); }
+#btn-host-autoplay { border-color: rgba(139,116,232,.45); color: #a99be8; }
+#btn-host-autoplay.active { background: linear-gradient(135deg, #6d5bd0, #8a6ce8); color: #fff; border-color: #9b8cf0; }
+#btn-host-autoplay.confirming { background: linear-gradient(135deg, #a33, #c35); color: #fff; border-color: #d66; }
+.badge.ha-badge { background: rgba(139,116,232,.2); color: #a99be8; }
+/* 托管锁定：除“关闭托管”按钮外，房主所有游戏交互入口不可点/不可见反馈 */
+body.host-autoplay-lock #panel,
+body.host-autoplay-lock #players,
+body.host-autoplay-lock #right,
+body.host-autoplay-lock #mobile-nav,
+body.host-autoplay-lock #btn-leave,
+body.host-autoplay-lock #btn-force,
+body.host-autoplay-lock #btn-copy,
+body.host-autoplay-lock #btn-share,
+body.host-autoplay-lock #btn-sound,
+body.host-autoplay-lock #btn-music,
+body.host-autoplay-lock #btn-contrast-room,
+body.host-autoplay-lock #btn-cf-mode-room,
+body.host-autoplay-lock #btn-theme-room,
+body.host-autoplay-lock #my-role-chip {
+  pointer-events: none !important;
+  opacity: .45 !important;
+  filter: saturate(.7);
+}
+body.host-autoplay-lock #btn-host-autoplay {
+  pointer-events: auto !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+
 /* ---------- 弹窗 ---------- */
 #toast {
   position: fixed; left: 50%; top: 70px; transform: translateX(-50%);

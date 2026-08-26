@@ -19,6 +19,11 @@ function autoBotName(room) {
 const BOT_DELAY_BASE = Math.max(100, parseInt(process.env.BOT_DELAY_MS || '10000', 10));
 function botDelay() { return Math.max(100, Math.round(BOT_DELAY_BASE * (0.75 + global.rng.next() * 0.5))); } // ±25%（调度时序不参与对局确定性 → 全局 RNG）
 
+/* 房主托管：真人房主在服务端被当作“待代行动玩家”调度，但 isBot 仍为 false（视图仍显示真人/房主） */
+function isAutoActing(p) {
+  return !!(p && (p.isBot || p.hostAutoplay) && !p.leftGame);
+}
+
 /* 当前阶段需要人机行动的玩家列表 */
 function pendingBotActors(room) {
   if (room.phase === 'lobby' || room.phase === 'ended') return [];
@@ -28,33 +33,37 @@ function pendingBotActors(room) {
       if (!rv) return [];
       if (room.settings.thief && rv.stage === 'thiefPick' && rv.thiefId) {
         const t = ctx.byId(room, rv.thiefId);
-        return t && t.isBot && !rv.thiefPicked ? [t] : [];
+        return t && isAutoActing(t) && !rv.thiefPicked ? [t] : [];
       }
-      if (rv.dealt) return room.players.filter(p => p.isBot && !p.confirmed && !p.leftGame);
+      if (!rv.dealt && rv.stage === 'hostChoice' && !rv.hostPicked) {
+        const h = ctx.byId(room, room.host);
+        return h && h.hostAutoplay ? [h] : [];
+      }
+      if (rv.dealt) return room.players.filter(p => isAutoActing(p) && !p.confirmed && !p.leftGame);
       return [];
     }
     case 'night': {
       if (room.nightStep === 'hunter') {
         const sh = room.shooter ? ctx.byId(room, room.shooter) : null;
-        return sh && sh.isBot && !(room.nightActed['hunter'] || {})[sh.id] ? [sh] : [];
+        return sh && isAutoActing(sh) && !(room.nightActed['hunter'] || {})[sh.id] ? [sh] : [];
       }
       const actors = ctx.nightActors(room, room.nightStep || '');
       if (!actors.length) return [];
       const acted = room.nightActed[room.nightStep] || {};
-      return actors.filter(id => !acted[id]).map(id => ctx.byId(room, id)).filter(p => p && p.isBot);
+      return actors.filter(id => !acted[id]).map(id => ctx.byId(room, id)).filter(p => p && isAutoActing(p));
     }
     case 'lastword':
-      return room.lastWorders.filter(id => !room.lastWordDone[id]).map(id => ctx.byId(room, id)).filter(p => p && p.isBot);
+      return room.lastWorders.filter(id => !room.lastWordDone[id]).map(id => ctx.byId(room, id)).filter(p => p && isAutoActing(p));
     case 'handover': {
       const sh = room.handoverFrom ? ctx.byId(room, room.handoverFrom) : null;
-      return sh && sh.isBot ? [sh] : [];
+      return sh && isAutoActing(sh) ? [sh] : [];
     }
     case 'sheriff_campaign':
-      return room.players.filter(p => p.isBot && p.alive && !room.campaignDecided[p.id]);
+      return room.players.filter(p => isAutoActing(p) && p.alive && !room.campaignDecided[p.id]);
     case 'sheriff_vote':
     case 'vote':
     case 'pk_vote':
-      return room.players.filter(p => p.isBot && p.alive && !room.votes.hasOwnProperty(p.id));
+      return room.players.filter(p => isAutoActing(p) && p.alive && !room.votes.hasOwnProperty(p.id));
     case 'discuss': { // v1.4.4：发言模拟；v1.6.4（A4-1）：发言次数动态化——人类越多人机越不倾向发言
       const bt = room.botTalked && room.botTalked.day === room.dayNum ? room.botTalked.ids : null;
       // 人类占比：>50% → 配额 1 条；>80% → 配额 1 条且仅“被质疑时开口”（被投/被查杀时允许额外 1 条回应）；否则 2 条
@@ -68,7 +77,7 @@ function pendingBotActors(room) {
         return room.messages.some(m => m.ch === 'all' && m.from && m.from !== p.id && m.text && m.text.includes('查杀') && m.text.includes(p.name)); // 被查杀
       };
       return room.players.filter(p => {
-        if (!p.isBot || !p.alive) return false;
+        if (!isAutoActing(p) || !p.alive) return false;
         const n = bt ? (bt[p.id] || 0) : 0;
         if (n < quota) return true;
         if (humanRatio > 0.5 && n < quota + 1 && challenged(p)) return true; // 被质疑时允许额外 1 条回应
@@ -77,7 +86,7 @@ function pendingBotActors(room) {
     }
     case 'hunter_shot': {
       const sh = room.shooter ? ctx.byId(room, room.shooter) : null;
-      return sh && sh.isBot ? [sh] : [];
+      return sh && isAutoActing(sh) ? [sh] : [];
     }
     default: return [];
   }
@@ -129,7 +138,7 @@ function runBots(room) {
 function maybeRunBots(room) {
   if (room.phase === 'lobby' || room.phase === 'ended') return;
   if (room._botBusy) return; // runBots 执行期间不重复调度（N4）
-  if (!room.players.some(p => p.isBot)) return;
+  if (!room.players.some(p => p.isBot || p.hostAutoplay)) return;
   if (room._botTimer) return;
   if (!pendingBotActors(room).length) return;
   if (process.env.BOT_DEBUG) console.log('[sched]', room.phase + '/' + room.nightStep, '→', pendingBotActors(room).map(p => p.name).join(','));

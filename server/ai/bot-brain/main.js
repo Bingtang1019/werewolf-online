@@ -157,10 +157,14 @@ function createBotDecision(room, bot) {
       room.favensInvalid = (room.favensInvalid || 0) + 1; // invalid：剔除胜率统计，汇总上报
     }
   }
-  const level = bot.botLevel || (room.settings.botMode === 'passive' ? 'idle' : 'easy');
+  const level = bot.hostAutoplay ? (bot.autoplayLevel || 'smart') : (bot.botLevel || (room.settings.botMode === 'passive' ? 'idle' : 'easy')); // 房主托管：autoplayLevel 作为等效人机等级
   const eff = S.LEVEL_MAP[level] || level; // 1.7.0（B1-1②）：阶梯平移——easy←现smart、smart←现simulate、simulate←新simulate(+rollout)
   if (room.phase === 'reveal') {
     const rv = room.reveal;
+    // 房主托管：自动完成“房主选身份”（随机抽取），无需真人点按；盗贼选牌/确认仍走人机公共层
+    if (bot.hostAutoplay && room.host === bot.id && rv && !rv.dealt && rv.stage === 'hostChoice' && !rv.hostPicked) {
+      return { action: 'hostPick', data: { role: 'random' } };
+    }
     if (room.settings.thief && rv.stage === 'thiefPick' && rv.thiefId === bot.id && !rv.thiefPicked) {
       const wolfIdx = room.center.findIndex(k => k === 'wolf' || k === 'wolfBeauty'); // 有狼必选狼
       if (wolfIdx >= 0) return { action: 'thief_pick', data: { idx: wolfIdx } };

@@ -60,6 +60,7 @@ function ensurePollTimer() {
 function needsFastPoll() {
   const v = view; if (!v) return true;
   if (!v.my.alive) return false; // 已出局：慢速轮询即可
+  if (v.my.hostAutoplay) return false; // 房主托管：全程由服务端调度，无需快轮询
   switch (v.phase) {
     case 'lobby': case 'reveal': return true;
     case 'night': {
@@ -266,6 +267,13 @@ $('btn-leave').addEventListener('click', async () => {
   });
   updateChatHandle();
   $('btn-force').addEventListener('click', () => { if (view && view.my && view.my.isHost) doAdvance(); });
+  // 房主 V5 托管（F）：顶栏开关 + 力度弹窗
+  const haBtn = $('btn-host-autoplay');
+  if (haBtn) haBtn.addEventListener('click', toggleHostAutoplay);
+  const haStart = $('host-autoplay-start');
+  if (haStart) haStart.addEventListener('click', startHostAutoplay);
+  const haCancel = $('host-autoplay-cancel');
+  if (haCancel) haCancel.addEventListener('click', closeHostAutoplayModal);
   $('btn-chat').addEventListener('click', sendChat);
   $('chat-text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) sendChat(); });
   $('chat-text').addEventListener('blur', () => setTimeout(hideChatMentionPop, 150));

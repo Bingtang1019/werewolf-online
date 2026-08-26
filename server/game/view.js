@@ -30,9 +30,11 @@ function viewFor(room, pid, chatSince) {
       id: q.id, name: q.name, seat: q.seat, alive: q.alive, deadBy: q.deadBy, deadNote: q.deadNote,
       role: (!q.alive || q.id === pid || room.phase === 'ended' || room.phase === 'lobby') ? ctx.roleText(room, q) : null,
       isBot: !!q.isBot, isMe: q.id === pid, sheriff: q.id === room.sheriff, confirmed: q.confirmed,
+      hostAutoplay: !!q.hostAutoplay, // 房主 V5 托管标记（视图可显示锁定/徽标）
       mood: q.mood || null,
     })),
     my: { id: pid, name: me ? me.name : '', alive: me ? me.alive : false, isHost: room.host === pid, role: me ? ctx.roleText(room, me) : null, roleKey: me ? ctx.effRole(me) : null, camp: me ? ((me.role === 'thief') ? null : ctx.campText(room, me)) : null, // v1.7.6：丘比特可得知自己当前阵营（ctx.cupidCamp）
+      hostAutoplay: !!(me && me.hostAutoplay), autoplayLevel: me && me.hostAutoplay ? (me.autoplayLevel || 'smart') : null,
       mood: me ? (me.mood || null) : null }, // 安全加固：token 永不进视图（前端从 create/join 响应获取）
     music: room.music, // v1.7.25（房间全局播放）：低频状态随 view 同步（list/reviews/idx/playing/mode）——prog 由 state 轮询携带
     myChannels: me ? (['all'].filter(() => room.phase !== 'night').concat(ctx.isWolfRole(me) && room.phase === 'night' ? ['wolf'] : []).concat(ctx.isLoverParty(room, me.id) ? ['lover'] : [])) : ['all'],

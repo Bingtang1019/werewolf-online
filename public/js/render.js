@@ -92,13 +92,28 @@ function render() {
   snapshotEditing();
   // 顶栏【强制继续】仅房主在非大厅/非结束阶段可见
   const forceBtn = $('btn-force');
-  if (forceBtn) forceBtn.classList.toggle('hidden', !(view.my && view.my.isHost && view.phase !== 'lobby' && view.phase !== 'ended'));
+  const hostAutoplayOn = !!(view.my && view.my.hostAutoplay);
+  if (forceBtn) forceBtn.classList.toggle('hidden', !(view.my && view.my.isHost && !hostAutoplayOn && view.phase !== 'lobby' && view.phase !== 'ended'));
   // 顶栏【强制继续】智能点亮：存在未操作者才脉冲（7）
   if (forceBtn && !forceBtn.classList.contains('hidden')) {
     const act = shouldForceContinue();
     forceBtn.classList.toggle('force-ready', act);
     forceBtn.classList.toggle('force-idle', !act);
   }
+  // 房主 V5 托管按钮 + 界面锁定（仅保留关闭托管）
+  const haBtn = $('btn-host-autoplay');
+  if (haBtn) {
+    haBtn.classList.toggle('hidden', !(view.my && view.my.isHost));
+    if (hostAutoplayOn) {
+      haBtn.textContent = hostAutoplayArmed ? '确认关闭？' : '🔒 关闭托管';
+      haBtn.classList.toggle('active', !hostAutoplayArmed);
+      haBtn.classList.toggle('confirming', hostAutoplayArmed);
+    } else {
+      haBtn.textContent = '🤖 V5托管';
+      haBtn.classList.remove('active', 'confirming');
+    }
+  }
+  document.body.classList.toggle('host-autoplay-lock', hostAutoplayOn && view.phase !== 'lobby' && view.phase !== 'ended');
   // 阶段面包屑（5）
   renderBreadcrumb();
   // 玩家进出提示（45）
@@ -197,7 +212,7 @@ function renderPlayers() {
     const isCandidate = view.phase === 'sheriff_campaign' && view.campaign && view.campaign.candidates.some(c => c.id === p.id);
     // 选中动作图标（8）：本轮需要选人时，已选卡片右上角浮出动作图标
     const pickIc = p.alive && (draft.target === p.id || draft.target2 === p.id) ? (($('players') && $('players').dataset.pick) || '✓') : '';
-    const name = (p.alive ? '' : '💀 ') + escapeHtml(p.name) + (p.isBot ? ' <span class="badge bot-badge" title="人机">🤖</span>' : '') + (p.isMe ? ' <span class="badge">我</span>' : '') + (p.sheriff ? ' <span class="sheriff-mark" title="警长">👮</span>' : '') + (isCandidate ? ' <span class="badge cam-badge">🎤 竞选</span>' : '') + (p.isMe && view.myLover ? ' <span class="p-badge" title="情侣">💞</span>' : '');
+    const name = (p.alive ? '' : '💀 ') + escapeHtml(p.name) + (p.isBot ? ' <span class="badge bot-badge" title="人机">🤖</span>' : '') + (p.hostAutoplay ? ' <span class="badge ha-badge" title="房主V5托管">🤖托管</span>' : '') + (p.isMe ? ' <span class="badge">我</span>' : '') + (p.sheriff ? ' <span class="sheriff-mark" title="警长">👮</span>' : '') + (isCandidate ? ' <span class="badge cam-badge">🎤 竞选</span>' : '') + (p.isMe && view.myLover ? ' <span class="p-badge" title="情侣">💞</span>' : '');
     const moodHtml = p.isMe
       ? `<button class="mood-btn ${p.mood ? 'has' : ''}" data-ck="mood|" title="心情表情，点击切换">${p.mood || '🎭'}</button>`
       : (p.mood ? `<span class="mood-tag">${escapeHtml(p.mood)}</span>` : '');
@@ -205,7 +220,7 @@ function renderPlayers() {
     const deadTxt = p.alive ? '' : `<div class="pdead">💀 ${DEATH_TEXT[p.deadBy] || p.deadBy}${p.deadNote ? '（' + escapeHtml(p.deadNote) + '）' : ''}</div>`;
     const dmark = p.alive ? '' : `<span class="dmark dm-${p.deadBy || 'left'}"></span>`; // v1.7.18 死亡标记（死因 SVG 图形）
     const pStatus = p.alive ? '存活' : ('已出局' + (p.deadBy ? '（' + (DEATH_TEXT[p.deadBy] || p.deadBy) + '）' : ''));
-    const pExtra = [p.isBot ? '人机' : '真人', p.isMe ? '我' : '', p.sheriff ? '警长' : '', (p.isMe && view.myLover) ? '情侣' : '', p.role ? p.role : ''].filter(Boolean).join(' · ');
+    const pExtra = [p.isBot ? '人机' : (p.hostAutoplay ? '托管' : '真人'), p.isMe ? '我' : '', p.sheriff ? '警长' : '', (p.isMe && view.myLover) ? '情侣' : '', p.role ? p.role : ''].filter(Boolean).join(' · ');
     const pTitle = '#' + p.seat + ' ' + p.name + ' · ' + pStatus + (pExtra ? ' · ' + pExtra : '');
     return `<div class="player ${p.isMe ? 'me' : ''} ${p.alive ? '' : 'dead'}${flashCls} ${draft.target === p.id || draft.target2 === p.id ? 'selected' : ''}" data-id="${p.id}" title="${escapeHtml(pTitle)}" aria-label="${escapeHtml(pTitle)}">
       <div class="phead"><div class="avatar ${p.alive ? '' : 'dead'}">${avatarOf(p)}</div>

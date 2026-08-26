@@ -1,10 +1,36 @@
 // 自动生成（game.js 拆分——actions 模块，勿手改，重新运行 tools/split-game.js）
 
 const fs = require('fs');
+const path = require('path');
 const shared = require('./shared');
 const ctx = shared.ctx;
 const { register } = shared;
 const { loverCore, rooms, MOODS, createRng, voteFeatures } = shared;
+
+/* 房主 V5 托管——真实对局反馈日志（data/ gitignore；默认 data/host-autoplay-log.jsonl） */
+const HOST_AUTOPLAY_LOG = process.env.HOST_AUTOPLAY_LOG || 'data/host-autoplay-log.jsonl';
+function appendHostAutoplayLog(room, p, rec) {
+  if (!room || !p) return;
+  try {
+    const file = path.isAbsolute(HOST_AUTOPLAY_LOG) ? HOST_AUTOPLAY_LOG : path.join(__dirname, '..', '..', HOST_AUTOPLAY_LOG);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const line = JSON.stringify(Object.assign({
+      ts: Date.now(),
+      type: 'action',
+      room: room.id,
+      hostId: p.id,
+      hostName: p.name,
+      level: p.autoplayLevel || 'smart',
+      phase: room.phase || '',
+      step: room.nightStep || null,
+      day: room.dayNum || 0,
+      night: room.nightNum || 0,
+      action: '',
+      data: null
+    }, rec));
+    fs.appendFileSync(file, line + '\n');
+  } catch (e) { /* 日志失败不影响对局 */ }
+}
 
 function debugRoom(opts = {}) {
   const r = ctx.createRoom('调试房主');
@@ -123,7 +149,7 @@ function applyAction(room, p, action, data) {
     // v1.7.2（A-2b）：采集移到 actionLog.push 之前——保证 bot_prev_same 读到的是"上轮投票"（推理时 buildVoteWorld 在决策前，actionLog 同样不含本次）；
     // v1.7.2（B-4）：仅 phase==='vote' 采集，排除竞选/平票投票（day1 无信息时刻的噪声样本）；
     // label 用真实身份（训练侧）；特征只含公开信息（features.js）；批量落盘防单条 append 开销；采集失败绝不影响对局
-    if (action === 'vote' && room.phase === 'vote' && room.labSampleFile && p.isBot && !ctx.isWolfRole(p) && data && data.target) {
+    if (action === 'vote' && room.phase === 'vote' && room.labSampleFile && (p.isBot || p.hostAutoplay) && !ctx.isWolfRole(p) && data && data.target) {
       const useV5 = process.env.V5_SAMPLES === '1'; // V5 A2：意图特征采集开关
       const featFn = useV5 ? require('../ai/intent-features.js').voteFeaturesV5 : voteFeatures;
       const f = featFn(room, p.id, data.target);
@@ -136,7 +162,7 @@ function applyAction(room, p, action, data) {
     }
     // v1.7.7（α3）：夜刀样本采集（wolf_set 成功且 bot 狼出刀）——狼侧刀神分类器训练数据；
     // 与 vote 钩子同模式：特征只含公开信息（wolfTrain/features 复用 voteFeatures 13 维），label 用真实身份（是否神职）
-    if (action === 'wolf_set' && room.labSampleFile && p.isBot && ctx.isWolfRole(p) && data && data.kill) {
+    if (action === 'wolf_set' && room.labSampleFile && (p.isBot || p.hostAutoplay) && ctx.isWolfRole(p) && data && data.kill) {
       try {
         // v1.7.7（α3）：采集“被杀者 + 随机对照”（去选择偏置）——每夜每狼 bot 决策时采 1+upTo 个样本
         const smps = require('../../wolfTrain/collector.js').collectKillSamples(room, p.id, data.kill, 3);
@@ -155,6 +181,8 @@ function applyAction(room, p, action, data) {
       room.actionLog.push({ n: room.actionLog.length + 1, phase: room.phase, step: room.nightStep || null, actor: p.seat, action, data: data === undefined ? null : data }); // actor 记座位号（玩家 id 随机，确定性对比需要）
       if (room.actionLog.length > 5000) room.actionLog.splice(0, room.actionLog.length - 5000);
     }
+    // 房主托管：每个服务端代执行动作写入真实对局反馈日志
+    if (p.hostAutoplay && p.id === room.host) appendHostAutoplayLog(room, p, { type: 'action', action, data: data === undefined ? null : data });
     autoAdvance(room);
   }
   return res;
@@ -173,6 +201,7 @@ function handleMusic(roomId, pid, action, data) {
   if (!room) return { error: '房间不存在' };
   const p = ctx.byId(room, pid);
   if (!p) return { error: '玩家不存在' };
+  if (p.hostAutoplay && room.host === pid && room.phase !== 'lobby' && room.phase !== 'ended') return { error: '房主托管中，请先关闭托管再操作音乐' };
   if (!room.music) room.music = { list: [], reviews: [], idx: -1, cur: null, playing: false, mode: 0, prog: 0, ts: 0, pos: 0, who: '', lastNextAt: 0 };
   const m = room.music;
   const hostOnly = action === 'apply' || action === 'approve' || action === 'reject';
@@ -242,6 +271,38 @@ function handleAction(roomId, pid, action, data, chatSince) {
   const p = ctx.byId(room, pid);
   if (!p) return { error: '玩家不存在' };
   if (p.leftGame) return { error: '你已离开房间' }; // 防已离开玩家刷操作（刷版本号）
+  // 房主 V5 托管：唯一允许的房主操作是 host_autoplay（开/关/调力度），其余一律拒绝
+  if (action === 'host_autoplay') {
+    if (p.id !== room.host) return { error: '只有房主可以操作托管' };
+    const d = data || {};
+    const enable = !!d.enable;
+    const level = ['easy', 'smart', 'simulate'].includes(d.level) ? d.level : null;
+    const wasOn = !!p.hostAutoplay;
+    if (enable) {
+      if (!wasOn) {
+        p.hostAutoplay = true;
+        if (!p.autoplayLevel) p.autoplayLevel = level || 'smart';
+        appendHostAutoplayLog(room, p, { type: 'on', action: 'host_autoplay', data: { enable: true, level: p.autoplayLevel } });
+        ctx.sysMsg(room, 'all', '房主开启了 V5 托管，房主由服务器代打');
+      } else if (level) {
+        p.autoplayLevel = level;
+        appendHostAutoplayLog(room, p, { type: 'level', action: 'host_autoplay', data: { enable: true, level: p.autoplayLevel } });
+        ctx.sysMsg(room, 'all', '房主托管力度调整为 ' + ({ easy: '简单', smart: '智能', simulate: '模拟' }[p.autoplayLevel] || p.autoplayLevel));
+      }
+      ctx.maybeRunBots(room); // 开启后立刻调度本阶段待执行动作
+    } else {
+      if (wasOn) {
+        appendHostAutoplayLog(room, p, { type: 'off', action: 'host_autoplay', data: { enable: false, level: p.autoplayLevel } });
+        ctx.sysMsg(room, 'all', '房主关闭了 V5 托管');
+        p.hostAutoplay = false;
+      } else if (!p.autoplayLevel) {
+        p.autoplayLevel = level || 'smart';
+      }
+    }
+    ctx.bump(room);
+    return { ok: true, view: ctx.viewFor(room, pid, chatSince || 0) };
+  }
+  if (p.hostAutoplay && p.id === room.host && room.phase !== 'lobby' && room.phase !== 'ended') return { error: '房主托管中，请先关闭托管' };
   // 心情表情：任意阶段可切换（点击自己的表情按钮循环，null=关闭）
   if (action === 'mood') { // 心情表情（MOODS 在模块级定义，经视图下发保证前后端一致 N6）
     const mood = data.mood == null ? null : String(data.mood).slice(0, 8);
@@ -260,6 +321,7 @@ function handleChat(roomId, pid, data, chatSince) {
   const p = ctx.byId(room, pid);
   if (!p) return { error: '玩家不存在' };
   if (p.leftGame) return { error: '你已离开房间' };
+  if (p.hostAutoplay && p.id === room.host && room.phase !== 'lobby' && room.phase !== 'ended') return { error: '房主托管中，关闭托管后再发言' };
   const res = ctx.chatAction(room, p, data);
   if (res.ok) return { ok: true, view: ctx.viewFor(room, pid, chatSince || 0) };
   return { error: res.error };
@@ -267,6 +329,8 @@ function handleChat(roomId, pid, data, chatSince) {
 function handleAdvance(roomId, pid, chatSince) {
   const room = rooms.get(roomId);
   if (!room) return { error: '房间不存在或已解散' };
+  const p = ctx.byId(room, pid);
+  if (p && p.hostAutoplay && room.host === pid) return { error: '房主托管中，请先关闭托管' };
   const res = ctx.advance(room, pid);
   if (res.ok) {
     autoAdvance(room);
@@ -277,6 +341,8 @@ function handleAdvance(roomId, pid, chatSince) {
 function handleLeave(roomId, pid) {
   const room = rooms.get(roomId);
   if (!room) return { ok: true };
+  const p = ctx.byId(room, pid);
+  if (p && p.hostAutoplay && room.host === pid && room.phase !== 'lobby' && room.phase !== 'ended') return { error: '房主托管中，请先关闭托管再离开' };
   ctx.removePlayer(room, pid);
   return { ok: true };
 }
@@ -284,6 +350,8 @@ function handleKick(roomId, pid, target, chatSince) {
   const room = rooms.get(roomId);
   if (!room) return { error: '房间不存在或已解散' };
   if (pid !== room.host) return { error: '只有房主可以踢人' };
+  const p = ctx.byId(room, pid);
+  if (p && p.hostAutoplay && room.phase !== 'lobby' && room.phase !== 'ended') return { error: '房主托管中，请先关闭托管' };
   ctx.removePlayer(room, target);
   return { ok: true, view: ctx.viewFor(room, pid, chatSince || 0) };
 }
@@ -302,6 +370,7 @@ register("autoAdvanceInner", autoAdvanceInner);
 register("autoAdvance", autoAdvance);
 register("applyAction", applyAction);
 register("flushLabSamples", flushLabSamples);
+register("appendHostAutoplayLog", appendHostAutoplayLog);
 register("handleMusic", handleMusic);
 register("handleAction", handleAction);
 register("handleChat", handleChat);
