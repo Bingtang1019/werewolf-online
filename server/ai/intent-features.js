@@ -79,4 +79,31 @@ function voteFeaturesV5(room, botId, candId) {
   return base.concat(extra);
 }
 
-module.exports = { INTENT_FEATURE_NAMES, V5_FEATURE_NAMES, intentFeatures, voteFeaturesV5, intentOf, ruleIntent };
+/* V5 A3：房间级意图状态（值层 5 维，字段与 value-model-v4 的 -intent 消费端严格一致）。
+ * 只读公开发言（all 频道），不读真实身份；采集与推理共用本函数，避免训练/服务特征分叉。
+ * 返回 { attackDensity, claimSeerDensity, defendDensity, votePressure, smalltalkRatio } ∈ [0,1]。 */
+const INTENT_STATE_FIELDS = ['attackDensity', 'claimSeerDensity', 'defendDensity', 'votePressure', 'smalltalkRatio'];
+function intentState(room, botId) {
+  const bot = (room.players || []).find(p => p.id === botId);
+  if (!bot) return null;
+  const msgs = (room.messages || []).filter(m => m.ch === 'all' && m.from && m.text);
+  const n = Math.max(1, msgs.length);
+  let attack = 0, claimSeer = 0, defend = 0, votePressure = 0, smalltalk = 0;
+  for (const m of msgs) {
+    const it = intentOf(m.text);
+    if (it === 'attack') attack++;
+    else if (it === 'claim_seer') claimSeer++;
+    else if (it === 'defend') defend++;
+    else if (it === 'vote') votePressure++;
+    else if (it === 'smalltalk') smalltalk++;
+  }
+  return {
+    attackDensity: Math.min(attack, 8) / 8,
+    claimSeerDensity: Math.min(claimSeer, 4) / 4,
+    defendDensity: Math.min(defend, 8) / 8,
+    votePressure: Math.min(votePressure, 8) / 8,
+    smalltalkRatio: smalltalk / n,
+  };
+}
+
+module.exports = { FEATURE_NAMES, INTENT_FEATURE_NAMES, V5_FEATURE_NAMES, INTENT_STATE_FIELDS, intentFeatures, intentState, voteFeaturesV5, intentOf, ruleIntent };

@@ -160,6 +160,27 @@ function applyAction(room, p, action, data) {
         if (room.labSampleBuf.length >= 500) flushLabSamples(room);
       }
     }
+      // V5 A3：值层样本采集（V5_VALUE_SAMPLES=1，建议同时 V5_INTENT_VALUE=1 以填充 intent 状态）。
+      //   与投票样本同文件、用 v5v 标记区分；只记录投票时刻状态快照，胜方标签由训练侧按 gameId 关联 lab 记录回填。
+      //   记录双方阵营（isWolfActor），供 V_good/V_wolf 两侧对照使用。
+      if (action === 'vote' && room.phase === 'vote' && room.labSampleFile && process.env.V5_VALUE_SAMPLES === '1'
+          && (p.isBot || p.hostAutoplay) && data && data.target) {
+        try {
+          const { buildVoteWorld } = require('../ai/bot-brain/vote.js');
+          const w = buildVoteWorld(room, p);
+          if (w) {
+            room.labSampleBuf = room.labSampleBuf || [];
+            room.labSampleBuf.push(JSON.stringify({
+              gameId: room.labGameId || 'x', day: room.dayNum || 0, botId: p.id,
+              isWolfActor: ctx.isWolfRole(p) ? 1 : 0, v5v: true,
+              state: { R: w.wolfAlive, S: w.godAlive, M: w.villAlive, wolf0: w.wolfInit, god0: w.godInit, vill0: w.villInit, info: w.info || null, intent: w.intent || null },
+              config: w.configKey || null,
+            }));
+            if (room.labSampleBuf.length >= 500) flushLabSamples(room);
+          }
+        } catch (e) { /* 采集失败不影响对局 */ }
+      }
+
     // v1.7.7（α3）：夜刀样本采集（wolf_set 成功且 bot 狼出刀）——狼侧刀神分类器训练数据；
     // 与 vote 钩子同模式：特征只含公开信息（wolfTrain/features 复用 voteFeatures 13 维），label 用真实身份（是否神职）
     if (action === 'wolf_set' && room.labSampleFile && (p.isBot || p.hostAutoplay) && ctx.isWolfRole(p) && data && data.kill) {

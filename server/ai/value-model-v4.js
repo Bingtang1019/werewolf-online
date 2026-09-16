@@ -139,4 +139,10 @@ function assertConfigs(known) {
   return true;
 }
 
-module.exports = { loadV4, loadV4Wolf, isLoaded, resetModel, buildX, value, valueWolf, payoff, payoffWolf, sigma, assertConfigs, MODEL_PATH, WOLF_MODEL_PATH, KNOWN_CONFIGS };
+/** V5 A3：当前加载的价值模型是否消费意图特征（featureSet 以 -intent 结尾）——用于 world.intent 按需填充。 */
+function usesIntent() {
+  const m = loadV4();
+  return !!(m && typeof m.featureSet === 'string' && m.featureSet.endsWith('-intent'));
+}
+
+module.exports = { loadV4, loadV4Wolf, isLoaded, resetModel, buildX, value, valueWolf, payoff, payoffWolf, sigma, assertConfigs, usesIntent, MODEL_PATH, WOLF_MODEL_PATH, KNOWN_CONFIGS };

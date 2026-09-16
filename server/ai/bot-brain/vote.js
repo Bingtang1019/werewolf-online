@@ -4,6 +4,8 @@ const shared = require('./shared');
 const ctx = shared.ctx;
 const register = shared.register;
 const S = shared.S;
+const { intentState } = require('../intent-features.js'); // V5 A3：值层意图状态（world.intent）
+const valueModelV4 = require('../value-model-v4.js');
 
 /* 1.8.x：NLU 模型/混合仅用于有人类玩家的房间（真人聊天可被 NLU 抽取）；全 bot 房间保持经典策略 */
 function nluRoom(room) {
@@ -337,6 +339,8 @@ const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? b
       seerAlive: (() => { const q = room.players.find(p => ['seer', '预言家'].includes(p.roleKey || p.role)); return q && q.alive ? 1 : 0; })(),
       lastExileWasWolf: (() => { const id = room.lastExiledId; const q = room.players.find(p => p.id === id); return q ? (ctx.campOf(q) === 'wolf' ? 1 : 0) : 0; })(),
     },
+    // V5 A3：意图状态（值层 -intent 特征）。仅实验开关或已加载的价值模型声明 -intent 时计算，默认零开销。
+    intent: (process.env.V5_INTENT_VALUE === '1' || (valueModelV4.isLoaded() && valueModelV4.usesIntent())) ? intentState(room, bot.id) : null,
   };
 }
 function smartVoteTarget(room, bot) {
