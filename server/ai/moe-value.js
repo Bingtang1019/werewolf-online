@@ -13,6 +13,7 @@ const v4 = require('./value-model-v4.js');
 const ROOT = path.resolve(__dirname, '..', '..');
 const SHADOW_FILE = path.join(ROOT, 'data', 'moe-shadow.jsonl');
 let _v5Model = null, _v5Tried = false;
+let _gate = null, _gateTried = false;
 let _shadowCount = 0;
 
 function mode() {
@@ -26,12 +27,14 @@ function intentStrength(state) {
   return vals.reduce((a, b) => a + (Number(b) || 0), 0) / vals.length;
 }
 
-/** V5 A3 合成价值模型（可选专家）；输入维度不匹配时安全跳过 */
+/** V5 A3 价值模型（可选专家）；路径优先级 MOE_V5_MODEL > 学习型门控自带的 v5Model > 合成默认；维度不匹配时安全跳过 */
 function loadV5() {
   if (_v5Tried) return _v5Model;
   _v5Tried = true;
+  const g = loadGate();
+  const p = process.env.MOE_V5_MODEL || (g && g.v5Model) || path.join(ROOT, 'models', 'value-hicvn-v4-intent.json');
   try {
-    const m = JSON.parse(fs.readFileSync(path.join(ROOT, 'models', 'value-hicvn-v4-intent.json'), 'utf8'));
+    const m = JSON.parse(fs.readFileSync(path.isAbsolute(p) ? p : path.join(ROOT, p), 'utf8'));
     if (m.schema !== 'value-hicvn@1' || !Array.isArray(m.members) || !m.members.length) return null;
     const d = m.members[0].norm && Array.isArray(m.members[0].norm.mean) ? m.members[0].norm.mean.length : 0;
     if (!d) return null;
@@ -90,14 +93,44 @@ function gate(state, values, sigmaV) {
   return { w3: w3 / sum, w4: w4 / sum, w5: w5 / sum };
 }
 
+/** MoE D：学习型门控（models/moe-gate-v1.json，MOE_GATE_MODEL 可覆盖）。
+ * 存在时优先于启发式门控；模型缺失/维度不符 → 自动回退，不影响可用性。 */
+function loadGate() {
+  if (_gateTried) return _gate;
+  _gateTried = true;
+  const p = process.env.MOE_GATE_MODEL || path.join(ROOT, 'models', 'moe-gate-v1.json');
+  try {
+    const g = JSON.parse(fs.readFileSync(path.isAbsolute(p) ? p : path.join(ROOT, p), 'utf8'));
+    if (g.schema !== 'moe-gate@1' || !Array.isArray(g.weights) || !Array.isArray(g.featureNames) || g.weights.length !== g.featureNames.length) return null;
+    _gate = g;
+  } catch (e) { _gate = null; }
+  return _gate;
+}
+function gatePredict(vals, sigmaV, intent, cfg) {
+  const g = loadGate();
+  if (!g) return null;
+  const lg = p => { const q = Math.max(1e-4, Math.min(1 - 1e-4, p)); return Math.log(q / (1 - q)); };
+  const has5 = vals.v5 == null ? 0 : 1;
+  const named = { logit_v3: lg(vals.v3), logit_v4: lg(vals.v4), logit_v5: has5 ? lg(vals.v5) : 0, sigma: sigmaV, intent, hasV5: has5 };
+  let z = 0;
+  for (let i = 0; i < g.featureNames.length; i++) {
+    const n = g.featureNames[i];
+    const x = n.startsWith('cfg_') ? ((cfg && n === 'cfg_' + cfg) ? 1 : 0) : (named[n] != null ? named[n] : (n === 'bias' ? 1 : 0));
+    z += g.weights[i] * x;
+  }
+  return 1 / (1 + Math.exp(-z));
+}
+
 function explain(state, config) {
   const val3 = v3.value(state, config);
   const val4 = v4.value(state, config);
   const val5 = v5Value(state, config);
   const sg = v4.sigma(state, config);
+  const intent = intentStrength(state);
+  const learned = gatePredict({ v3: val3, v4: val4, v5: val5 }, sg, intent, config);
   const weights = gate(state, { v3: val3, v4: val4, v5: val5 }, sg);
-  const fused = weights.w3 * val3 + weights.w4 * val4 + (val5 != null ? weights.w5 * val5 : 0);
-  return { val3, val4, val5, sigma: sg, intent: intentStrength(state), weights, fused };
+  const fused = learned != null ? learned : (weights.w3 * val3 + weights.w4 * val4 + (val5 != null ? weights.w5 * val5 : 0));
+  return { val3, val4, val5, sigma: sg, intent, weights, gate: learned != null ? 'learned' : 'heuristic', fused };
 }
 
 function value(state, config) {
@@ -109,7 +142,7 @@ function value(state, config) {
     try {
       if (_shadowCount++ < 2000) {
         fs.mkdirSync(path.dirname(SHADOW_FILE), { recursive: true });
-        fs.appendFileSync(SHADOW_FILE, JSON.stringify({ ts: Date.now(), config, state: { R: state.R, S: state.S, M: state.M, cap: state.cap }, intent: e.intent, sigma: e.sigma, val3: e.val3, val4: e.val4, val5: e.val5, weights: e.weights, fused: e.fused }) + '\n');
+        fs.appendFileSync(SHADOW_FILE, JSON.stringify({ ts: Date.now(), config, state: { R: state.R, S: state.S, M: state.M, cap: state.cap }, intent: e.intent, sigma: e.sigma, val3: e.val3, val4: e.val4, val5: e.val5, weights: e.weights, gate: e.gate, fused: e.fused }) + '\n');
       }
     } catch (err) { /* shadow 失败不影响生产 */ }
     return e.val4;
@@ -125,6 +158,6 @@ function payoff(prevState, nextState, config) {
   return d * scale;
 }
 
-function reset() { _v5Model = null; _v5Tried = false; _shadowCount = 0; }
+function reset() { _v5Model = null; _v5Tried = false; _gate = null; _gateTried = false; _shadowCount = 0; }
 
-module.exports = { mode, value, payoff, explain, sigma: v4.sigma, reset, intentStrength, _internal: { loadV5, v5Value, gate } };
+module.exports = { mode, value, payoff, explain, sigma: v4.sigma, reset, intentStrength, _internal: { loadV5, v5Value, gate, loadGate, gatePredict } };

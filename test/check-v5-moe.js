@@ -34,6 +34,20 @@ const world = { faction: 'good', wolfAlive: 2, godAlive: 3, villAlive: 4, wolfIn
 assert(Number.isFinite(rollout.valuePayoff(world, true)), 'rollout valuePayoff(moe, xWolf) 数值有效');
 assert(Number.isFinite(rollout.valuePayoff(world, false)), 'rollout valuePayoff(moe, xGood) 数值有效');
 
+// MoE D：学习型门控（models/moe-gate-v1.json；缺失/损坏自动回退启发式）
+process.env.MOE_MODE = 'on';
+delete process.env.MOE_GATE_MODEL;
+delete process.env.MOE_V5_MODEL;
+moe.reset();
+const eGate = moe.explain(state, '12a');
+assert(eGate.gate === 'learned', '学习型门控加载生效（gate=learned）');
+assert(typeof eGate.fused === 'number' && eGate.fused >= 0 && eGate.fused <= 1, '学习型门控融合值 0..1');
+process.env.MOE_GATE_MODEL = 'models/__missing_gate__.json';
+moe.reset();
+const eHeur = moe.explain(state, '12a');
+assert(eHeur.gate === 'heuristic', '门控文件缺失时回退启发式（gate=heuristic）');
+delete process.env.MOE_GATE_MODEL;
+
 // 清理 shadow 文件不必要，不写断言；恢复默认
 process.env.MOE_MODE = 'off';
 process.env.VALUE_MODEL = '';
