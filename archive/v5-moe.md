@@ -29,7 +29,7 @@ V3.1（LSTD 线性基线）、V4.2（HiCVN MLP 集成 + σ）、V5-intent（意�
 - F. Shadow 模式（已实现，默认关）
 
 ## 已知问题
-- `models/value-hicvn-v4-intent.json` 的 `features.length=38`，MLP 输入维度 36，属于合成 A3 脚本的维度不一致；`moe-value.js` 检测到不一致会安全跳过 V5 价值专家。
+- `models/value-hicvn-v4-intent.json` 维度已修正为 38/38（A3 脚本原 D=36 与 features 数组 38 不一致）；MoE 现已能加载 V5 价值专家。
 - MoE 当前未做配对验收，仅为可运行基础版。
 
 ## 验收计划

@@ -1,6 +1,6 @@
 'use strict';
 /* tools/ai/train-v5-value-intent.js —— V5 A3 合成意图价值模型（smoke）
- * 生成随机 36 维状态（含 cfg one-hot + info + intent），训练单 MLP，
+ * 生成随机 38 维状态（11 base + 18 cfg one-hot + 4 info + 5 intent），训练单 MLP，
  * 输出 value-hicvn@1 格式（featureSet=v4-info-intent），仅用于验证 A3 通路。 */
 const fs = require('fs');
 const path = require('path');
@@ -9,7 +9,7 @@ const root = path.resolve(__dirname, '..', '..');
 const args = {};
 process.argv.slice(2).forEach(a => { const m = a.match(/^--([^=]+)=(.*)$/); if (m) args[m[1]] = m[2]; });
 const outFile = path.resolve(root, args.out || 'models/value-hicvn-v4-intent.json');
-const D = 36;
+const D = 38; // 11 base + 18 cfg one-hot + 4 info + 5 intent（与 features 数组严格一致）
 const N = 2000;
 function mulberry32(a) { return function () { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const rnd = mulberry32(42);
