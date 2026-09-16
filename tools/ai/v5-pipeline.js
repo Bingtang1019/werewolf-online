@@ -1,7 +1,7 @@
 'use strict';
 /* tools/ai/v5-pipeline.js —— V5 一键采集-训练-验收流水线
  * 用法：node tools/ai/v5-pipeline.js [--games=30] [--sample-file=data/vote-v3-v5/samples.jsonl]
- * 步骤：lab 采集 V5 样本 → 训练 A5 π → 训练 A2 v3v3 → 生成 A3 意图价值模型 → 重启信号监控 */
+ * 步骤：lab 采集 V5 样本（含值层 state）→ 训练 A5 π → 训练 A2 v3v3 → A3 合成通路 + lab 真实状态对照 → 重启信号监控 */
 const { spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -10,6 +10,9 @@ const args = {};
 process.argv.slice(2).forEach(a => { const m = a.match(/^--([^=]+)=(.*)$/); if (m) args[m[1]] = m[2]; });
 const games = parseInt(args.games || '30', 10) || 30;
 const sampleFile = args['sample-file'] || 'data/vote-v3-v5/samples.jsonl';
+const outPi = args['out-pi'] || 'models/v5-pi-lab.json';
+const outAda = args['out-ada'] || 'models/adaboost-vote-v3-v5.json';
+const outA3 = args['out-a3'] || 'models/value-hicvn-v4-intent-real.json';
 
 function run(cmd, env) {
   console.log(`\n>>> ${cmd.join(' ')}`);
@@ -17,17 +20,18 @@ function run(cmd, env) {
   if (r.status !== 0) { console.error('!! 步骤失败: ' + cmd.join(' ')); process.exit(r.status || 1); }
 }
 
-// 1. lab 采集 V5 样本（并行=1 保证写入同一文件）
-run(['test/lab/lab.js', 'sample', `--games=${games}`, '--parallel=1', '--out=data/v5-records-pipeline.jsonl', `--sample-file=${sampleFile}`], { V5_SAMPLES: '1' });
+// 1. lab 采集 V5 样本（含 A3 值层 state；并行=1 保证写入同一文件）
+run(['test/lab/lab.js', 'sample', `--games=${games}`, '--parallel=1', '--out=data/v5-records-pipeline.jsonl', `--sample-file=${sampleFile}`], { V5_SAMPLES: '1', V5_VALUE_SAMPLES: '1', V5_INTENT_VALUE: '1' });
 
 // 2. A5：π 意图版
-run(['tools/ai/train-v5-lab.js', `--input=${sampleFile}`]);
+run(['tools/ai/train-v5-lab.js', `--input=${sampleFile}`, `--out=${outPi}`]);
 
 // 3. A2：v3v3 AdaBoost
-run(['tools/ai/train-v5-vote-ada.js', `--input=${sampleFile}`]);
+run(['tools/ai/train-v5-vote-ada.js', `--input=${sampleFile}`, `--out=${outAda}`]);
 
-// 4. A3：合成意图价值模型
+// 4. A3：合成通路 + lab 真实状态对照（真实对照需要第 1 步的 v5v 样本与 lab 记录）
 run(['tools/ai/train-v5-value-intent.js']);
+run(['tools/ai/train-v5-value-real.js', `--samples=${sampleFile}`, '--records=data/v5-records-pipeline.jsonl', `--out=${outA3}`]);
 
 // 5. B：重启信号监控
 run(['tools/ai/v5-restart-monitor.js']);

@@ -69,15 +69,34 @@ async function night1(room, host, killTarget, isSeerBot) {
   return st(room, host);
 }
 
-/* 推进到白天讨论（morning/lastword 由房主强推） */
+/* 推进到白天讨论（morning/lastword 由房主强推）
+ * 预算 100×400ms（约 40s）：高负载下 400ms 轮询 + 阶段推进可能超过旧 16s 预算 → 偶发超时误报。 */
 async function toDiscuss(room, host) {
-  for (let i = 0; i < 40; i++) {
-    const v = await st(room, host);
+  let v = null;
+  for (let i = 0; i < 100; i++) {
+    v = await st(room, host);
     if (v.phase === 'discuss') return v;
-    if (v.phase === 'morning' || v.phase === 'lastword' || v.phase === 'handover') { try { await advance(room, host); } catch (e) {} await sleep(300); }
-    else await sleep(400);
+    if (v.phase === 'vote' || v.phase === 'pk_vote') {
+      // 房主是真人玩家：必须投票才能结算（否则全员已投但房主未投 → 房间停在 vote）
+      const cands = (v.candidates && v.candidates.length) ? v.candidates : (v.pkTied && v.pkTied.length ? v.pkTied : null);
+      const target = cands ? cands.find(id => id !== host) : (v.players || []).find(p => p.alive && p.id !== host);
+      if (target) { const id = typeof target === 'string' ? target : target.id; try { await act(room, host, 'vote', { target: id }); } catch (e) { /* 已在结算等竞态：忽略 */ } }
+      await sleep(300);
+      continue;
+    }
+    if (v.phase === 'morning' || v.phase === 'lastword' || v.phase === 'handover') { try { await advance(room, host); } catch (e) {} await sleep(300); continue; }
+    // 房主是真人：夜里若轮到房主自己的角色，代打一步中性操作，避免测试卡在后续夜晚
+    if (v.phase === 'night' && v.my && v.my.alive !== false) {
+      const role = v.my.roleKey;
+      const t = (v.players || []).find(p => p.alive && p.id !== host);
+      try {
+        if (v.nightStep === 'seer' && role === 'seer' && t) { await act(room, host, 'seer_pick', { target: t.id }); await sleep(300); continue; }
+        if (v.nightStep === 'wolf' && (role === 'wolf' || role === 'wolfBeauty') && t) { await act(room, host, 'wolf_set', { kill: t.id, confirm: true }); await sleep(300); continue; }
+      } catch (e) { /* 竞态忽略 */ }
+    }
+    await sleep(400);
   }
-  throw new Error('等待超时:到达白天发言');
+  throw new Error(`等待超时:到达白天发言（phase=${v && v.phase} nightStep=${v && v.nightStep} day=${v && v.dayNum} night=${v && v.nightNum}）`);
 }
 
 async function main() {

@@ -58,5 +58,19 @@
 ## D 系列收口（2026-09-16）
 - 一键流水线 tools/ai/v5-pipeline.js 已端到端跑通：8 局 → 1258 条 V5 样本 → A5 π AUC 0.9156 / A2 v3v3 AUC 0.8378 / A3 合成意图价值模型（38/38 维）→ B 监控缺失项 0。
 - A1 生产模型已替换，A2/A5 已有 lab 模型，A3 已有维度一致合成模型，B 监控可用。
-- 仍待真实数据：A3 真实价值层对照、A4 真人局质量验证、A2/A5 规模化样本。
+## D 系列规模化补强（2026-09-16 晚）
+- **A2/A5 数据规模化**：lab 采样从 8 局扩到 **2000 局**（`data/vote-v3-v5/samples-big2.jsonl`，52,167 条 21 维 V5 样本，负/正 = 28754/23413），训练 `models/adaboost-vote-v3-v5-big.json` 与 `models/v5-pi-lab-big.json` 作为规模化候选，用于替代 1258 条小样本 lab 模型。
+- **A4 意图回应可测化**：`server/ai/bot-brain/talk.js` 抽出导出函数 `intentReply()`——只回应点名自己的 attack/vote/check，他人跳预言家必接，0.65 概率门限，避免意图回应覆盖阵营策略；新增 `test/check-v5-intent-talk.js`（23 断言全过）。
+- **A4 线下评估**（新增 `tools/ai/eval-intent-talk.js`）：真实聊天语料 20,822 条意图覆盖 100%（claim_seer 20012 / smalltalk 484 / night_plan 98 / meta 94 …）；标注语料准确率 98.3%（417 条）、92.5%（615 条）；reply/trigger 模板冒烟全通过；lab A/B 400 局 × 2 臂 0 错误 0 超时，发言量 3.31 → 3.23 无回归。报告：`data/eval-intent-talk.json`。
+- 仍待真实数据：A4 真人局主观质量、线上灰度。
+
+## D 系列评估口径修正 + 大规模消融（2026-09-16 晚）
+- **发现并修复评估泄漏**：`tools/ai/train-v5-lab.js`（π）旧版用测试集做早停验证（0.9156 虚高）；现改为「验证集只取训练侧 + 按对局分组切分（group split）」，训练器同时记录 `groupTestAUC`（主口径）与 `randomTestAUC`（同局混合，偏乐观）。
+- **规模化数据**：2000 局 lab → **52,167** 条 V5 样本；1500 局 → **49,209** 条值层 state 快照。
+- **A2 v3v3 消融（2000 局，按对局分组）**：base13 = **0.7050** → intent21 = **0.8096**（**+0.1046**），意图特征增益显著；小样本 30 局 intent21 = 0.7271（原报 0.8378 为泄漏口径）。
+- **A5 π 消融（同口径）**：base13 = **0.7618** → intent21 = **0.8667**（**+0.1049**）。
+- **A3 真实状态价值层对照**（1500 局 / 49,209 状态，按对局分组，标签 = P(好人胜)）：V3.1 = **0.5744**，V4.2 = **0.6382**（V4.2 > V3.1，与设计预期一致）；lab 重训 base33 = **0.6988**、+intent38 = **0.6882** —— 意图特征在值层**无稳定增益**（随机口径 +0.014 / 分组口径 −0.011），A3 意图通路维持实验开关默认关闭，待真人局数据再判。
+- **新增/更新产物**：`models/adaboost-vote-v3-v5.json`（2000 局权威版 0.8096）、`models/v5-pi-lab.json`（0.8667）、`models/*-big.json`（同源留档）、`models/*-big-base13.json`（消融对照）、`models/value-hicvn-v4-intent-real.json`（A3 lab 真实状态模型）、`tools/ai/train-v5-value-real.js`、`tools/ai/eval-intent-talk.js`、`test/check-v5-intent-talk.js`。
+- **A3 特征生产端补齐**：`intent-features.js` 新增 `intentState()`（房间级 5 维）；`bot-brain/vote.js` 在 `world.intent` 按需填充（`V5_INTENT_VALUE=1` 或价值模型声明 `-intent`），修掉此前 `-intent` 特征永远为 0 的断链；`V5_VALUE_SAMPLES=1` 采集值层样本（与投票样本同文件、`v5v` 标记）。
+- **测试稳定性修复**：`test/check-bot-advanced.js` 的 `toDiscuss` 未驱动真人房主（卡在 vote / 夜2 seer 是历史偶发失败根源）→ 增加房主投票 + 自身角色夜间中性代打，等待预算 16s→40s；修复后连续 3 次通过（修复前 HEAD 亦 2/3 失败，确认非本次改动引入）。
 
