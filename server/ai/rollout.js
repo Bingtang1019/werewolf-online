@@ -72,12 +72,14 @@ function getValueModel() {
  * 纪律：configKey 未知 → 纯 global（local 缺失自动回退，见 value-model.value）；A-2 断言在 lab 启动时校验已知 key */
 const valueModel = require('./value-model');
 const valueModelV4 = require('./value-model-v4'); // V4 HiCVN（value-hicvn@1）
+const moeValue = require('./moe-value'); // V3.1 / V4.2 / V5-intent 价值层 MoE（VALUE_MODEL=moe）
 function valuePayoff(world, xIsWolf) {
   // v1.7.16（V4.2 替换）：默认 v4（MLP 集成，AUC 0.8055 vs V3.1 0.7819，配对终裁 16/16 无劣化）；
   // v3/v2 保留回滚（VALUE_MODEL=v3 | v2）；σ 分桶单调 FAIL 已列入 V4.3/块 1 多样性增强（观察期补，不影响 ΔV 排序/幅度消费）
   try {
     if (process.env.VALUE_MODEL === 'v3') return valuePayoffV3(world, xIsWolf);
     if (process.env.VALUE_MODEL === 'v2') return valuePayoffV2(world, xIsWolf);
+    if (process.env.VALUE_MODEL === 'moe') return valuePayoffMoe(world, xIsWolf);
     return valuePayoffV4(world, xIsWolf);
   } catch (e) {
     // 1.7.17（生产 fail-open）：A-2/schema 断言 throw（lab 启动即暴露 bug）不允许穿透到生产投票——
@@ -169,6 +171,36 @@ function valuePayoffV4(world, xIsWolf) {
     // V_wolf 缺失 → 回退解析版（fail-open，见 valuePayoffV4Wolf）
     return valuePayoffV4Wolf(world, xIsWolf, { R, S, M, cap, wolf0: world.wolfInit, god0: world.godInit, vill0: world.villInit, info, cfg });
   }
+  if (xIsWolf) return dG;
+  return -(pGod * dV + pVill * dM);
+}
+
+/* V5 MoE payoff（VALUE_MODEL=moe）：V3.1 + V4.2 + V5-intent 融合；狼侧仍走 V_wolf 保持对称。
+ * 失败/未训配置 fail-open 到解析版，与 V3/V4 分支同纪律。 */
+function valuePayoffMoe(world, xIsWolf) {
+  const m = valueModelV4.loadV4(); // 借用 V4 payoffScale 做放大（MoE 融合值仍在 0..1）
+  if (!m) return payoffFor(world, xIsWolf);
+  if (world.faction === 'third') return payoffFor(world, xIsWolf);
+  const cfg = world.configKey;
+  if (!cfg) return payoffFor(world, xIsWolf);
+  if (!m.payoffScale[cfg]) {
+    if (world.hasPreset) throw new Error(`[moe] unknown configKey "${cfg}" — train/infer mismatch (A-2)`);
+    return payoffFor(world, xIsWolf);
+  }
+  const R = Math.max(0, world.wolfAlive), S = Math.max(0, world.godAlive), M = Math.max(0, world.villAlive);
+  const cap = world.wolfInit + world.godInit + world.villInit;
+  const N = Math.max(0, cap - R - S - M);
+  const info = world.info || null;
+  const intent = world.intent || null;
+  const base = { R, S, M, N, cap, wolf0: world.wolfInit, god0: world.godInit, vill0: world.villInit, info, intent };
+  const next = (dR, dS, dM) => ({ R: Math.max(0, R - dR), S: Math.max(0, S - dS), M: Math.max(0, M - dM), N: N + 1, cap, wolf0: world.wolfInit, god0: world.godInit, vill0: world.villInit, info, intent });
+  const vBase = moeValue.value(base, cfg);
+  const sc = m.payoffScale[cfg];
+  const dG = (moeValue.value(next(1, 0, 0), cfg) - vBase) * sc;
+  const dV = (moeValue.value(next(0, 1, 0), cfg) - vBase) * sc;
+  const dM = (moeValue.value(next(0, 0, 1), cfg) - vBase) * sc;
+  const pGod = S / (S + M || 1), pVill = M / (S + M || 1);
+  if (world.faction === 'wolf') return valuePayoffV4Wolf(world, xIsWolf, { R, S, M, cap, wolf0: world.wolfInit, god0: world.godInit, vill0: world.villInit, info, cfg });
   if (xIsWolf) return dG;
   return -(pGod * dV + pVill * dM);
 }
@@ -298,4 +330,4 @@ function rolloutVote(world, state, rng, { worlds = 64, useValue } = {}) { // 1.8
   return { target: best, margin: best ? (bs - second) / (W * scaleNorm) : 0 };
 }
 
-module.exports = { rolloutVote, payoffFor }; // 1.7.4：payoffFor 导出供语义验证/诊断
+module.exports = { rolloutVote, payoffFor, valuePayoff }; // 1.7.4：payoffFor 导出供语义验证/诊断；V5：valuePayoff 供 MoE/诊断
