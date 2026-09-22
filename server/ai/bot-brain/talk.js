@@ -209,19 +209,6 @@ function classifyMainTalk(room, bot, level, mem, myRole, isWolf, lp) {
     }
     if (ctx.rng().next() < 0.5) return { intent: 'claim_cupid', fallback: ['我是丘比特，情侣是谁我就不说了 💘', '丘比特在此，别乱投我，情侣是好人组合'] };
   }
-  // 狼恋人辩护（第二窗口，与首窗口保持一致）
-  if (isWolf && lp && !lp.isWolf) {
-    const loverChecked = Object.keys(mem.seerClaims || {}).some(pid => pid !== bot.id && (mem.seerClaims[pid].claims || []).some(c => c.result === 'wolf' && c.target === lp.id));
-    const loverSusp = (mem.suspicion || {})[lp.id] > 30 || Object.keys(mem.seerClaims || {}).some(pid => pid !== bot.id && (mem.seerClaims[pid].claims || []).some(c => c.target === lp.id));
-    if (loverChecked && level === 'smart') return { intent: 'defend_lover', params: { name: ctx.nameById(room, lp.id) }, fallback: ctx.pick([
-      '别信查杀' + ctx.nameById(room, lp.id) + '的话，我了解' + ctx.nameById(room, lp.id) + '，不是狼',
-      ctx.nameById(room, lp.id) + '是好人，查杀他的人才是狼，你们品品',
-    ]) };
-    if (loverSusp && ctx.rng().next() < 0.6) return { intent: 'defend_lover', params: { name: ctx.nameById(room, lp.id) }, fallback: ctx.pick([
-      '先别怀疑' + ctx.nameById(room, lp.id) + '，他今天的发言没什么问题',
-      '我保' + ctx.nameById(room, lp.id) + '，不是狼，出他浪费轮次',
-    ]) };
-  }
   // C1-2 犹豫
   if (ctx.rng().next() < 0.2 && beliefEntropy(room, bot, mem) > 0.8) {
     return { intent: 'hesitate', fallback: ['我再想想…', '不好说，信息太少了', '先听你们聊，我理理思路'] };
@@ -373,49 +360,5 @@ function botWolfChat(room, bot) {
   }
   return { action: 'chat', data: { ch: 'wolf', text } };
 }
-
-
-/* =================================================================
-   SIMULATE 档位（v1.5.0）- 5状态马尔可夫态度模型 + 多证据源 + Sigmoid校准
-   适配说明（开源补丁 → 本项目）：
-   - room.sheriffVotes 不存在 → 警长票证据从 lastVoteResult.kind==='sheriff' + room.votes 提取
-   - room.lastWitchPoison 不存在 → 毒药证据从死亡事实（deadBy==='poison'）提取
-   - 被狼刀死亡（deadBy==='wolf'）接入 DEATH 证据
-   - 发言证据提取加 attMsgSeen 去重（补丁未去重：多次决策会把同一条消息反复应用）
-   ================================================================= */
-const EVIDENCE = {
-  VOTE_AGAINST: 'vote_against',
-  CHAT_BAD: 'chat_bad',
-  DEATH: 'death',
-  CHAT_GOOD: 'chat_good',
-  WITCH_SAVE: 'witch_save',
-  SHERIFF: 'sheriff',
-  POISON: 'poison'
-};
-
-const TRANSFER_5 = {
-  aggressive: [
-    [0.60, 0.25, 0.10, 0.03, 0.02],
-    [0.20, 0.50, 0.20, 0.07, 0.03],
-    [0.10, 0.20, 0.40, 0.20, 0.10],
-    [0.03, 0.07, 0.20, 0.50, 0.20],
-    [0.02, 0.03, 0.10, 0.25, 0.60]
-  ],
-  balanced: [
-    [0.70, 0.20, 0.07, 0.02, 0.01],
-    [0.15, 0.60, 0.20, 0.04, 0.01],
-    [0.05, 0.15, 0.60, 0.15, 0.05],
-    [0.01, 0.04, 0.20, 0.60, 0.15],
-    [0.01, 0.02, 0.07, 0.20, 0.70]
-  ],
-  conservative: [
-    [0.80, 0.15, 0.03, 0.01, 0.01],
-    [0.10, 0.70, 0.15, 0.04, 0.01],
-    [0.02, 0.10, 0.75, 0.10, 0.03],
-    [0.01, 0.02, 0.15, 0.70, 0.12],
-    [0.01, 0.01, 0.03, 0.15, 0.80]
-  ]
-};
-
 
 module.exports = { genPhrase, intentReply, talkedCount, isCheckedWolf, counterClaimers, pressureTarget, botTalk, botLastWord, botWolfChat };
