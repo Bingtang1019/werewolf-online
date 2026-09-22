@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const { voteFeatures } = require('../../server/ai/features.js');
+const { voteShare } = require('../../server/ai/vote-state.js'); // 审计修复：vote_share 单一口径
 const { MLP } = require('../../server/ai/mlp.js');
 const { createBeliefEngine, applyEvent, getBeliefs } = require('../../server/ai/belief-engine.js');
 
@@ -31,6 +32,7 @@ function main() {
   if (!fs.existsSync(f)) { console.log('[ppo] 无数据: ' + f); process.exit(1); }
   // v3→v4：过程奖励 + critic baseline（A = R - V(s)），负优势也参与反向加权
   const base = JSON.parse(fs.readFileSync(opt.base, 'utf8'));
+  if (base.stale === true) { console.error('[ppo] base 模型已标记 stale（' + (base.staleReason || '') + '）；请先用 train-vote-pi.js --belief 重训'); process.exit(1); }
   const baseModel = MLP.fromJSON(base.mlp);
   let critic = null;
   try {
@@ -116,7 +118,7 @@ function main() {
           if (cand.id === voter || !alive[idx.get(cand.id)]) continue;
           const feats = voteFeatures(room, voter, cand.id);
           if (!feats) continue;
-          const fe = feats.concat([bel.posterior[cand.id] != null ? bel.posterior[cand.id] : 0.5, bel.credibility[cand.id] != null ? bel.credibility[cand.id] : 0.5, bel.credibility[voter] != null ? bel.credibility[voter] : 0.5, (tot[cand.id] || 0) / Math.max(1, Object.keys(tot).length)]);
+          const fe = feats.concat([bel.posterior[cand.id] != null ? bel.posterior[cand.id] : 0.5, bel.credibility[cand.id] != null ? bel.credibility[cand.id] : 0.5, bel.credibility[voter] != null ? bel.credibility[voter] : 0.5, voteShare(room, cand.id)]);
           cands.push({ fe, isDv: cand.id === dvCand });
         }
         if (cands.length) pending.push({ voter, cands, V });

@@ -56,7 +56,7 @@ function isoVote(p) {
   try {
     if (!_voteIsoTried) {
       _voteIsoTried = true;
-      const raw = JSON.parse(S.fs.readFileSync(S.path.join(__dirname, 'models', 'adaboost-vote-v1-iso.json'), 'utf8'));
+      const raw = JSON.parse(S.fs.readFileSync(S.path.join(__dirname, '..', '..', '..', 'models', 'adaboost-vote-v1-iso.json'), 'utf8'));
       if (raw && Array.isArray(raw.table) && raw.table.length) S._voteIso = raw.table;
     }
     if (!S._voteIso || !S._voteIso.length || typeof p !== 'number' || !isFinite(p)) return null;
@@ -107,13 +107,8 @@ function beliefFeatures25(room, botId, candId) {
   const p = bel.posterior[candId] != null ? bel.posterior[candId] : 0.5;
   const cc = bel.credibility[candId] != null ? bel.credibility[candId] : 0.5;
   const cv = bel.credibility[botId] != null ? bel.credibility[botId] : 0.5;
-  // 1.7.18：vote_share 语义修复——room.votes 是 {投票者: 目标} 映射，旧公式取 room.votes[candId]（候选投给了谁）→ 目标 id 字符串 → NaN → null 脏值；正确语义 = 候选被投票数/当前总票数
-  let share = 0;
-  if (room.votes && Object.keys(room.votes).length) {
-    let vc = 0;
-    for (const t of Object.values(room.votes)) if (t === candId) vc++;
-    share = vc / Object.keys(room.votes).length;
-  }
+  // 审计修复：vote_share 统一走 vote-state.voteShare（候选得票/总票数），与训练/π/PPO 单一口径
+  const share = S.voteShare(room, candId);
   const deathInferV = Math.min(1, (idx.deathInfer[candId] || 0) / 3);
   const claimSuspectV = Math.min(1, (idx.claimSuspect[candId] || 0) / 2);
   const voteLeadOrder = idx.leadId === candId ? 1 : 0;
@@ -226,13 +221,12 @@ const wb = dynW ? dynamicWb(bot, p.id, mp, cfgAuc) : (bot.suspicionW != null ? b
         try {
           const getBeliefs = S._getBeliefsRef;
           const bel = getBeliefs(room._beliefEngine);
-          const vv = room.votes || {};
-          const tot = {}; for (const k of Object.keys(vv)) { const t = vv[k]; if (t) tot[t] = (tot[t] || 0) + 1; }
+          // 审计修复：审计埋点与模型特征同口径（原为“不同目标数”，与 beliefFeatures25 分叉）
           belF = [
             bel.posterior[p.id] != null ? bel.posterior[p.id] : 0.5,
             bel.credibility[p.id] != null ? bel.credibility[p.id] : 0.5,
             bel.credibility[bot.id] != null ? bel.credibility[bot.id] : 0.5,
-            (tot[p.id] || 0) / Math.max(1, Object.keys(tot).length),
+            S.voteShare(room, p.id),
           ];
         } catch (e) { belF = null; }
       }

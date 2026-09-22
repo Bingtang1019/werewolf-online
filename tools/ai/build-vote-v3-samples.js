@@ -10,6 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const root = path.resolve(__dirname, '..', '..');
 const { voteFeatures } = require(path.join(root, 'server/ai/features.js'));
+const { voteShare } = require(path.join(root, 'server/ai/vote-state.js')); // 审计修复：vote_share 单一口径
 const { createBeliefEngine, applyEvent, getBeliefs } = require(path.join(root, 'server/ai/belief-engine.js'));
 
 const args = process.argv.slice(2);
@@ -36,7 +37,7 @@ function extractV3Features(room, voterId, candId, bel, tot) {
   const p = bel.posterior[candId] != null ? bel.posterior[candId] : 0.5;
   const cc = bel.credibility[candId] != null ? bel.credibility[candId] : 0.5;
   const cv = bel.credibility[voterId] != null ? bel.credibility[voterId] : 0.5;
-  const share = tot ? (tot[candId] || 0) / Math.max(1, Object.keys(tot).length) : 0;
+  const share = voteShare(room, candId); // 审计修复：候选得票/总票数（旧口径=不同目标数）
   // 死亡因果链（被刀者投过候选次数——方向修复：嫌疑-）
   const deathInfer = Math.min(1, (room._deathInferCounts && room._deathInferCounts[candId] || 0) / 3);
   // 查验验证（候选被查杀声明数——方向修复：狼悍跳居多 → 嫌疑+（因为声明反向））

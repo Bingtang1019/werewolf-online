@@ -10,6 +10,8 @@ const fs = require('fs');
 const path = require('path');
 const { MLP } = require('./mlp');
 const { getBeliefs } = require('./belief-engine');
+const { voteFeatures } = require('./features'); // 审计修复：从候选循环内 require 提前到模块顶部
+const { voteShare } = require('./vote-state'); // 审计修复：vote_share 单一口径（候选得票/总票数）
 
 const MODEL_PATH = process.env.MODEL_VOTE_PI || path.join(__dirname, '..', '..', 'models', 'vote-pi-belief-v1.json');
 const MODEL_PATH_SNAP = process.env.MODEL_VOTE_PI_SNAP || path.join(__dirname, '..', '..', 'models', 'vote-pi-snap-v1.json');
@@ -25,6 +27,7 @@ function loadPi(useSnap, modelPath) {
   try {
     const m = JSON.parse(fs.readFileSync(key, 'utf8'));
     if (m.schema !== 'vote-pi@1') return null;
+    if (m.stale === true) return null; // 审计修复：特征口径变更（vote_share 分母）→ 旧模型废弃，fail-open 回退 dv
     const names = m.features || [];
     if (names.length !== FEATURE_NAMES.length && names.length !== FEATURE_NAMES.length + BELIEF_NAMES.length) return null;
     for (let i = 0; i < FEATURE_NAMES.length; i++) if (names[i] !== FEATURE_NAMES[i]) return null;
@@ -53,19 +56,17 @@ function piVote(room, voterId, state, useSnap, rng, modelPath) {
   const scores = {};
   let best = null, bs = -Infinity, second = -Infinity;
   for (const cid of state) {
-    const feats = require('./features').voteFeatures(room, voterId, cid);
+    const feats = voteFeatures(room, voterId, cid);
     if (!feats) continue;
     let fe = feats;
     if (m._belief) {
       if (!bel) return null; // 信念版需要 belief-engine（未挂载 → fail-open）
-      const tot = {};
-      for (const k of Object.keys(room.votes || {})) tot[room.votes[k]] = (tot[room.votes[k]] || 0) + 1;
-      const n = Object.keys(tot).length || 1;
+      // 审计修复：旧口径 = 候选得票/不同目标数（与训练/ beliefFeatures25 的总票数口径分叉）
       fe = feats.concat([
         bel.posterior[cid] != null ? bel.posterior[cid] : 0.5,
         bel.credibility[cid] != null ? bel.credibility[cid] : 0.5,
         bel.credibility[voterId] != null ? bel.credibility[voterId] : 0.5,
-        (tot[cid] || 0) / n,
+        voteShare(room, cid),
       ]);
     }
     const p = m._mlp.predict(fe);

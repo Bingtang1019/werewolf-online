@@ -12,6 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 const { voteFeatures } = require('../../server/ai/features.js');
+const { voteShare } = require('../../server/ai/vote-state.js'); // 审计修复：vote_share 单一口径
 const { voteFeaturesV5, INTENT_FEATURE_NAMES, V5_FEATURE_NAMES } = require('../../server/ai/intent-features.js');
 const { MLP } = require('../../server/ai/mlp.js');
 const { createBeliefEngine, applyEvent, getBeliefs } = require('../../server/ai/belief-engine.js'); // V5.1b：信念引擎
@@ -108,7 +109,7 @@ function replayGame(rec, useBelief, useV5) {
               belSnap.posterior[cand.id] != null ? belSnap.posterior[cand.id] : 0.5,
               belSnap.credibility[cand.id] != null ? belSnap.credibility[cand.id] : 0.5,
               belSnap.credibility[voter] != null ? belSnap.credibility[voter] : 0.5,
-              (tot[cand.id] || 0) / Math.max(1, Object.keys(tot).length),
+              voteShare(room, cand.id),
             ]);
           }
           out.samples.push({ botId: voter, candId: cand.id, y: aud.dv === cand.id ? 1 : 0, feats: fe });

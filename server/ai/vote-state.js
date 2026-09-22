@@ -134,4 +134,28 @@ function voteFeatures13(vs, botId, candId) {
   ];
 }
 
-module.exports = { buildRoomVoteState, voteFeatures13 };
+
+/** 票数占比（训练/推理统一口径）：候选得票数 / 当前总票数（已投票者数）。
+ * 审计修复：旧 train-vote-pi / build-vote-v3-samples / ppo-vote / vote-pi.js 用“不同目标数”做分母，
+ * 与 bot-brain beliefFeatures25 的“总票数”口径分叉（违反 A-2）。一律改用本函数。 */
+function voteShare(room, candId) {
+  const votes = (room && room.votes) || {};
+  const keys = Object.keys(votes);
+  if (!keys.length) return 0;
+  let vc = 0;
+  for (const k of keys) if (votes[k] === candId) vc++;
+  return vc / keys.length;
+}
+/** 目标 -> 得票占比 映射（批量场景用；口径同 voteShare） */
+function voteShareMap(room) {
+  const votes = (room && room.votes) || {};
+  const keys = Object.keys(votes);
+  const n = keys.length || 1;
+  const tot = {};
+  for (const k of keys) tot[votes[k]] = (tot[votes[k]] || 0) + 1;
+  const out = {};
+  for (const k of Object.keys(tot)) out[k] = tot[k] / n;
+  return out;
+}
+module.exports = { buildRoomVoteState, voteFeatures13, voteShare, voteShareMap };
+
