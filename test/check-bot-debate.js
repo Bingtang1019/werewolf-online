@@ -40,13 +40,22 @@ async function setup(cap, counts, botLevel, fillLevel, wantRole, hostRole) {
   throw new Error('setup多次开局未满足角色要求');
 }
 async function toDiscuss(room, host) {
-  for (let i = 0; i < 12; i++) {
-    const v = await st(room, host);
+  let v = null;
+  for (let i = 0; i < 60; i++) {
+    v = await st(room, host);
     if (v.phase === 'discuss') return v;
+    if (v.phase === 'vote' || v.phase === 'pk_vote') {
+      // 房主是真人玩家：不投票房间会停在 vote（阶段超时 60s > 本函数预算）
+      const cands = (v.candidates && v.candidates.length) ? v.candidates : (v.pkTied && v.pkTied.length ? v.pkTied : null);
+      const target = cands ? cands.find(id => id !== host) : (v.players || []).find(q => q.alive && q.id !== host);
+      if (target) { const id = typeof target === 'string' ? target : target.id; try { await act(room, host, 'vote', { target: id }); } catch (e) { /* 竞态忽略 */ } }
+      await sleep(400);
+      continue;
+    }
     if (v.phase === 'morning' || v.phase === 'lastword' || v.phase === 'handover') { try { await advance(room, host); } catch (e) {} await sleep(400); }
     else await sleep(500);
   }
-  throw new Error('等待超时:到达白天发言');
+  throw new Error('等待超时:到达白天发言（phase=' + (v && v.phase) + '）');
 }
 
 async function main() {
@@ -67,10 +76,10 @@ async function main() {
         const s = await setup(5, { wolf: 1, seer: 1, villager: 3 }, 'smart', 'idle', 'seer');
         const victim = s.players.find(p => p.alive && p.id !== s.host && p.id !== s.target);
         // 夜1：房主刀 victim，bot 查验
-        for (let i = 0; i < 30; i++) { const vv = await st(s.room, s.host); if (vv.phase === 'night' && vv.nightStep === 'wolf') break; await sleep(300); }
+        for (let i = 0; i < 60; i++) { const vv = await st(s.room, s.host); if (vv.phase === 'night' && vv.nightStep === 'wolf') break; await sleep(300); }
         await act(s.room, s.host, 'wolf_set', { kill: victim.id, confirm: true });
         let v = null;
-        for (let i = 0; i < 30; i++) { v = await st(s.room, s.host); if (v.phase !== 'night') break; await sleep(400); }
+        for (let i = 0; i < 60; i++) { v = await st(s.room, s.host); if (v.phase !== 'night') break; await sleep(400); }
         if ((v.morningDeaths || []).some(d => d.id === s.host)) { await api('/api/leave', { room: s.room, me: s.host }); continue; }
         await toDiscuss(s.room, s.host);
         const y = s.players.find(p => p.alive && p.id !== s.host && p.id !== s.target && p.id !== victim.id);
@@ -93,7 +102,7 @@ async function main() {
     /* ---------- B2 狼夜频道：smart 狼 bot 夜晚狼频道发言（server 日志确认——狼频道消息仅在夜晚可见，而 bot confirm 后立即进入早晨，view 窗口 <1 个 HTTP 往返，黑盒 view 断言必然错过） ---------- */
     for (let attempt = 0; attempt < 8; attempt++) {
       const s = await setup(5, { wolf: 2, villager: 3 }, 'smart', 'idle', 'wolf'); // 房主=狼真人 + smart 狼 bot
-      for (let i = 0; i < 30; i++) { const vv = await st(s.room, s.host); if (vv.phase === 'night' && vv.nightStep === 'wolf') break; await sleep(300); }
+      for (let i = 0; i < 60; i++) { const vv = await st(s.room, s.host); if (vv.phase === 'night' && vv.nightStep === 'wolf') break; await sleep(300); }
       const t2 = s.players.find(p => p.alive && p.id !== s.host && p.id !== s.target);
       await act(s.room, s.host, 'wolf_set', { kill: t2.id, confirm: true });
       await sleep(1200); // 等狼 bot 出刀 + 狼频道发言（server 日志）
@@ -105,29 +114,36 @@ async function main() {
 
     /* ---------- B3 遗言：smart 预言家 bot 被刀后发遗言 ---------- */
     let b3ok = false;
-    for (let attempt = 0; attempt < 10 && !b3ok; attempt++) {
+    for (let attempt = 0; attempt < 12 && !b3ok; attempt++) {
       try {
         const s = await setup(5, { wolf: 1, seer: 1, villager: 3 }, 'smart', 'idle', 'seer');
         const victim = s.players.find(p => p.alive && p.id !== s.host && p.id !== s.target);
-        for (let i = 0; i < 30; i++) { const vv = await st(s.room, s.host); if (vv.phase === 'night' && vv.nightStep === 'wolf') break; await sleep(300); }
+        for (let i = 0; i < 60; i++) { const vv = await st(s.room, s.host); if (vv.phase === 'night' && vv.nightStep === 'wolf') break; await sleep(300); }
         await act(s.room, s.host, 'wolf_set', { kill: victim.id, confirm: true });
         let v = null;
-        for (let i = 0; i < 30; i++) { v = await st(s.room, s.host); if (v.phase !== 'night') break; await sleep(400); }
+        for (let i = 0; i < 60; i++) { v = await st(s.room, s.host); if (v.phase !== 'night') break; await sleep(400); }
         if ((v.morningDeaths || []).some(d => d.id === s.host)) { await api('/api/leave', { room: s.room, me: s.host }); continue; }
         // v1.6.4：确认预言家 bot 已完成查验（否则遗言无查验记录，B3 误判“未发遗言”的调度竞态）
         let vvSeer = await st(s.room, s.target);
-        for (let i = 0; i < 25 && !((vvSeer.seerHistory || []).length); i++) { await sleep(400); vvSeer = await st(s.room, s.target); }
+        for (let i = 0; i < 45 && !((vvSeer.seerHistory || []).length); i++) { await sleep(400); vvSeer = await st(s.room, s.target); }
         await toDiscuss(s.room, s.host);
         await act(s.room, s.host, 'startVote');
         await sleep(1200); // 等 bot 投票
         try { await advance(s.room, s.host); } catch (e) {} // 结算（可能无人出局 → 直接夜2；或放逐某人 → lastword）
         // 夜2：房主刀预言家 bot → 早晨 bot 死 → lastword 遗言（遗言不依赖验谁，只要 bot 有查验记录即可）
-        for (let i = 0; i < 30; i++) {
+        for (let i = 0; i < 60; i++) {
           const v2 = await st(s.room, s.target);
           if (v2.phase === 'night' && v2.nightStep === 'wolf') {
             await act(s.room, s.host, 'wolf_set', { kill: s.target, confirm: true });
           } else if (v2.phase === 'lastword' || v2.phase === 'morning') {
             try { await advance(s.room, s.host); } catch (e) {}
+          } else if (v2.phase === 'discuss') {
+            // 稳定性：房主不推进时房间会停在白天讨论直到 60s 阶段超时（超出本循环预算）
+            try { await act(s.room, s.host, 'startVote'); } catch (e) {}
+          } else if (v2.phase === 'vote' || v2.phase === 'pk_vote') {
+            const cands = (v2.candidates && v2.candidates.length) ? v2.candidates : (v2.pkTied && v2.pkTied.length ? v2.pkTied : null);
+            const tgt = cands ? cands.find(id => id !== s.host) : (v2.players || []).find(q => q.alive && q.id !== s.host);
+            if (tgt) { const id = typeof tgt === 'string' ? tgt : tgt.id; try { await act(s.room, s.host, 'vote', { target: id }); } catch (e) {} }
           }
           const lm = (v2.chat || []).find(m => m.from === s.target && m.text && m.text.includes('我是预言家'));
           if (lm) { assert(true, 'B3 遗言：预言家 bot 遗言（' + lm.text.slice(0, 30) + '…）'); b3ok = true; break; }
