@@ -4,7 +4,7 @@
 /* v1.6.4（A5-1/A2-5）：统一置信度入口 + 发言语料库（组合式生成）——C1 意图层未来只消费这两处 */
 const { confidenceOf } = require('../confidence.js');
 const { getVoteModel, getVoteModelV1, getVoteModelV2, modelProb } = require('../model-loader.js');
-const { buildRoomVoteState, voteFeatures13 } = require('../vote-state.js'); // 1.8.0（P1）：投票轮级快照——房间级特征构造一次，决策 O(1) 查表（架构革命 ①）
+const { buildRoomVoteState, voteFeatures13, voteShare } = require('../vote-state.js'); // 1.8.0（P1）：投票轮级快照——房间级特征构造一次，决策 O(1) 查表（架构革命 ①）
 let _getBeliefsRef = null; // 1.7.18：belief-engine 懒预加载（TDZ 修复——getBeliefs 仅供 beliefFeatures25 运行时使用，模块级缓存避免函数内局部 require 的初始化时序问题）
 const _belMod = require('../belief-engine.js');
 _getBeliefsRef = _belMod.getBeliefs || null; // 1.7.18：getVoteModelV2——v2 独立缓存（12c per-config 回退用） // 1.7.0（B1-4）：vote 模型（fail-open）
@@ -23,11 +23,18 @@ function rng() { return CUR_RNG || global.rng; }
  * 注：vGood 目前无消费点（死数据）——第三方真正接入 V 估值属“功能上线”，单独立项 */
 const fs = require('fs');
 const path = require('path');
+/* 审计修复：bot-brain 模型统一从仓库根 models/ 加载（旧 __dirname/models 目录不存在，
+ * wolf-god / wolf-win 等模型自 1.7.7 起一直静默 fail-open）。支持绝对路径与子路径。 */
+const MODELS_DIR = path.join(__dirname, '..', '..', '..', 'models');
+function resolveModelPath(name) { return path.isAbsolute(name) ? name : path.join(MODELS_DIR, name); }
 let _vModel = null, _vTried = false;
 function getValueModelForBot() {
   if (_vTried) return _vModel;
   _vTried = true;
-  try { _vModel = JSON.parse(fs.readFileSync(path.join(__dirname, 'models', process.env.MODEL_VALUE_VOTE ? process.env.MODEL_VALUE_VOTE.split(/[\\/]/).pop() : 'value-vote-v2.json'), 'utf8')); } catch (e) { _vModel = null; }
+  try {
+    const name = process.env.MODEL_VALUE_VOTE ? process.env.MODEL_VALUE_VOTE.split(/[\\/]/).pop() : 'value-vote-v2.json';
+    _vModel = JSON.parse(fs.readFileSync(resolveModelPath(name), 'utf8'));
+  } catch (e) { _vModel = null; }
   return _vModel;
 }
 /* v1.7.7（α3）：狼侧刀神分类器——Phase W 优先 wolf-god-v2（2026-08-17 小样本训练），回退 v1（fail-open） */
@@ -40,7 +47,7 @@ function loadWolfGodModel() {
     const candidates = process.env.WOLF_GOD_MODEL ? [process.env.WOLF_GOD_MODEL] : ['wolf-god-v1.json', 'wolf-god-v2.json'];
     for (const name of candidates) {
       try {
-        _wolfGodModel = AdaBoost.fromJSON(JSON.parse(fs.readFileSync(path.join(__dirname, 'models', name), 'utf8')));
+        _wolfGodModel = AdaBoost.fromJSON(JSON.parse(fs.readFileSync(resolveModelPath(name), 'utf8')));
         if (_wolfGodModel && _wolfGodModel.models && _wolfGodModel.models.length) break;
       } catch (e) { _wolfGodModel = null; }
     }
@@ -74,7 +81,7 @@ function loadWolfWinModel() {
   try {
     const { AdaBoost } = require('../../../wolfTrain/adaboost.js');
     const name = process.env.WOLF_WIN_MODEL || 'wolf-win-v1.json';
-    const raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'models', name), 'utf8'));
+    const raw = JSON.parse(fs.readFileSync(resolveModelPath(name), 'utf8'));
     if (raw.schema !== 'wolf-win@1' || !raw.adaboost) return null;
     _wolfWinModel = AdaBoost.fromJSON(raw.adaboost);
   } catch (e) { _wolfWinModel = null; }
@@ -137,7 +144,13 @@ function loverPartner(room, bot) {
 /* v1.6.4（A2-4）：目标是否被公开查杀——强证据目标不参与投票波动（“高置信才准”的具象） */
 function isCheckedTarget(room, t) {
   if (!room || !t) return false;
-  return (room.messages || []).some(m => m.ch === 'all' && m.text && m.text.includes('查杀') && m.text.includes(t.name));
+  return (room.messages || []).some(m => {
+    if (m.ch !== 'all' || !m.text || !t.name) return false;
+    if (!m.text.includes('查杀') || !m.text.includes(t.name)) return false;
+    // 审计修复：否定/质疑语境不算“被公开查杀”（旧实现把“我不是查杀X”“别信他查杀X”误判为强证据）
+    if (/(不是|并非|没有|没|别信|假的?|冤枉)\s*查杀/.test(m.text)) return false;
+    return true;
+  });
 }
 function randInt(n) { return rng().int(n); }
 function pick(arr) { return arr && arr.length ? arr[randInt(arr.length)] : null; }
@@ -250,7 +263,16 @@ const LEVEL_MAP = { easy: 'smart', smart: 'simulate', simulate: 'simulate_v2' };
 const ctx = {};
 function register(name, fn) { ctx[name] = fn; }
 // 共享状态对象（跨模块变量访问——其他模块通过 S.xxx 读写）
-const S = { _getBeliefsRef, _belMod, LEXICON, CUR_RNG, fs, path, _vModel, _wolfGodModel, wolfKillDecide, loadWolfWinModel, wolfWinDecide, confidenceOf, getVoteModel, getVoteModelV1, getVoteModelV2, modelProb, buildRoomVoteState, voteFeatures13, voteFeatures, rolloutVote, piVote, decideVote, decideNightKill, createRng, TALK_FLAVOR, TALK_PRESSURE, TALK_DEBATE_SEER, TALK_DEBATE_WOLF, TALK_WOLF_NIGHT, TALK_LAST_PLAIN, EVIDENCE, TRANSFER_5, LEVEL_MAP };
+const S = { _getBeliefsRef, _belMod, LEXICON, voteShare, fs, path, wolfKillDecide, loadWolfWinModel, wolfWinDecide, confidenceOf, getVoteModel, getVoteModelV1, getVoteModelV2, modelProb, buildRoomVoteState, voteFeatures13, voteFeatures, rolloutVote, piVote, decideVote, decideNightKill, createRng, TALK_FLAVOR, TALK_PRESSURE, TALK_DEBATE_SEER, TALK_DEBATE_WOLF, TALK_WOLF_NIGHT, TALK_LAST_PLAIN, EVIDENCE, TRANSFER_5, LEVEL_MAP };
+/* 审计修复：CUR_RNG 必须是闭包变量的访问器。旧写法 "const S = { ..., CUR_RNG, ... }" 只是把 null
+ * 快照存进 S，main.js 的 "S.CUR_RNG = room.rng" 改的是 S 属性、永远进不到 rng() 闭包 →
+ * 所有房间共用 global.rng（多房间并发时随机流纠缠，SEED 失效）。 */
+Object.defineProperty(S, 'CUR_RNG', {
+  get() { return CUR_RNG; },
+  set(v) { CUR_RNG = (v && typeof v === 'object' && typeof v.next === 'function') ? v : null; },
+  enumerable: true,
+  configurable: true,
+});
 module.exports = { ctx, register, S };
 // 导出 shared 区函数（供 index.js 注册到 ctx）
 module.exports.sharedFns = { rng, getValueModelForBot, loadWolfGodModel, loadWolfWinModel, wolfWinDecide, buildWolfKillWorld, byId, effRole, isWolfRole, campOf, factionOf, loverPartner, isCheckedTarget, randInt, pick, pickId, nameById, shuffle, alivePlayers, aliveOthers, getWolfCount, extractTarget };

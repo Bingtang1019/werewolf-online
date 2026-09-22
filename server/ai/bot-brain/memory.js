@@ -87,119 +87,6 @@ function suspicionTarget(room, bot) {
   const score = p => (bot.botMemory.suspicion[p.id] || 0);
   return ctx.concentratedPick(room, pool, score); // v1.5.2：投票集中
 }
-function decisionEasy(room, bot) {
-  updateEasyMemory(room, bot);
-  const mem = bot.botMemory;
-  if (room.phase === 'night') {
-    switch (room.nightStep) {
-      case 'guard': {
-        // v1.6.2：公平化——移除“读真实预言家身份”的全知（人机不得用服务器真相作弊），改为守自己/随机
-        const valid = ctx.alivePlayers(room).filter(q => q.id !== room.guardLast);
-        let target = bot;
-        if (target.id === room.guardLast) { const t2 = ctx.byId(room, ctx.pickId(valid)); if (t2) target = t2; }
-        if (!bot.botMemory.guarded) bot.botMemory.guarded = {};
-        bot.botMemory.guarded[target.id] = true; // v1.4.3：记住守人
-        return { action: 'guard_pick', data: { target: target.id } };
-      }
-      case 'wolf': {
-        const humans = room.players.some(q => q.alive && ctx.isWolfRole(q) && !q.isBot);
-        if (humans) return { action: 'wolf_set', data: { confirm: true } };
-        const data = { confirm: true };
-        const lp = ctx.loverPartner(room, bot); // v1.6.3：狼恋人不刀恋人
-        if (!room.night.wolf.kill) {
-          const claimedSeer = ctx.aliveOthers(room, bot).find(q => mem.claims[q.id] === 'seer' && (!lp || lp.isWolf || q.id !== lp.id));
-          let target = claimedSeer;
-          if (!target) {
-            // v1.7.6：第三方狼恋人夜刀——永不刀狼（狼队频道执行=自爆）；刀好人神职（价值序：女巫>预言家>猎人>守卫>摄梦人），伪装正常狼人
-            const world = ctx.buildVoteWorld(room, bot);
-            if (ctx.factionOf(room, bot) === 'third') {
-              const val = { '女巫': 5, '预言家': 4, '猎人': 3, '守卫': 2, '摄梦人': 1 };
-              const claims = world.roleClaims || {};
-              const pool = ctx.aliveOthers(room, bot).filter(q => ctx.campOf(q) !== 'wolf' && ctx.factionOf(room, q) !== 'third' && (!lp || lp.isWolf || q.id !== lp.id));
-              let t2 = null, bestV = -1;
-              for (const q of pool) { const r = claims[q.id]; if (r && (val[r] || 0) > bestV) { bestV = val[r] || 0; t2 = q; } }
-              if (!t2 && pool.length) t2 = pool.slice().sort((a, b) => (world.scores[a.id] || 0.5) - (world.scores[b.id] || 0.5))[0];
-              target = t2;
-            } else {
-              // v1.7.7（α3）：刀神分类器优先（fail-open：模型缺失回退 argmin）；普通狼（非第三方）走此分支
-              const wm = ctx.loadWolfGodModel();
-              let t2 = null;
-              if (wm) t2 = ctx.byId(room, S.wolfKillDecide(ctx.buildWolfKillWorld(room, bot), wm, { killPriority: { '女巫': 5, '预言家': 4, '猎人': 3, '守卫': 2, '摄梦人': 1 } }));
-              if (!t2) { const nk = S.decideNightKill(world, ctx.aliveOthers(room, bot).map(p => p.id), ctx.rng()); t2 = nk.target ? ctx.byId(room, nk.target) : null; }
-              target = t2;
-            }
-            if (target && lp && !lp.isWolf && target.id === lp.id) target = null;
-          }
-          data.kill = target ? target.id : null;
-          const beauty = ctx.alivePlayers(room).find(q => ctx.effRole(q) === 'wolfBeauty');
-          if (beauty && !room.night.wolf.charm) {
-            const charmPool = ctx.aliveOthers(room, bot).filter(q => ctx.campOf(q) !== 'wolf' && q.id !== data.kill && (!lp || lp.isWolf || q.id !== lp.id)); // v1.6.3：狼恋人不魅惑恋人
-            const charm = ctx.pick(charmPool);
-            if (charm) data.charm = charm.id;
-            if (data.charm) { if (!room.wolfPackMemory) room.wolfPackMemory = {}; room.wolfPackMemory.charmTarget = data.charm; } // v1.5.2：狼队共享魅惑目标（卖狼美人）
-          }
-        }
-        return { action: 'wolf_set', data };
-      }
-      case 'seer': {
-        const pool = ctx.aliveOthers(room, bot).filter(q => !(room.seerHistory || []).some(h => h.target === q.id));
-        const t = ctx.pick(pool) || ctx.pick(ctx.aliveOthers(room, bot));
-        return t ? { action: 'seer_pick', data: { target: t.id } } : null;
-      }
-      case 'dreamer': { const t = ctx.pickId(ctx.aliveOthers(room, bot)); return t ? { action: 'dreamer_pick', data: { target: t } } : null; } // 简单：随机梦人
-      case 'witch': {
-        const attacked = room.night.wolf.kill;
-        const save = !room.witchPots.saveUsed && !!attacked; // 简单：无脑救被刀者
-        if (save && attacked && !bot.botMemory.silverWater) bot.botMemory.silverWater = attacked; // v1.4.3：记住银水
-        let poison = null;
-        if (!save && !room.witchPots.poisonUsed && room.nightNum >= 2) {
-          const t = ctx.pick(ctx.aliveOthers(room, bot));
-          if (t) poison = t.id;
-        }
-        return { action: 'witch_act', data: { save, poison } };
-      }
-      case 'hunter': { const t = ctx.pick(ctx.aliveOthers(room, bot)); return { action: 'hunter_shoot', data: { target: t ? t.id : null } }; }
-      default: return null;
-    }
-  }
-  if (room.phase === 'sheriff_vote') {
-    const world = ctx.buildVoteWorld(room, bot); // 1.7.0（B1-1）：S.decideVote（阵营分流 + 跟票集中）
-    const res = S.decideVote(world, room.candidates || [], ctx.rng());
-    const lp = ctx.loverPartner(room, bot); // v1.6.3：狼恋人不投恋人（决策层之上）
-    const target = res.target && lp && !lp.isWolf && res.target === lp.id ? null : res.target;
-    return { action: 'vote', data: { target } };
-  }
-  if (room.phase === 'vote') {
-    const world = ctx.buildVoteWorld(room, bot); // 1.7.0（B1-1）：纯策略 S.decideVote（含卖狼/跟票/阵营分流）
-    const res = S.decideVote(world, ctx.aliveOthers(room, bot).map(p => p.id), ctx.rng());
-    let t = res.target ? ctx.byId(room, res.target) : null;
-    const lp = ctx.loverPartner(room, bot); // v1.6.3：狼恋人不投恋人
-    if (t && lp && !lp.isWolf && t.id === lp.id) t = null;
-    // v1.7.2（B-1）：第三方（人狼恋狼恋人/丘比特）不投自己阵营（恋人互知，规则内；与 simulate 档统一）
-    if (t && world.faction === 'third' && ctx.factionOf(room, t) === 'third') t = null;
-    // v1.6.4（A2-4）/1.8.x：不确定性表达由共享 chaos 模块处理
-    if (t) t = chaos.maybeChaosVote(room, bot, world, ctx.aliveOthers(room, bot).map(p => p.id), t, lp);
-    return { action: 'vote', data: { target: t ? t.id : null } };
-  }
-  if (room.phase === 'pk_vote') {
-    const world = ctx.buildVoteWorld(room, bot); // 1.7.0（B1-1）
-    const res = S.decideVote(world, [...(room.pkTied || [])], ctx.rng());
-    const lp = ctx.loverPartner(room, bot);
-    let target = res.target && lp && !lp.isWolf && res.target === lp.id ? null : res.target;
-    // v1.7.2（B-1）：第三方不投自己阵营（与 vote 分支统一）
-    if (target && world.faction === 'third' && ctx.factionOf(room, ctx.byId(room, target)) === 'third') target = null;
-    return { action: 'vote', data: { target } };
-  }
-  if (room.phase === 'hunter_shot') {
-    // v1.6.2：easy 猎人按关键词嫌疑选枪（原为纯随机）
-    const pool = ctx.shuffle(ctx.aliveOthers(room, bot));
-    const t = pool.reduce((a, p) => (bot.botMemory.suspicion[p.id] || 0) > (bot.botMemory.suspicion[a.id] || 0) ? p : a, pool[0]);
-    return { action: 'hunter_shoot', data: { target: t ? t.id : null } };
-  }
-  return null;
-}
-
-/* ================= SMART（贝叶斯推理） ================= */
 function initBeliefs(room, bot) {
   ensureMemory(bot); // 防御：任何路径进入都必须有记忆对象
   if (!bot.botMemory.beliefs) {
@@ -275,6 +162,10 @@ function updateSeerClaims(room, bot) {
 }
 function updateSmartMemory(room, bot) {
   ensureMemory(bot);
+  // 审计修复：同一 (day, 票数, 消息数) 下重复调用直接短路——main 与 smart 链各调一次，旧实现白遍历全部消息
+  const _usmKey = (room.dayNum || 0) + ':' + (room._voteCastCount || 0) + ':' + ((room.messages && room.messages.length) || 0);
+  if (bot.botMemory._usmKey === _usmKey) return;
+  bot.botMemory._usmKey = _usmKey;
   initBeliefs(room, bot);
   updateSeerClaims(room, bot);
   // v1.5.1：神职声称提取（守卫/女巫/猎人穿衣服 → 狼刀优先级）
@@ -364,4 +255,4 @@ function updateSmartMemory(room, bot) {
   calibrateBeliefs(room, bot);
 }
 
-module.exports = { ensureMemory, decisionIdle, updateEasyMemory, suspicionTarget, decisionEasy, initBeliefs, updateBelief, calibrateBeliefs, updateSeerClaims, updateSmartMemory };
+module.exports = { ensureMemory, decisionIdle, updateEasyMemory, suspicionTarget, initBeliefs, updateBelief, calibrateBeliefs, updateSeerClaims, updateSmartMemory };

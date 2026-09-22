@@ -50,7 +50,8 @@ function getDynamicMatrix(styleKey, nightNum) {
   for (let i = 0; i < 5; i++) {
     const oldDiag = mat[i][i];
     const newDiag = Math.min(0.95, oldDiag + f);
-    const factor = (1 - newDiag) / (1 - oldDiag);
+    const denom = 1 - oldDiag;
+    const factor = denom > 1e-9 ? (1 - newDiag) / denom : 1; // 审计修复：oldDiag=1 时除零 → Infinity
     mat[i][i] = newDiag;
     for (let j = 0; j < 5; j++) if (j !== i) mat[i][j] *= factor;
   }
@@ -68,6 +69,7 @@ function initAttitudes5(room, bot) {
 }
 
 function updateAttitude5(room, bot, targetId, evidenceType, strength) {
+  if (!bot.botMemory.attitudes) initAttitudes5(room, bot); // 审计修复：显式初始化，去除调用顺序隐式依赖
   const att = bot.botMemory.attitudes[targetId];
   if (!att) return;
   const P = getDynamicMatrix(getStyleKey(bot), room.nightNum);
@@ -97,6 +99,7 @@ function distToSuspectScore(dist) {
 }
 
 function predictAttitude5(room, bot, targetId, steps) {
+  if (!bot.botMemory.attitudes) initAttitudes5(room, bot); // 审计修复：显式初始化，去除调用顺序隐式依赖
   const att = bot.botMemory.attitudes[targetId];
   if (!att) return 0.5;
   let dist = att.dist.slice();
@@ -131,8 +134,9 @@ function processAdditionalEvidence(room, bot) {
     else if (p.deadBy === 'poison') updateAttitude5(room, bot, p.id, S.EVIDENCE.POISON, 1);
   }
   // 警长票（项目：sheriff_vote 的 votes 保留到下一轮，lastVoteResult.kind==='sheriff' 标记）
-  if (room.lastVoteResult && room.lastVoteResult.kind === 'sheriff' && mem.lastSheriffRound !== room.dayNum) {
-    mem.lastSheriffRound = room.dayNum;
+  const dayKey = room.dayNum != null ? room.dayNum : (room.nightNum != null ? room.nightNum : 0); // 审计修复：dayNum 缺失时旧比较恒成立 → 每轮重复处理
+  if (room.lastVoteResult && room.lastVoteResult.kind === 'sheriff' && mem.lastSheriffRound !== dayKey) {
+    mem.lastSheriffRound = dayKey;
     for (const k of Object.keys(room.votes || {})) {
       const t = room.votes[k];
       if (!t || k === bot.id || t === bot.id) continue;

@@ -112,7 +112,9 @@ function decisionSmart(room, bot) {
               // V5.2 A 线：若启用 wolf-win 胜率模型，优先用“刀后狼胜概率”决策；否则回退刀神分类器
               const wm = ctx.loadWolfGodModel();
               let t2 = null;
-              const wwin = ctx.loadWolfWinModel();
+              // V5.2 A 线：wolf-win 胜率模型为显式开关（文档：默认不启用，WOLF_WIN_MODEL 指定时加载）；
+              // 审计修复：旧实现无条件尝试加载，路径修好后会默认激活，与文档/预期不符。
+              const wwin = process.env.WOLF_WIN_MODEL ? ctx.loadWolfWinModel() : null;
               if (wwin) t2 = ctx.byId(room, S.wolfWinDecide(ctx.buildWolfKillWorld(room, bot), wwin));
               if (!t2 && wm) t2 = ctx.byId(room, S.wolfKillDecide(ctx.buildWolfKillWorld(room, bot), wm, { killPriority: { '女巫': 5, '预言家': 4, '猎人': 3, '守卫': 2, '摄梦人': 1 } }));
               if (!t2) { const nk = S.decideNightKill(world, enemies.map(p => p.id), ctx.rng()); t2 = nk.target ? ctx.byId(room, nk.target) : null; }
@@ -227,57 +229,5 @@ function decisionSmart(room, bot) {
 /* ================= 统一入口 =================
  * 公共层：信息量恒定的决策（盗贼选牌/遗言/警徽/竞选/丘比特/情侣/摄梦），三档一致；
  * 智力决策点（狼刀/查验/守卫/女巫/投票）按级别分发。 */
-
-/* ---------- 发言模拟（v1.4.3）：白天每人最多一条，走 chat 通道；null=不发言（仍会被标记已调度） ---------- */
-/* ---------- 发言语料库（v1.4.4：辩论/穿衣服/气氛） ---------- */
-const TALK_FLAVOR = [
-  '这局好安静，不会都在潜水吧 🤿',
-  '预言家别藏了，出来带队呀',
-  '我掐指一算，今天必有狼出局 🔮',
-  '投票别磨蹭，再拖要上班迟到了 ⏰',
-  '谁投我我就记小本本 📒',
-  '女巫药省着点用，后面还有大场面',
-  '守卫今晚守谁，给个准话呗',
-  '我先表个态：听预言家的',
-  '狼人现在肯定在偷笑，笑什么笑 🐺',
-  '这氛围，让我想起上次被首刀的时候',
-  '昨晚居然平安夜？女巫干活了还是狼空刀了',
-  '别都沉默啊，聊一聊才有信息',
-];
-const TALK_PRESSURE = [
-  '我怀疑{name}有问题，大家投票考虑一下他',
-  '今天先出{name}吧，验民再看',
-  '我跟{name}的票',
-  '{name}这发言不像好人，太急了',
-  '先别投{name}，听他把话说完',
-];
-const TALK_DEBATE_SEER = [
-  '{name}在悍跳预言家，我才是真的，查验记录都在',
-  '{name}查杀的人我验过是金水，他在乱带节奏',
-  '对跳的都标狼，大家别被带偏，今晚我验{name}',
-];
-const TALK_DEBATE_WOLF = [
-  '{name}才是狼，狼队急了开始乱咬',
-  '我说的是真的，不信今晚验我，明天出结果',
-  '{name}带节奏带得飞起，一看就是狼',
-];
-const TALK_WOLF_NIGHT = [
-  '先刀预言家，稳赚不亏',
-  '刀{name}吧，他太跳了',
-  '我建议刀{name}，发言太像神职',
-  '别刀队友啊喂，看清楚再刀',
-  '今天白天我悍跳了预言家，你们配合一下',
-  '验民比验神难，先刀个神职',
-  '谁被女巫救过？想办法再刀一次',
-];
-const TALK_LAST_PLAIN = [
-  '我是平民，别浪费轮次捞我，先出{name}',
-  '被刀真惨，大家加油，别让我白死',
-  '我是平民，听预言家的，别被带偏',
-  '我走啦，遗言就一句：小心{name}',
-];
-
-/* v1.6.4（A2-5）：组合式生成——lexicon.json（意图→语料库键值）prefix+core+suffix 各取一段拼接；
- * 占位符 {name}/{result} 运行时替换；残留占位符清除；总长控制 120 字。 */
 
 module.exports = { decisionSmart };

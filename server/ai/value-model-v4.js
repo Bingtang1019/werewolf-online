@@ -21,7 +21,7 @@ const KNOWN_CONFIGS = ['4p', '6p', '8p', '9a', '9b', '9c', '9d', '12a', '12b', '
 
 let _model = null;
 let _wolfModel = null;
-function _load(pathOrEnv, cacheKey) {
+function _load(cacheKey) { // 审计：pathOrEnv 是重构残留死参数
   const p = cacheKey === 'wolf' ? WOLF_MODEL_PATH : MODEL_PATH;
   try {
     const m = JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -33,12 +33,12 @@ function _load(pathOrEnv, cacheKey) {
 }
 function loadV4() {
   if (_model) return _model;
-  _model = _load(MODEL_PATH, 'good');
+  _model = _load('good');
   return _model;
 }
 function loadV4Wolf() {
   if (_wolfModel) return _wolfModel;
-  _wolfModel = _load(WOLF_MODEL_PATH, 'wolf');
+  _wolfModel = _load('wolf');
   return _wolfModel;
 }
 function isLoaded() { return _model !== null; }
@@ -59,9 +59,10 @@ function buildX(s, m, config) {
   } else {
     x = [r, sg, T, s.cap || T, r * sg, s.R, s.S, s.M, s.wolf0, s.god0, s.vill0];
   }
-  if (m.cfgKeys && config != null) {
+  if (m.cfgKeys) {
+    // 审计修复：config==null 也必须补齐 one-hot（全零）——旧写法跳过导致特征长度短于模型期望
     const v = new Array(m.cfgKeys.length).fill(0);
-    const i = m.cfgKeys.indexOf(config);
+    const i = config != null ? m.cfgKeys.indexOf(config) : -1;
     if (i >= 0) v[i] = 1;
     for (let j = 0; j < v.length; j++) x.push(v[j]);
   }
@@ -113,7 +114,11 @@ function payoffWolf(prevState, nextState, config) {
 function _payoff(m, prevState, nextState, config) {
   const d = _value(m, nextState, config) - _value(m, prevState, config);
   const scale = m.payoffScale && m.payoffScale[config];
-  if (!scale) return 0; // fail-open（生产未训 cap 降级，lab 由 A-2 显式抛）
+  if (!scale) {
+    // 审计修复：生产 fail-open 不变；LAB_A2=1（lab/验收）时显式抛，避免 A-2 断言被静默降级吞掉
+    if (process.env.LAB_A2 === '1') throw new Error('[v4] A-2: payoffScale 缺配置 "' + config + '"');
+    return 0;
+  }
   return d * scale;
 }
 

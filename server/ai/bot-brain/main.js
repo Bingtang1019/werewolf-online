@@ -194,7 +194,6 @@ function createBotDecision(room, bot) {
   if (eff === 'simulate_v2') return decisionSimulateV2(room, bot, true); // 新 simulate：态度模型 + rollout 规划层
   if (eff === 'simulate') return decisionSimulateV2(room, bot, false); // 新 smart：旧 simulate（态度模型）
   if (eff === 'smart') return ctx.decisionSmart(room, bot); // 新 easy：旧 smart（贝叶斯）
-  if (eff === 'easy') return ctx.decisionEasy(room, bot); // 防御（映射后不达）
   return ctx.decisionIdle(room, bot);
 }/* =================================================================
    v1.5.6：跨局记忆治理——"印象"保留（suspicion 恩怨），"事实"重置
@@ -208,7 +207,7 @@ function resetBotPerGame(bot) {
   m.lastExiled = undefined; m.lastSheriffRound = undefined; m.lastProcessedExile = undefined;
   m.silverReported = undefined; m.wolfChatNight = undefined;
   m.seen = undefined; m.msgSeen = undefined; m.attMsgSeen = undefined; m.recordedDead = undefined;
-  m.attDead = undefined; m.roleMsgSeen = undefined;
+  m.attDead = undefined; m.roleMsgSeen = undefined; m._usmKey = undefined;
   // suspicion（关键词好恶）刻意保留：跨局"恩怨"的载体
 }
 /* 上一局是狼 → 本局初始 +15 嫌疑（显式建模"真人记得上局谁是狼"） */

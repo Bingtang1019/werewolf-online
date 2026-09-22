@@ -82,8 +82,9 @@ function valuePayoff(world, xIsWolf) {
     if (process.env.VALUE_MODEL === 'moe') return valuePayoffMoe(world, xIsWolf);
     return valuePayoffV4(world, xIsWolf);
   } catch (e) {
-    // 1.7.17（生产 fail-open）：A-2/schema 断言 throw（lab 启动即暴露 bug）不允许穿透到生产投票——
-    // 回退解析版 payoff（可用性优先）；lab 的 A-2 语义保留在加载层（loadV3/loadV4 启动时仍 throw）
+    // 1.7.17（生产 fail-open）：A-2/schema 断言 throw 不允许穿透到生产投票——回退解析版 payoff（可用性优先）。
+    // 审计修复：LAB_A2=1（lab/验收）时重新抛出，恢复“lab 启动即暴露 bug”的语义。
+    if (process.env.LAB_A2 === '1') throw e;
     return payoffFor(world, xIsWolf);
   }
 }
@@ -250,17 +251,15 @@ function rolloutVote(world, state, rng, { worlds = 64, useValue } = {}) { // 1.8
   // 1.7.17（视角多样性判定实验）：LAB_ROLLOUT_NOISE=σ → 模拟其他玩家投票时对 sc 注入高斯噪声（模拟"视角差异"）
   // 检验：rollout 的"自信错误"是否因单视角模拟（所有人用 bot 自己的 scores）——加噪后模拟更接近现实多 agent 异质
   const noiseSig = parseFloat(process.env.LAB_ROLLOUT_NOISE || '0');
-  const noiseBuf = new Float64Array(allVoters.length * pool.length);
-  let ni = 0;
-  if (noiseSig > 0) {
-    // Box-Muller 高斯（派生自 r，保持确定性）
-    for (let i = 0; i < noiseBuf.length; i += 2) {
-      const u1 = Math.max(1e-12, r.next()), u2 = r.next();
-      noiseBuf[i] = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2) * noiseSig;
-      if (i + 1 < noiseBuf.length) noiseBuf[i + 1] = Math.sqrt(-2 * Math.log(u1)) * Math.sin(2 * Math.PI * u2) * noiseSig;
-    }
-  }
-  const scN = (cid) => { const s = sc[cid] == null ? 0.5 : sc[cid]; return noiseSig > 0 ? Math.max(0.001, Math.min(0.999, s + noiseBuf[ni++ % noiseBuf.length])) : s; };
+  // 审计修复：按需抽高斯噪声（确定性派生自 r）——旧实现预生成 allVoters×pool 缓冲并取模复用，
+  // 每个 world 复用同一噪声图案 → world 间样本相关；默认 noiseSig=0 时不消耗 RNG，零开销。
+  const scN = (cid) => {
+    const s = sc[cid] == null ? 0.5 : sc[cid];
+    if (!(noiseSig > 0)) return s;
+    const u1 = Math.max(1e-12, r.next()), u2 = r.next();
+    const g = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2) * noiseSig;
+    return Math.max(0.001, Math.min(0.999, s + g));
+  };
 
   const W = pool.length > 10 ? Math.max(4, worlds >> 1) : worlds; // 预算感知
   const score = {};
