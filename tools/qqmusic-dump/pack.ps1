@@ -1,14 +1,18 @@
-# ============================================================================
+﻿# ============================================================================
 # pack.ps1 —— QQ音乐录音工具一键打包（2026-10-28）
 # 输出: 桌面\QQ音乐录音工具包-YYYYMMDD.zip（含 exe + 全部源码 + 使用说明）
 # 用法: powershell -ExecutionPolicy Bypass -File tools\qqmusic-dump\pack.ps1
 # ============================================================================
 $ErrorActionPreference = 'Stop'
-$root = Split-Path (Split-Path $PSScriptRoot) -Parent
-$src = Join-Path $root 'tools\qqmusic-dump'
+$scriptPath = $MyInvocation.MyCommand.Path
+if (-not $scriptPath) { $scriptPath = $PSScriptRoot }
+$src = Split-Path $scriptPath -Parent
+$root = Split-Path (Split-Path $src -Parent) -Parent
 $stage = Join-Path $env:TEMP 'qqmusic-tools-pack'
 $date = Get-Date -Format 'yyyyMMdd'
-$zip = Join-Path ([Environment]::GetFolderPath('Desktop')) ("QQ音乐录音工具包-$date.zip")
+$desktop = Join-Path $env:USERPROFILE 'Desktop'
+if (-not (Test-Path $desktop)) { $desktop = $env:TEMP }
+$zip = Join-Path $desktop ("QQ音乐录音工具包-$date.zip")
 
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Path (Join-Path $stage 'qqmusic-dump') -Force | Out-Null
