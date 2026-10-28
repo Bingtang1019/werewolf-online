@@ -60,3 +60,7 @@ tools/qqmusic-dump/*.log
 # QQ音乐录音输出（不入库——体积+版权）
 tools/qqmusic-dump/*.wav
 tools/qqmusic-dump/*.pcm
+
+# Python 缓存
+__pycache__/
+*.pyc
