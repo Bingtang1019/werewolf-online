@@ -1,67 +1,73 @@
-# qqmusic-dump —— QQ音乐录音工具（WASAPI loopback，零第三方依赖）
+# qqmusic-dump —— QQ音乐录音工具（Frida hook，无损 PCM）
 
 ## 背景
 
-QQ音乐新版加密（QMCv2）无法用 `tools/qmc-decode.js` 解密（后者只支持 QMCv1——酷狗/酷我/咪咕的 mgg/mflac）。
-本工具改用**录播放声音**方案：WASAPI loopback 抓系统播放流（QQ音乐输出）→ 16bit PCM WAV。
+QQ音乐新版加密（QMCv2）无法用 `tools/qmc-decode.js` 解密（后者只支持 QMCv1——酷狗/酷我/咪咕）。
+本工具用 **Frida hook** 在 QQ音乐进程内抓取解码后的 PCM——**无损、不经系统混音**。
 
-## 文件
+## 方案（主：Frida hook / 备：WASAPI 录音）
 
-```
-tools/qqmusic-dump/
-  recorder.ps1   录音器（GUI + CLI）——PowerShell 5.1 + C# WASAPI（系统内置，无需安装）
-  README.md      本文档
-```
+| 方案 | 文件 | 原理 | 音质 | 依赖 |
+|---|---|---|---|---|
+| **主：Frida hook** | `_hook.py` / `recorder-gui.py` + `_hook_js.txt` | hook `qmp_ogg.dll!qmp_ov_read_float`（libvorbis 解码输出） | **无损 PCM** | Python + frida |
+| 备：WASAPI loopback | `recorder.ps1` | 录系统播放输出 | 重编码 | 零依赖（PS + .NET） |
+
+**环境**（Frida 方案）：
+- Python：`D:\Python\python.exe`（3.13）
+- frida：`D:\Python\python.exe -m pip install frida frida-tools`（已装 17.24.3）
 
 ## 用法
 
 ### GUI（推荐）
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools/qqmusic-dump/recorder.ps1
+D:\Python\python.exe tools\qqmusic-dump\recorder-gui.py
 ```
 
-1. 点击「● 开始录音」
-2. 在 QQ音乐播放想录的歌
-3. 点击「■ 停止并保存」
-4. （可选）点击「转 BGM」→ 调用 `tools/music/convert-wav.js` 转成 24kHz 单声道
+1. 打开 QQ音乐（保持运行）
+2. 点「● 开始录音」→ 播放歌曲
+3. 点「■ 停止并保存」→ 生成 `D:/Music/qqmusic-dump/wav/auto_NN.wav`
+4. 点「转 BGM」→ 调用 `tools/music/convert-wav.js` 生成 `public/music/bgm-NN.wav`
 
 ### CLI
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools/qqmusic-dump/recorder.ps1 -Cli 120
-# 录 120 秒；不传 -Cli 则开 GUI
+D:\Python\python.exe tools\qqmusic-dump\_hook.py                # 回车停止
+D:\Python\python.exe tools\qqmusic-dump\_hook.py --seconds 120  # 录 120 秒
 ```
 
-### 参数
+### 备用（无 Frida 环境时）
 
-| 参数 | 说明 | 默认 |
-|---|---|---|
-| `-Cli` | 命令行模式 | GUI |
-| `-Seconds <n>` | CLI 录音秒数（0=手动 Ctrl+C） | 0 |
-| `-OutDir <path>` | 输出目录 | `D:/Music/qqmusic-dump/wav` |
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\qqmusic-dump\recorder.ps1        # GUI
+powershell -ExecutionPolicy Bypass -File tools\qqmusic-dump\recorder.ps1 -Cli 120  # CLI
+```
 
 ## 输出
 
-- 文件名：`auto_NN.wav`（NN 自动递增，与 `tools/music/convert-wav.js` 兼容——它按 `auto_*.wav` 扫描）
-- 格式：PCM 16bit / 双声道 / 48kHz（系统混音格式）
-- 转 BGM：`node tools/music/convert-wav.js` → `public/music/bgm-NN.wav`（24kHz 单声道）
+- 文件名：`auto_NN.wav`（自动递增，与 `tools/music/convert-wav.js` 的 `auto_*` 扫描兼容）
+- 格式：PCM 16bit / 双声道 / 源采样率（44.1k 或 48k，由 `qmp_ov_info` 读取）
+- 转 BGM：`node tools/music/convert-wav.js` → 24kHz 单声道（浏览器原生播放）
 
-## 技术说明
+## 技术细节（Frida hook）
 
-- **WASAPI loopback**：`IMMDeviceEnumerator.GetDefaultAudioEndpoint(eRender)` → `IAudioClient.Initialize(AUDCLNT_STREAMFLAGS_LOOPBACK)` → `IAudioCaptureClient.GetBuffer` 循环
-- **格式转换**：GetMixFormat 返回 WAVE_FORMAT_EXTENSIBLE（float32 48kHz 2ch）→ 录制时转 int16 PCM
-- **零依赖**：PowerShell 5.1 + .NET Framework 内置（Windows 7+）
-- **注意**：脚本文件必须保存为 **UTF-8 with BOM**（PowerShell 5.1 对中文路径的 UTF-8 无 BOM 会按 ANSI 误解码导致语法错误）
+```
+hook 点：qmp_ogg.dll!qmp_ov_read_float
+  签名：long qmp_ov_read_float(vorbis_dsp_state *vf, float ***pcm_channels, int samples, int *bitstream)
+  时机：onLeave（解码完成）—— pcm_channels 为输出（float** 每声道指针数组）
+  格式：qmp_ov_info(vf, -1) 返回 vorbis_info* {version, channels, rate, ...}
+  转换：float32 → int16（×0.85 防削波——QQ音乐输出常近满幅）
+```
 
-## 录音质量提示
+**已验证**：
+- QQMusic 32 位进程（ia32），Frida 17 x64 可跨架构 attach
+- 播放 OGG（.mgg）时 `qmp_ov_read_float` 稳定触发（5 分钟 ~22k 次调用）
+- 10 秒录音 = 1.8MB WAV（44100×2ch×2bytes×10.5s 精确匹配），非零率 100%
+- FLAC（.mflac）走 `qmp_flac.dll!DecodeFlac`（当前未接——如需支持可扩展）
 
-- loopback 录的是「系统混音输出」——QQ音乐的音量、音效（均衡器/环绕）都会影响录音结果
-- 建议：QQ音乐音量 70-80%（避免削波）、关闭音效增强
-- 录音期间不要播放其他声音（会混入）
-- 单曲录完后立即停止（文件按暂停/切歌不会自动分段——需手动）
+## 已知限制
 
-## 与旧版工具的差异
-
-旧版（已丢失）为 Python + frida hook `qmp_ogg.dll` 抓 PCM——需要 Python 环境 + frida 依赖。
-新版为 PowerShell + WASAPI 原生录音——**零依赖，任何 Windows 7+ 可用**——但录的是系统输出（非无损解码）。
+- **仅 OGG 格式（.mgg）**——FLAC（.mflac）需另 hook `qmp_flac.dll`
+- 录制中切换歌曲不会自动分段（一次录一首，或手动停止后再录）
+- QQ音乐版本升级可能改变 `qmp_ogg.dll` 的导出（届时需重新探测）
+- 录音文件不入库（`.gitignore`: `tools/qqmusic-dump/*.wav|*.pcm`）

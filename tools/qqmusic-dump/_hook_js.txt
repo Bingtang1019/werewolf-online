@@ -1,0 +1,58 @@
+function onMsg(msg) { send(msg); }
+
+var state = { channels: 2, rate: 44100, inited: false, frames: 0, calls: 0 };
+
+// 读 vorbis_info（qmp_ov_info 返回）→ 拿 channels/rate
+function readInfo(vf) {
+  try {
+    var infoFn = Process.getModuleByName('qmp_ogg.dll').getExportByName('qmp_ov_info');
+    var fn = new NativeFunction(infoFn, 'pointer', ['pointer', 'int']);
+    var p = fn(vf, -1);
+    if (p.isNull()) return null;
+    var channels = p.add(4).readS32();
+    var rate = p.add(8).readS32();
+    return { channels: channels, rate: rate };
+  } catch (e) { return null; }
+}
+
+var oggMod = Process.getModuleByName('qmp_ogg.dll');
+var readFloat = oggMod.getExportByName('qmp_ov_read_float');
+
+Interceptor.attach(readFloat, {
+  onEnter: function (args) {
+    this.pcmOut = args[1];          // float*** pcm_channels
+    this.samples = args[2].toInt32();
+    if (!state.inited) {
+      var info = readInfo(args[0]);
+      if (info && info.channels > 0 && info.rate > 0) {
+        state.channels = info.channels;
+        state.rate = info.rate;
+        state.inited = true;
+        send({ type: 'info', channels: info.channels, rate: info.rate });
+      }
+    }
+  },
+  onLeave: function (ret) {
+    var n = ret.toInt32();
+    state.calls++;
+    if (state.calls <= 3 || state.calls % 500 === 0) send({ type: 'call', n: state.calls, ret: n });
+    if (n <= 0) return;
+    try {
+      var ch = state.channels;
+      var pp = this.pcmOut.readPointer();       // float**
+      var out = new Int16Array(n * ch);
+      for (var c = 0; c < ch; c++) {
+        var fp = pp.add(c * Process.pointerSize).readPointer();
+        var f = new Float32Array(fp.readByteArray(n * 4));
+        for (var i = 0; i < n; i++) {
+          var v = f[i];
+          if (v > 1) v = 1; else if (v < -1) v = -1;
+          out[c + i * ch] = (v * 0.85 * 32767) | 0;  // 0.85 衰减防削波
+        }
+      }
+      send({ type: 'pcm', frames: n, channels: ch }, out.buffer);
+      state.frames += n;
+    } catch (e) { send({ type: 'pcm-err', msg: e.message }); }
+  }
+});
+send({ type: 'hook-ok' });
