@@ -88,3 +88,16 @@ tools/qqmusic-dump/dist/qqmusic-recorder.exe   # 双击运行（67MB，含 frida
     --distpath dist --workpath build --specpath build qqmusic-recorder.py
   ```
 - 打包产物（dist/ build/ *.spec）不入库（.gitignore）
+
+## 在线 / 离线播放
+
+**两种都支持，无需区分**（2026-10-28 实测）：
+
+| 场景 | 解码路径 | 实测 |
+|---|---|---|
+| 离线（本地 .mgg） | qmp_ogg.dll!qmp_ov_read_float | ✅ 10s 录音 1.8MB，非零 100% |
+| **在线（流媒体）** | **同一路径**（QQ音乐缓存为 OGG 后解码） | ✅ **15s 录音 2.6MB，非零 100%** |
+
+- 6 分钟多格式探测：ogg 31,744 次调用 / flac 0 / MP3-AAC 未加载 —— 在线流统一走 OGG 解码
+- 切歌时若采样率变化会提示（WAV 头按首帧格式写——建议单曲录制：停→换歌→再开始）
+- FLAC 无损在线流（SQ/Hi-Res）若走 qmp_flac.dll 则当前不支持（需扩展 DecodeFlac hook）

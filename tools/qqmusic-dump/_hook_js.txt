@@ -22,13 +22,18 @@ Interceptor.attach(readFloat, {
   onEnter: function (args) {
     this.pcmOut = args[1];          // float*** pcm_channels
     this.samples = args[2].toInt32();
-    if (!state.inited) {
+    if (!state.inited || (state.chk = (state.chk || 0) + 1) % 500 === 0) {
       var info = readInfo(args[0]);
       if (info && info.channels > 0 && info.rate > 0) {
+        if (state.channels !== info.channels || state.rate !== info.rate) {
+          send({ type: 'info-change', channels: info.channels, rate: info.rate, old: state.channels + '@' + state.rate });
+        }
         state.channels = info.channels;
         state.rate = info.rate;
-        state.inited = true;
-        send({ type: 'info', channels: info.channels, rate: info.rate });
+        if (!state.inited) {
+          state.inited = true;
+          send({ type: 'info', channels: info.channels, rate: info.rate });
+        }
       }
     }
   },

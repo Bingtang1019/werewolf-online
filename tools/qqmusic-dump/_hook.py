@@ -92,6 +92,9 @@ def main():
             elif t == 'pcm' and data:
                 with lock:
                     chunks.append(bytes(data))
+            elif t == 'info-change':
+                info['channels'] = p['channels']; info['rate'] = p['rate']
+                print('⚠ 格式变化: %s → %dch@%dHz' % (p.get('old'), p['channels'], p['rate']), flush=True)
             elif t == 'call':
                 print('  [call #%d ret=%d]' % (p['n'], p['ret']), flush=True)
             elif t == 'pcm-err':

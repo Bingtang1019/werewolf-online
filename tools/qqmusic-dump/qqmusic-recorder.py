@@ -258,6 +258,10 @@ class App:
             elif kind == 'pcm' and data:
                 with self.lock:
                     self.chunks.append(bytes(data))
+            elif kind == 'info-change':
+                self.ch = payload['channels']
+                self.rate = payload['rate']
+                self.logmsg('⚠ 切歌检测到格式变化: %s → %dch@%dHz（建议停止后重录本首）' % (payload.get('old'), self.ch, self.rate))
             elif kind == 'call' and self.var_adv.get():
                 self.logmsg('call #%d ret=%d' % (payload['n'], payload['ret']))
             elif kind == 'pcm-err':
