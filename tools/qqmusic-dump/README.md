@@ -71,3 +71,20 @@ hook 点：qmp_ogg.dll!qmp_ov_read_float
 - 录制中切换歌曲不会自动分段（一次录一首，或手动停止后再录）
 - QQ音乐版本升级可能改变 `qmp_ogg.dll` 的导出（届时需重新探测）
 - 录音文件不入库（`.gitignore`: `tools/qqmusic-dump/*.wav|*.pcm`）
+
+## GUI（exe 版）
+
+```
+tools/qqmusic-dump/dist/qqmusic-recorder.exe   # 双击运行（67MB，含 frida 运行时）
+```
+
+- 界面样式参考 SuzerainGUI：顶部工具栏（输出目录/刷新/检测/高级模式）→ 左侧树导航 + 右侧卡片（状态/录音信息/输出文件/日志）→ 底部按钮栏（开始/停止/转BGM/打开目录）
+- 首次运行需 QQ音乐已启动；「检测QQ音乐」确认 pid
+- 重新打包：
+  ```powershell
+  cd tools/qqmusic-dump
+  D:\Python\Scripts\pyinstaller.exe --onefile --windowed --name qqmusic-recorder ^
+    --add-data "C:\Users\dell\Desktop\狼人杀在线版 1.0.0\tools\qqmusic-dump\_hook_js.txt;." ^
+    --distpath dist --workpath build --specpath build qqmusic-recorder.py
+  ```
+- 打包产物（dist/ build/ *.spec）不入库（.gitignore）

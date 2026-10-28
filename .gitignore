@@ -64,3 +64,8 @@ tools/qqmusic-dump/*.pcm
 # Python 缓存
 __pycache__/
 *.pyc
+
+# PyInstaller 产物（exe 67MB 不入库——本地打包）
+tools/qqmusic-dump/dist/
+tools/qqmusic-dump/build/
+tools/qqmusic-dump/*.spec
